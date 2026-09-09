@@ -50,7 +50,7 @@ real sheet has 27 columns and no resistance array at all.
 | 0 | Int32 | `Pet` row id — the beast's name lives there |
 | 1 | UInt8 | Kin class, 1..8. Display names not found in the data yet |
 | 2 | UInt8 | Location id, read against column 6 |
-| 3 | UInt8 | 1..5, distributed 6/26/12/2/4. Believed to be the star rank |
+| 3 | UInt8 | Beast rank, 1..5, distributed 6/26/12/2/4 |
 | 4 | UInt32 | Icon, 242001 upward |
 | 5 | UInt16 | An `Action` row id, but those rows carry no name. Unconfirmed |
 | 6 | UInt8 | Location switch: 0 → `PlaceName`, 1 → `ContentFinderCondition` |
@@ -58,7 +58,7 @@ real sheet has 27 columns and no resistance array at all.
 | 8 | String | Flavour text |
 | 9, 10 | String | Two action descriptions |
 | 11..21 | Bool ×11 | **Which status the beast inflicts.** The feature this plugin is built on |
-| 22..26 | UInt8 ×5 | Percentages 76..100. *Not* damage resistances. Unconfirmed |
+| 22..26 | UInt8 ×5 | Strength, Intelligence, Phys. Resistance, Mag. Resistance, Constitution |
 
 Columns 11..21 follow `BNpcResist`'s indexer, which is itself 11 bools over 256 rows — so slot n is
 column 11 + n. `Rules/BeastStatus.cs` names them.
@@ -128,20 +128,15 @@ each board pays for each bonus, 0 where it does not offer it.
 
 ## What is still open
 
-These need the client, and are exactly what the Sheets and Addons tabs are for:
-
 1. **The third beast action.** Columns 9 and 10 hold two descriptions; the notebook shows three.
 2. **Status slot 3.** Inferred as Silence. Open the notebook on coblyn or golem and read it.
-3. **Columns 22..26.** Five percentages that are not resistances. Compare against what the notebook
-   shows for a beast with an uneven spread — Cu Sith is 100/91/100/79/100.
-4. **Kin class names** for column 1's values 1..8.
-5. **Columns 2 and 6 together.** `PlaceName` resolves cleanly for some beasts (Sastasha, Southern
+3. **Kin class names** for column 1's values 1..8.
+4. **Columns 2 and 6 together.** `PlaceName` resolves cleanly for some beasts (Sastasha, Southern
    Thanalan, Central Thanalan) and to nonsense for others, so the switch matters. Confirm both
    branches against beasts whose location the notebook shows.
-6. **Does `XBMMonsterNotebook`'s list recycle its row nodes?** Turn on "Re-capture every frame" in
-   the Addons tab and scroll. If the same node ids come back holding different text, it recycles,
-   and anything attached to a row has to be keyed to the beast currently in it rather than to the
-   row index. This decides how the bestiary badges are built.
+
+Answered, and no longer open: what columns 22..26 are, what column 3 is, and whether the
+notebook's list recycles — all three settled by the capture below.
 
 ## Verified against the installed Dalamud, not guessed
 
@@ -191,9 +186,46 @@ in the dump at all.
 
 ## Captures
 
-Sheet dumps are reproducible from `Harness/` and are not pasted here; the tables above are their
-result. What belongs here is anything read off a **live client** — addon node trees, AtkValue
-layouts, and the notebook readings that settle the open questions above. Each under a heading
-saying what was on screen at the time.
+Sheet dumps are reproducible from `Harness/` and are not kept here; the tables above are their
+result. What belongs here is anything read off a **live client**. Raw dumps land in `captures/` at
+the repository root and are gitignored — the findings are what gets written down.
 
-_No live captures yet._
+The client these were taken on runs in **English**, so the strings below are the game's own.
+
+### Master's Bestiary, overview page — 2026-09-09
+
+Taken with all fifty beasts captured ("Beasts Captured 50/50"), sitting on the grid overview.
+
+**The five stat columns name themselves.** The window's own column headers arrive in the
+AtkValues, which is what settles `XBMPet` columns 3 and 22..26:
+
+```
+15 "Beast Rank"  16 "Strength"  17 "Intelligence"
+18 "Phys. Resistance"  19 "Mag. Resistance"  20 "Constitution"  21 "No."
+```
+
+Cross-checked: the plugin's own dump of `XBMPet` from the running client matches the offline
+`Harness/` dump value for value — Cu Sith 100/91/100/79/100, lamb 82 across, ranks 3 and 4. So the
+offline route can be trusted for the rest.
+
+**The grid pages, and node ids are slots.** The overview is a fixed five by five block of
+`Component/Base` tiles, node ids **27..51**, laid out in reverse — id 27 carries "No. 1" and id 51
+carries "No. 25". Fifty beasts through twenty-five tiles means the same node id shows a different
+beast depending on the page.
+
+That answers the question this capture was taken for: **badges cannot be attached to a node id and
+left there.** They have to be recomputed whenever the page changes and keyed to whatever beast is
+in the slot at the time.
+
+Reading which beast that is does not need the node tree. The AtkValues carry a block of eight per
+slot starting at 24, and the fifth of each block is the icon id — 242001, 242002, … — which is
+exactly `XBMPet` column 4. **The icon id is the join key** between a tile and its beast.
+`Data/XbmColumns.MonsterNotebook` holds the arithmetic.
+
+Also in the tree, and worth knowing before it wastes anybody's time: the `Component/List` with the
+`ListItemRenderer` children (node ids 4 and 41001..41011) is **hidden**. It belongs to the "Team
+Composition" dropdown, not to the bestiary, and is not where the beasts are.
+
+Still to capture from this window: a detail page, which is where the third action and status slot 3
+should become readable, and a second overview capture on a different page to confirm the slot
+mapping holds.

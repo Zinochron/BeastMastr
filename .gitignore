@@ -2,3 +2,6 @@
 obj/
 bin/
 *.user
+# Raw explorer dumps. Kept out of the repository: they are working data, and the
+# findings they produced live in BeastMastr/README-DEV.md instead.
+captures/

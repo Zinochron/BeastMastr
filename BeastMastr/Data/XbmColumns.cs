@@ -26,7 +26,10 @@ public static class XbmColumns
         /// <summary>Where it is caught. Read against <see cref="LocationKey"/>, not on its own.</summary>
         public const int Location = 2;
 
-        /// <summary>1..5. Believed to be the rank shown as stars; unconfirmed.</summary>
+        /// <summary>
+        /// Beast rank, 1..5. Confirmed: the notebook's own column header for it arrives in
+        /// AtkValue 15 as "Beast Rank".
+        /// </summary>
         public const int Rank = 3;
 
         public const int Icon = 4;
@@ -59,11 +62,52 @@ public static class XbmColumns
         public const int StatusCount = 11;
 
         /// <summary>
-        /// Five percentages, 76..100. Not damage type resistances — there are nine damage types and
-        /// only five columns. Believed to be a stat spread; unconfirmed and unused for now.
+        /// Five percentages, 76..100. Not damage type resistances — the notebook names them itself
+        /// in AtkValues 16..20, in this order: Strength, Intelligence, Phys. Resistance,
+        /// Mag. Resistance, Constitution.
         /// </summary>
         public const int FirstStat = 22;
         public const int StatCount = 5;
+
+        public const int Strength = 22;
+        public const int Intelligence = 23;
+        public const int PhysicalResistance = 24;
+        public const int MagicResistance = 25;
+        public const int Constitution = 26;
+    }
+
+    /// <summary>
+    /// The Master's Bestiary window, <c>XBMMonsterNotebook</c>.
+    ///
+    /// Its overview is a fixed five by five grid of tiles for fifty beasts, so a tile is a **slot,
+    /// not a beast** — the grid pages, and the same node id shows a different beast on each page.
+    /// Anything attached to a tile has to be keyed to whatever is in it at the time.
+    /// </summary>
+    public static class MonsterNotebook
+    {
+        public const string Addon = "XBMMonsterNotebook";
+
+        /// <summary>Node id of the first tile. Ids run upward from here, but the grid is laid out
+        /// in reverse: id 27 is slot 1 and id 51 is slot 25.</summary>
+        public const int FirstTileNodeId = 27;
+        public const int TileCount = 25;
+
+        /// <summary>Column headers, which is what names <see cref="XbmPet"/>'s five stat columns.</summary>
+        public const int FirstStatHeaderValue = 16;
+
+        /// <summary>
+        /// Start of the per-slot AtkValue block, eight values per slot. The icon at
+        /// <see cref="SlotIconOffset"/> is the join key: it matches <see cref="XbmPet.Icon"/>
+        /// exactly, which is how a tile is resolved back to its beast.
+        /// </summary>
+        public const int FirstSlotValue = 24;
+        public const int SlotValueStride = 8;
+        public const int SlotIconOffset = 4;
+
+        public static int SlotIconValue(int slot) =>
+            FirstSlotValue + (slot * SlotValueStride) + SlotIconOffset;
+
+        public static int TileNodeId(int slot) => FirstTileNodeId + slot;
     }
 
     /// <summary>

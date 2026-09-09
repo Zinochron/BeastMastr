@@ -6,22 +6,52 @@ namespace BeastMastr.Data;
 /// <summary>
 /// Writes a dump to a file instead of the clipboard.
 ///
-/// Captures are read by whoever is doing the mapping work, and a node tree is hundreds of lines —
-/// far past what is comfortable to move through a clipboard. Writing them next to the plugin's
-/// config means a capture is one button here and a file read there.
+/// Captures are read by whoever is doing the mapping work, and a node tree runs to hundreds of
+/// lines — far past what is comfortable to move through a clipboard.
 /// </summary>
 public static class CaptureStore
 {
+    /// <summary>
+    /// <c>captures/</c> in the repository when running as a dev plugin, so a capture lands where the
+    /// person reading it is already working. Falls back to the plugin's config directory for an
+    /// installed copy, which has no repository to write into.
+    /// </summary>
     public static DirectoryInfo Directory
     {
         get
         {
-            var directory = new DirectoryInfo(
-                Path.Combine(Services.PluginInterface.ConfigDirectory.FullName, "captures"));
+            var root = RepositoryRoot() ?? Services.PluginInterface.ConfigDirectory;
+            var directory = new DirectoryInfo(Path.Combine(root.FullName, "captures"));
 
             directory.Create();
             return directory;
         }
+    }
+
+    /// <summary>
+    /// Walks up from the loaded assembly looking for the solution file. A dev plugin runs out of
+    /// <c>bin/x64/Debug</c> inside the working copy, so the repository is a few levels above it;
+    /// an installed plugin sits somewhere else entirely and finds nothing, which is the signal to
+    /// fall back.
+    /// </summary>
+    private static DirectoryInfo? RepositoryRoot()
+    {
+        try
+        {
+            var directory = Services.PluginInterface.AssemblyLocation.Directory;
+
+            for (var depth = 0; directory != null && depth < 8; depth++, directory = directory.Parent)
+            {
+                if (directory.GetFiles("BeastMastr.slnx").Length > 0)
+                    return directory;
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Debug(ex, "Could not locate the repository; captures go to the config directory.");
+        }
+
+        return null;
     }
 
     /// <summary>
