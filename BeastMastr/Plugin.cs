@@ -63,6 +63,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             tabs.Add(new SheetsTab(Configuration));
             tabs.Add(new AddonsTab(Configuration, delayedSweep));
+            tabs.Add(new BoardTab());
         }
 
         tabs.Add(new SettingsTab(Configuration));
