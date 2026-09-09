@@ -213,6 +213,12 @@ public static class XbmColumns
         /// <summary>Command its own click sends to put a beast in or out of the team, with the slot after it.</summary>
         public const int ToggleTeamCommand = 7;
 
+        /// <summary>
+        /// What the window is told when the cursor enters a tile, with the slot after it. It repaints
+        /// the detail page and changes nothing else, which is what makes it safe to send on purpose.
+        /// </summary>
+        public const int HoverCommand = 5;
+
         /// <summary>The bestiary number shown in a slot, which is how the current page is read back.</summary>
         public static int SlotNumberValue(int slot) => FirstSlotValue + (slot * SlotValueStride);
 

@@ -28,6 +28,7 @@ public sealed unsafe class ActionButtons : IDisposable
 
     private readonly Configuration configuration;
     private readonly TeamSelector teamSelector;
+    private readonly RankPuller rankPuller;
     private readonly Func<bool> nativeUiReady;
 
     private readonly Dictionary<string, TextButtonNode> buttons = [];
@@ -35,10 +36,12 @@ public sealed unsafe class ActionButtons : IDisposable
     private int ticksUntilRecheck;
     private bool broken;
 
-    public ActionButtons(Configuration configuration, TeamSelector teamSelector, Func<bool> nativeUiReady)
+    public ActionButtons(Configuration configuration, TeamSelector teamSelector, RankPuller rankPuller,
+                         Func<bool> nativeUiReady)
     {
         this.configuration = configuration;
         this.teamSelector = teamSelector;
+        this.rankPuller = rankPuller;
         this.nativeUiReady = nativeUiReady;
 
         Services.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, XbmColumns.MonsterNotebook.Addon, OnFinalize);
@@ -99,13 +102,10 @@ public sealed unsafe class ActionButtons : IDisposable
         {
             NodeId = ButtonNodeIdBase,
             Size = new Vector2(150f, 28f),
-            // Under the window rather than inside it: the bestiary's own area is full of tiles, and
-            // a button dropped among them would cover one.
-            //
-            // The height has to be the root node's, in the window's own units. GetScaledHeight
-            // returns screen pixels, and a child node's Position is local — so with the UI scaled
-            // up, that put the button far below the window instead of just under it.
-            Position = new Vector2(20f, BottomOf(addon) + 4f),
+            // In the gap the window already leaves between the last row of tiles and its footer.
+            // Measured from the bottom tile rather than from the window edge: the tile is a child in
+            // the same coordinate space, so it stays right whatever the UI scale is doing.
+            Position = new Vector2(20f, BelowTheTiles(addon)),
             String = "Fill for levelling",
             IsVisible = true,
             OnClick = teamSelector.RequestFill,
@@ -114,17 +114,40 @@ public sealed unsafe class ActionButtons : IDisposable
         fill.AttachNode(addon, NodePosition.AsLastChild);
         buttons["fill"] = fill;
 
+        var pull = new TextButtonNode
+        {
+            NodeId = ButtonNodeIdBase + 1,
+            Size = new Vector2(120f, 28f),
+            Position = new Vector2(180f, BelowTheTiles(addon)),
+            String = "Read ranks",
+            IsVisible = true,
+            OnClick = rankPuller.Start,
+        };
+
+        pull.AttachNode(addon, NodePosition.AsLastChild);
+        buttons["pull"] = pull;
+
         Services.Log.Debug("Team composition button attached.");
     }
 
     /// <summary>
-    /// The window's height in its own coordinates, which is the space a child node's position is
-    /// measured in. Falls back to something sane rather than stacking the button on the title bar.
+    /// Just under the last row of tiles, in the window's own coordinates.
+    ///
+    /// The first attempt offset from the window's height as <c>GetScaledHeight</c> reported it,
+    /// which is screen pixels while a child node's position is local — with the UI scaled up the two
+    /// disagree by exactly the scale factor, and the button landed that far below. A sibling node's
+    /// position needs no conversion at all, so the bottom tile is what it measures from now.
     /// </summary>
-    private static float BottomOf(AtkUnitBase* addon)
+    private static float BelowTheTiles(AtkUnitBase* addon)
     {
+        var lastTile = addon->GetNodeById(
+            (uint)XbmColumns.MonsterNotebook.TileNodeId(XbmColumns.MonsterNotebook.TileCount - 1));
+
+        if (lastTile != null)
+            return lastTile->Y + lastTile->Height + 6f;
+
         var root = addon->RootNode;
-        return root != null && root->Height > 0 ? root->Height : 520f;
+        return (root != null && root->Height > 0 ? root->Height : 520f) - 60f;
     }
 
     private void Detach()

@@ -969,3 +969,28 @@ therefore also clears the give-up flag, which until now needed a plugin reload. 
 stays for anyone who wants it, and its description now says it does what the button does.
 
 Node ids start at `0x42460000`, clear of the bestiary badges at `0x42450000`.
+
+## Reading every rank without changing anything
+
+The ranks do exist as data — the game knows all fifty — but the only place found that shows one is
+the detail page, for whichever beast the cursor is on. `XBMModule` is the job's save file and would
+presumably hold them, but its format is unknown and that is a reverse-engineering round of its own.
+
+There is a cheaper route that needs no new knowledge. `[5, slot]` is what the window is told when
+the cursor **enters** a tile, and it repaints the detail page and does nothing else.
+`Automation/RankPuller.cs` sends it deliberately, one tile at a time, six frames apart, across both
+pages, and reads the panel each time. Then it puts the page back where it started.
+
+**Hovering is not selecting.** No beast joins or leaves a team, which is the whole reason this is
+acceptable — clicking each beast would rearrange a team to answer a question about it. All three
+commands it uses were recorded from real clicks, so none of it is a guess.
+
+It is a button, not a background job: fifty tiles' worth of the detail page flickering past is
+something to ask for, not something to spring on someone.
+
+### Where the buttons sit
+
+Anchored to the last tile rather than to the window's edge. The first attempt offset from
+`GetScaledHeight`, which is screen pixels while a child node's position is local — with the UI
+scaled up those disagree by exactly the scale factor, and the button landed that far below the
+window. A sibling node's position needs no conversion at all.

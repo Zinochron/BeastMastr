@@ -121,6 +121,23 @@ public sealed class RankWatcher : IDisposable
             Remember(slot.Number, slot.Rank);
     }
 
+    /// <summary>
+    /// Record a rank read by something else — the sweep, which reads faster than this watcher's own
+    /// timer allows. Returns whether it was new or changed, so the sweep can count what it learned.
+    /// </summary>
+    public bool Learn(uint beastNumber, int rank)
+    {
+        if (rank <= 0)
+            return false;
+
+        if (configuration.KnownRanks.TryGetValue(beastNumber, out var known) && known == rank)
+            return false;
+
+        configuration.KnownRanks[beastNumber] = rank;
+        configuration.Save();
+        return true;
+    }
+
     private void Remember(uint beastNumber, int rank)
     {
         if (rank <= 0 || configuration.KnownRanks.TryGetValue(beastNumber, out var known) && known == rank)
