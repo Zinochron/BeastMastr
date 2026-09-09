@@ -21,14 +21,16 @@ public sealed class BoardTab : ITab
 {
     private readonly BeastCatalog catalog;
     private readonly EventRecorder recorder;
+    private readonly RankWatcher ranks;
 
     private string lastPath = string.Empty;
     private float radius = 60f;
 
-    public BoardTab(BeastCatalog catalog, EventRecorder recorder)
+    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RankWatcher ranks)
     {
         this.catalog = catalog;
         this.recorder = recorder;
+        this.ranks = ranks;
     }
 
     public string Title => "Board";
@@ -209,6 +211,7 @@ public sealed class BoardTab : ITab
         }
 
         ImGui.TextDisabled(PetPartyReader.Prompt());
+        ImGui.TextDisabled($"Ranks learned so far: {ranks.KnownCount} of 50");
 
         foreach (var slot in slots)
         {

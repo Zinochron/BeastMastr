@@ -82,6 +82,22 @@ public static unsafe class AddonReader
                     .ToList();
     }
 
+    /// <summary>
+    /// The text of one node, by id. Cheaper and far less brittle than walking the tree when the id
+    /// is already known.
+    /// </summary>
+    public static string TextOf(string addonName, uint nodeId)
+    {
+        if (!TryGet(addonName, out var addon))
+            return string.Empty;
+
+        var node = addon->GetNodeById(nodeId);
+        if (node == null || node->Type != NodeType.Text)
+            return string.Empty;
+
+        return ((AtkTextNode*)node)->NodeText.ToString();
+    }
+
     // ---- Node tree --------------------------------------------------------
 
     /// <summary>

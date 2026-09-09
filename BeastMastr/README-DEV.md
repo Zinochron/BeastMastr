@@ -735,9 +735,18 @@ Also corrected: the `XBMPet` row is at `+76`, not `+70`. `+70` and `+71` are emp
 `FightMode.RepeatLast`'s reading half is done: the roster comes back with correct ranks, and after
 choosing three familiars the three chosen slots read 0, 1 and 2.
 
-**Leveling is still blocked.** Both of the roster window's jobs list only the ten beasts already on
-the team, so the pool of all fifty — and their ranks — is somewhere else, almost certainly the
-Master's Bestiary in its Team Composition mode. Team sizes are ten for a standard board, then twelve
+**There is no bulk source for ranks.** The bestiary in Team Composition mode lists all fifty, but
+its AtkValues carry nothing per beast beyond the icon — every slot's remaining values are identical.
+The rank is on the **detail page**, one beast at a time, in the panel that is hidden while the
+bestiary is merely being browsed and shown while a team is being assembled. That is why an early
+capture found every value node empty and the rank looked unavailable: it was the wrong moment, not
+the wrong node.
+
+So `Data/RankWatcher.cs` learns instead of asking. It samples the detail page for whichever beast is
+open and the roster window for the ten on a team, four times a second, and remembers what it sees.
+Driving the window to read all fifty would mean fifty selections under the player's hands to answer
+a question nobody has asked yet. What it has not seen it does not claim to know, and the Board tab
+says how many of the fifty are known. Team sizes are ten for a standard board, then twelve
 and fourteen. Only three boards are unlocked,
 so `TeamPlanner.TeamSizes` holds three and anything beyond falls back to the smallest — under-filling
 beats picking a beast that has no slot.

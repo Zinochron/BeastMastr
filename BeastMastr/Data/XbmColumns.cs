@@ -297,13 +297,19 @@ public static class XbmColumns
         public const int DescriptionNodeId = 33;
 
         /// <summary>
-        /// Rank, EXP, HP and Satiety, plus five stat components at 47..51, all live under node 36 —
-        /// which is **hidden** on this page. That is why the page shows no rank and why every value
-        /// node came back empty: the panel exists but is not displayed here.
+        /// Rank, EXP, HP and Satiety live under node 36, along with five stat components at 47..51.
+        /// The panel is hidden while the bestiary is merely being browsed and shown while a team is
+        /// being put together — which is why an early capture found every value node empty and the
+        /// rank looked unavailable.
         /// </summary>
-        public const int HiddenRankPanelNodeId = 36;
+        public const int RankPanelNodeId = 36;
         public const int RankLabelNodeId = 39;
+
+        /// <summary>The rank itself, e.g. "5".</summary>
         public const int RankValueNodeId = 40;
+
+        /// <summary>Progress within the rank, e.g. "9/100" — the tie-breaker between equal ranks.</summary>
+        public const int ExperienceValueNodeId = 42;
     }
 
     /// <summary>

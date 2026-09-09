@@ -24,6 +24,7 @@ public sealed class Plugin : IDalamudPlugin
     /// <summary>Built in the constructor body: it subscribes on construction. See the note above.</summary>
     private readonly EventRecorder recorder;
     private readonly FightSelector fightSelector;
+    private readonly RankWatcher rankWatcher;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -60,6 +61,7 @@ public sealed class Plugin : IDalamudPlugin
 
         recorder = new EventRecorder();
         fightSelector = new FightSelector(Configuration, Catalog);
+        rankWatcher = new RankWatcher(Configuration);
 
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
@@ -70,7 +72,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             tabs.Add(new SheetsTab(Configuration));
             tabs.Add(new AddonsTab(Configuration, delayedSweep));
-            tabs.Add(new BoardTab(Catalog, recorder));
+            tabs.Add(new BoardTab(Catalog, recorder, rankWatcher));
         }
 
         tabs.Add(new SettingsTab(Configuration, fightSelector));
@@ -128,6 +130,7 @@ public sealed class Plugin : IDalamudPlugin
         notebook.Dispose();
         recorder.Dispose();
         fightSelector.Dispose();
+        rankWatcher.Dispose();
         KamiToolKitLibrary.Dispose();
 
         ECommonsMain.Dispose();

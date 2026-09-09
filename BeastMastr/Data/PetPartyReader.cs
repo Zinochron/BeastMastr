@@ -80,6 +80,32 @@ public static class PetPartyReader
         return Text(values, XbmColumns.PetParty.PromptValue);
     }
 
+    /// <summary>
+    /// Just the beast numbers and ranks, for the watcher — it needs no catalogue and runs on a
+    /// timer, so it should not build one every time it looks.
+    /// </summary>
+    public static IEnumerable<(uint Number, int Rank)> ReadRanks()
+    {
+        var addon = AddonReader.Find(XbmColumns.PetParty.Addon);
+        if (addon.IsNull)
+            yield break;
+
+        var values = addon.AtkValues.ToList();
+
+        for (var block = 0; ; block++)
+        {
+            var nameIndex = XbmColumns.PetParty.Value(block, XbmColumns.PetParty.NameOffset);
+            if (nameIndex >= values.Count || string.IsNullOrWhiteSpace(Text(values, nameIndex)))
+                yield break;
+
+            var number = Number(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.SheetRowOffset));
+            var rank = Rank(Text(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.RankOffset)));
+
+            if (number is > 0 && rank > 0)
+                yield return ((uint)number, rank);
+        }
+    }
+
     private static string Text(IReadOnlyList<Dalamud.Game.NativeWrapper.AtkValuePtr> values, int index) =>
         index < 0 || index >= values.Count
             ? string.Empty

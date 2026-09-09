@@ -21,6 +21,13 @@ public class Configuration : IPluginConfiguration
     /// <summary>How beasts are picked for an individual fight.</summary>
     public FightMode FightSelection { get; set; } = FightMode.Off;
 
+    /// <summary>
+    /// Progression rank per beast, learned by watching the bestiary rather than asked for. There is
+    /// no bulk source, so this fills in as you browse and is only ever as complete as what has been
+    /// seen — which is why leveling says how many it knows before it acts.
+    /// </summary>
+    public Dictionary<uint, int> KnownRanks { get; set; } = [];
+
     /// <summary>What was taken into the last fight, so it can be taken into the next one.</summary>
     public List<uint> LastFightBeasts { get; set; } = [];
 
