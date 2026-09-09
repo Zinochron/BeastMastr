@@ -11,6 +11,24 @@ namespace BeastMastr.Data;
 /// </summary>
 public static class XbmColumns
 {
+    /// <summary>
+    /// The classification's display name, in the <c>Addon</c> sheet at 17740 plus the value of
+    /// <see cref="XbmPet.KinClass"/>. Verified for all eight: Beastkin, Vilekin, Cloudkin, Seedkin,
+    /// Wavekin, Scalekin, Soulkin, Ashkin, each cross-checked against a beast known to be one.
+    /// Being in <c>Addon</c> means it arrives already in the player's language.
+    /// </summary>
+    public static uint ClassificationAddonRow(int classification) => (uint)(17740 + classification);
+
+    /// <summary>
+    /// The Borrow action, which belongs to the classification rather than the beast: every Beastkin
+    /// borrows Beastskin, every Soulkin Soul Crush. <c>Action</c> row 44895 plus the classification.
+    ///
+    /// This is arithmetic, and arithmetic is what the <c>Pet</c> link exists to avoid — but here
+    /// there is no link to use, and all eight land on a name that matches its classification:
+    /// Vilekin on Vileskin, Cloudkin on Cloud Skim, Ashkin on Scouring Ash. Re-check after a patch.
+    /// </summary>
+    public static uint BorrowActionId(int classification) => (uint)(44895 + classification);
+
     /// <summary>The capturable beasts. 51 rows, 27 columns as of game 2026.09.01.</summary>
     public static class XbmPet
     {

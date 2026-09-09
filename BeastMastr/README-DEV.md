@@ -6,8 +6,8 @@ Written for whoever touches this next, including future me.
 
 | Folder | What lives there |
 |---|---|
-| `Data/` | Reading the game: Excel sheets, addon values and node trees |
-| `Rules/` | Pure calculation: trait classification, room requirements, beast ranking |
+| `Data/` | Reading the game: Excel sheets, addon values and node trees, the beast catalogue |
+| `Rules/` | Pure calculation: the beast model, trait classification, filtering |
 | `Native/` | Everything that mutates the game's UI: KamiToolKit node injection |
 | `UI/` | ImGui windows and tabs |
 
@@ -151,7 +151,9 @@ each board pays for each bonus, 0 where it does not offer it.
    43 is Western Thanalan. All 7912 sheets were searched for a direct or numeric link and came back
    empty, so it resolves through something not yet found.
 3. **Columns 22..26.** Five numbers, 1..100, disproved as the stats. Unknown.
-4. **Classification names** for column 1's values other than 1 (Beastkin) and 7 (Soulkin).
+4. ~~Classification names.~~ Answered: `Addon` row 17740 plus the value — Beastkin, Vilekin,
+   Cloudkin, Seedkin, Wavekin, Scalekin, Soulkin, Ashkin, each cross-checked against a beast known
+   to be one. Being in `Addon` means they arrive already localised.
 5. **Auto-attack damage type.** Shown on the detail page, and in all three captures it equalled the
    element of that beast's Trick — golem earth, coblyn lightning, goobbue blunt. Three samples is a
    hypothesis, not a rule.
@@ -459,3 +461,31 @@ No status flags, which is the answer to looking there for coblyn's Interruption 
 nothing. It has the number, name, classification, appearance sizes, auto-attack type, the three
 actions with their levels and descriptions, habitat, flavour text, and labels for Rank, EXP, HP and
 Satiety whose value nodes were empty in every capture.
+
+## Phase 1: how a beast is assembled
+
+`Data/BeastCatalog.cs` reads, all raw by column index:
+
+- `XBMPet` for the classification, icon, the eleven status bools and the two action descriptions.
+- `Pet`, via column 0, for the two action ids — never by arithmetic.
+- `Action` for the names, including the Borrow at `44895 + classification`.
+- `Addon` at `17740 + classification` for the classification's own name.
+
+**It reads `XBMPet` twice: the player's language to display, English to classify.** Cleanse and
+dispel exist only as prose in the descriptions, and matching prose in eleven languages would be
+eleven chances to be wrong. Nothing derived from the English text is ever shown.
+
+`Rules/` holds the result and knows nothing about Dalamud: `Beast`, `BeastAction`, `DamageType`,
+`BeastTrait`, the `TraitClassifier` that reads a description, and `BeastFilter`. The filter treats
+several selected statuses as **and**, not or — "which of mine sleeps *and* is a Wavekin" is the
+question worth asking, and an any-of filter cannot ask it.
+
+87 of the 150 actions carry a damage type. The rest deal no damage at all, which is the right
+answer for "Hastens allies."
+
+### Interruption is exactly the Soulkin
+
+All five Soulkin interrupt and nobody else does, because Interruption comes from Soul Crush, the
+Borrow every Soulkin shares. So the interrupt filter has the same answer as picking a Soulkin —
+five beasts of fifty. Still worth offering, but it is a smaller fact than it first appeared, and
+the harness asserts the equivalence so a patch that breaks it surfaces the reason.

@@ -25,6 +25,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly DelayedSweep delayedSweep;
 
     public Configuration Configuration { get; }
+    public BeastCatalog Catalog { get; }
 
     public Plugin(IDalamudPluginInterface pluginInterface)
     {
@@ -33,8 +34,9 @@ public sealed class Plugin : IDalamudPlugin
 
         Configuration = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         delayedSweep = new DelayedSweep();
+        Catalog = new BeastCatalog();
 
-        var tabs = new List<ITab>();
+        var tabs = new List<ITab> { new BeastsTab(Catalog) };
         if (Configuration.ShowDataTab)
         {
             tabs.Add(new SheetsTab(Configuration));
@@ -48,7 +50,7 @@ public sealed class Plugin : IDalamudPlugin
 
         Services.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open BeastMastr. Also: /beastmastr settings.",
+            HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings.",
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -63,6 +65,10 @@ public sealed class Plugin : IDalamudPlugin
             case "settings":
             case "config":
                 OpenSettings();
+                break;
+
+            case "beasts":
+                mainWindow.OpenAt("beasts");
                 break;
 
             default:
