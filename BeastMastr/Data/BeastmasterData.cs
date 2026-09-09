@@ -37,7 +37,10 @@ public static class BeastmasterData
     /// </summary>
     public static readonly (string Addon, string Note)[] Addons =
     [
-        ("XBMMonsterNotebook", "The Master's Bestiary."),
+        ("XBMMonsterNotebook", "The Master's Bestiary — the grid of beasts."),
+        ("XBMMonsterBookDetail", "The bestiary's right hand page: classification, auto-attack, habitat, the three actions."),
+        ("XBMPetActionDetail", "Hover panel for one beast action."),
+        ("XBMContentsItemShop", "The Crucible shop."),
         ("XBMPetParty", "The roster of beasts taken into a run."),
         ("XBMStageMap", "The board. Rooms live in AtkComponentXBMContentStageEventMap.Entries."),
         ("XBMStageList", "Board selection."),

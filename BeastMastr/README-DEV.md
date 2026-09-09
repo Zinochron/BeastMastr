@@ -56,7 +56,7 @@ real sheet has 27 columns and no resistance array at all.
 | 6 | UInt8 | Location switch: 0 → `PlaceName`, 1 → `ContentFinderCondition` |
 | 7 | UInt16 | Mostly 30/42/54, one 350. Level or content id. Unconfirmed |
 | 8 | String | Flavour text |
-| 9, 10 | String | The Trick and the Tempered Release, in that order. Descriptions only — no names |
+| 9, 10 | String | The Trick and the Tempered Release descriptions, in that order. No names |
 | 11..21 | Bool ×11 | **Which status the beast inflicts.** The feature this plugin is built on |
 | 22..26 | UInt8 ×5 | Five numbers, 1..100. **Not identified** — see below; they are not the stats |
 
@@ -141,31 +141,21 @@ each board pays for each bonus, 0 where it does not offer it.
 
 ## What is still open
 
-1. **Borrow.** Each beast has three actions, grouped on the detail page as **Trick**, **Tempered
-   Release** and **Borrow**, each with an unlock level. Columns 9 and 10 are the first two
-   descriptions in that order. Borrow is not in the sheet — and neither are any of the three
-   action *names*, only descriptions, so both have to come from somewhere else.
-2. **Classification names** for column 1's values 2..8. 1 is Beastkin.
-3. **Beast rank.** Column 3 is inferred by elimination and has not been seen against a named beast.
-4. **The habitat column.** Column 2 is not a `PlaceName` id: goobbue's habitat is Lower La Noscea,
-   which is `PlaceName` 31, and its column 2 is 21. All 7912 sheets were searched for one holding
-   that string at row 21, and for one linking both goobbue's 21 → 31 and squirrel's 35 → Central
-   Shroud numerically. Both searches came back empty, so the resolution goes through something not
-   yet found. Column 6 switches between three branches, not two: 0 for one beast, 1 for the
-   overworld ones, 2 for the late ones that live in duties.
-5. **Auto-attack damage type.** The detail page shows one — goobbue's is Blunt, which is
-   `XBMElement` 7 — and no column of `XBMPet` has been matched to it.
+1. **Beast rank.** Column 3 is inferred by elimination. The bestiary detail page has a "Rank"
+   label at node 39, but its value node 40 was empty in every capture, so nothing has yet put a
+   number against a named beast.
+2. **The habitat column.** Column 2 is not a `PlaceName` id and not a fixed offset from one:
+   goobbue's 21 is Lower La Noscea (`PlaceName` 31), golem's 25 is Southern Thanalan (45), coblyn's
+   43 is Western Thanalan. All 7912 sheets were searched for a direct or numeric link and came back
+   empty, so it resolves through something not yet found.
+3. **Columns 22..26.** Five numbers, 1..100, disproved as the stats. Unknown.
+4. **Classification names** for column 1's values other than 1 (Beastkin) and 7 (Soulkin).
+5. **Auto-attack damage type.** Shown on the detail page, and in all three captures it equalled the
+   element of that beast's Trick — golem earth, coblyn lightning, goobbue blunt. Three samples is a
+   hypothesis, not a rule.
 
-6. **Whether the map and the detail list agree on room count.** The board capture showed thirteen
-   visible room nodes; the detail list described sixteen rooms. The two were taken eight seconds
-   apart on different screens, so this may be nothing — but a capture with both open at once is
-   needed before an overlay pairs them up.
-
-7. **What columns 22..26 are.** Briefly labelled here as the five stats. That was wrong — see the
-   party window capture below. Back to unknown.
-
-Answered, and no longer open: whether the notebook's list recycles, and what all eleven status
-slots are — the latter now confirmed against the game twice over.
+Answered, and no longer open: the eleven status slots, the three actions and where their names
+live, what Borrow is, whether the notebook's list recycles.
 
 ## Verified against the installed Dalamud, not guessed
 
@@ -405,3 +395,62 @@ The sweep no longer walks the hand written window list either. `AddonReader.Open
 `RaptureAtkUnitManager` for every loaded unit whose name starts with `XBM`, so windows nobody has
 named yet — the shop among them — are swept without having to guess what they are called. Anything
 not in `BeastmasterData.Addons` is flagged in the file as worth naming.
+
+### Enemies, and the rest of the windows — 2026-09-09
+
+Letting the game list its own loaded windows immediately turned up three nobody had named:
+**`XBMMonsterBookDetail`** (the bestiary's right hand page is a separate window from the grid),
+**`XBMPetActionDetail`**, and **`XBMContentsItemShop`**. That is the argument for
+`AddonReader.OpenAddonNames` in one line.
+
+#### `XBMBattleMonsterDetail` is the room card, already written
+
+Two AtkValues, and everything else in the node tree as plain text. For one enemy:
+
+```
+[21] Manticore Piece
+[22] Weakness:        [23] Wind
+[24] Vulnerabilities:      (icon nodes 13..18, no text)
+[27] Strength ★★★   [28] Phys. Resistance ★★★   [29] Constitution ★★★★
+[30] Intelligence ★  [31] Mag. Resistance ★★
+[35] Hammerleap     Target: Ground   Damage Type: Blunt
+                    Interruption: Ineffective   Area of Effect: Circle
+                    Status: Petrification       (hidden: "Nullification ✓")
+[39] Deadly Hold    Target: Player   Damage Type: Blunt
+                    Interruption: Ineffective   Area of Effect: Single Target
+                    Status: Paralyzing Spikes   (hidden: "Nullification ✓")
+```
+
+Every single thing the room cards were specified to show is in there: the damage type weakness, the
+enemy's own damage type, what status it inflicts, and — per action — **whether it can be
+interrupted at all**. The hidden "Nullification ✓" is the game saying the current team already
+covers that status, which is a recommendation signal for free.
+
+The catch is that this window only exists while the cursor rests on an enemy. It cannot be fetched
+on demand, so the plugin has to hook it, read it while it is up, and cache per enemy. That is
+tolerable — hovering enemies is what you do on the board anyway — and it is the only route until
+something is found that lists a room's enemies without hovering.
+
+#### The three actions, resolved
+
+The bestiary detail page names them and groups them: **Trick**, **Tempered Release**, **Borrow**.
+
+**Borrow is per Classification, not per beast.** Golem and coblyn are both Soulkin and both borrow
+Soul Crush; goobbue is Beastkin and borrows Beastskin. So it follows from column 1 and needs no
+column of its own. That closes the "missing third action" question — nothing is missing.
+
+**The names are in the `Action` sheet, at `44933 + 2 × XBMPet row id`**, with the Tempered Release
+in the next row. This was not pattern-matched and hoped for: the party window hands out both ids
+per beast at its offsets 29 and 30, and those fixed the constant. It then resolved **all fifty**
+beasts to named actions with no misses, and the names agree with what the bestiary shows — coblyn's
+Bestial Thunder and Vulcanize, pugil's Screwdriver and Water Wall. Arithmetic on row ids is still
+fragile, so re-check it after a patch.
+
+Classification values so far: **1 Beastkin, 7 Soulkin**.
+
+#### What the bestiary page does not have
+
+No status flags, which is the answer to looking there for coblyn's Interruption and finding
+nothing. It has the number, name, classification, appearance sizes, auto-attack type, the three
+actions with their levels and descriptions, habitat, flavour text, and labels for Rank, EXP, HP and
+Satiety whose value nodes were empty in every capture.

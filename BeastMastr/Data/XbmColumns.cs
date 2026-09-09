@@ -67,11 +67,32 @@ public static class XbmColumns
         public const int TemperedReleaseText = 10;
 
         /// <summary>
-        /// There is no Borrow column. The third action is named on the detail page but is not in
-        /// this sheet, and only its description would be here anyway — none of the three action
-        /// *names* are. Where they come from is still open.
+        /// There is no Borrow column, and there does not need to be: **Borrow is per
+        /// Classification, not per beast.** Every Beastkin borrows Beastskin, every Soulkin borrows
+        /// Soul Crush — golem and coblyn are both Soulkin and both show Soul Crush. So it follows
+        /// from <see cref="KinClass"/>.
         /// </summary>
-        public const int BorrowText = -1;
+        public const int BorrowIsPerClassification = -1;
+
+        /// <summary>
+        /// The action *names* are in none of these columns either — the sheet carries descriptions
+        /// only. They are in the <c>Action</c> sheet, reachable by arithmetic on the row id:
+        /// see <see cref="TrickActionId"/>.
+        /// </summary>
+        public const int ActionNamesAreElsewhere = -1;
+
+        /// <summary>
+        /// The <c>Action</c> row holding this beast's Trick; the Tempered Release is the next row.
+        ///
+        /// Arithmetic on row ids is fragile, so this was not guessed from a pattern and then hoped
+        /// for: the party window hands out the two ids per beast at its own offsets 29 and 30, and
+        /// those fixed the constant. It then resolved **all fifty** beasts to named actions, and
+        /// the names match what the bestiary shows — coblyn's Bestial Thunder and Vulcanize, for
+        /// one. Re-check it after a patch rather than trusting it blindly.
+        /// </summary>
+        public static uint TrickActionId(uint rowId) => 44933 + (2 * rowId);
+
+        public static uint TemperedReleaseActionId(uint rowId) => TrickActionId(rowId) + 1;
 
         /// <summary>
         /// Start of eleven bools saying which status the beast can inflict, in
@@ -153,6 +174,75 @@ public static class XbmColumns
 
         /// <summary>Row id in <c>Status</c>, or 0 when the action applies none.</summary>
         public const int Status = 3;
+    }
+
+    /// <summary>
+    /// One enemy's detail panel, <c>XBMBattleMonsterDetail</c>. **This is the whole payload the
+    /// room cards need**, and it only exists while the cursor rests on an enemy — so it has to be
+    /// read on hover and cached, not fetched on demand.
+    ///
+    /// Its AtkValues hold two numbers; everything is in the node tree, as text.
+    /// </summary>
+    public static class BattleMonsterDetail
+    {
+        public const string Addon = "XBMBattleMonsterDetail";
+
+        public const int NameNodeId = 21;
+
+        /// <summary>Its damage type weakness, e.g. "Wind", prefixed with an icon glyph.</summary>
+        public const int WeaknessNodeId = 23;
+
+        /// <summary>Label only; the vulnerabilities themselves are the icon nodes 13..18.</summary>
+        public const int VulnerabilitiesLabelNodeId = 24;
+
+        /// <summary>
+        /// Five label/value pairs shown as star counts, one component each: 27 Strength,
+        /// 28 Phys. Resistance, 29 Constitution, 30 Intelligence, 31 Mag. Resistance. Within a
+        /// component, node 2 is the label and node 3 the stars.
+        /// </summary>
+        public const int FirstStatNodeId = 27;
+        public const int StatCount = 5;
+        public const int StatLabelChildNodeId = 2;
+        public const int StatStarsChildNodeId = 3;
+
+        /// <summary>
+        /// One component per enemy action, 35 and 39 in the two-action case. Inside each:
+        /// 2 name, 4 target, 6 damage type, 8 whether it can be interrupted, 10 AoE shape,
+        /// 14 the status it applies, and a hidden 15 reading "Nullification ✓" when the team
+        /// already covers that status.
+        /// </summary>
+        public const int ActionNameChildNodeId = 2;
+        public const int ActionTargetChildNodeId = 4;
+        public const int ActionDamageTypeChildNodeId = 6;
+        public const int ActionInterruptionChildNodeId = 8;
+        public const int ActionAreaOfEffectChildNodeId = 10;
+        public const int ActionStatusChildNodeId = 14;
+        public const int ActionNullificationChildNodeId = 15;
+    }
+
+    /// <summary>
+    /// The bestiary's detail page, <c>XBMMonsterBookDetail</c> — a separate window from the grid.
+    /// Shows no status flags at all; those are in <see cref="PetParty"/>.
+    /// </summary>
+    public static class MonsterBookDetail
+    {
+        public const string Addon = "XBMMonsterBookDetail";
+
+        public const int NumberNodeId = 12;
+        public const int NameNodeId = 13;
+        public const int ClassificationNodeId = 21;
+
+        /// <summary>Auto-attack damage type, prefixed with an icon glyph.</summary>
+        public const int AutoAttackNodeId = 23;
+
+        /// <summary>The Borrow action's name — the same for every beast of a classification.</summary>
+        public const int BorrowNameNodeId = 24;
+
+        public const int HabitatNodeId = 30;
+        public const int DescriptionNodeId = 33;
+
+        /// <summary>Labels whose value nodes (40, 42, 45, 54) were empty in every capture so far.</summary>
+        public const int RankLabelNodeId = 39;
     }
 
     /// <summary>
