@@ -81,18 +81,21 @@ public static class XbmColumns
         public const int StatusCount = 11;
 
         /// <summary>
-        /// Five percentages, 76..100. Not damage type resistances — the notebook names them itself
-        /// in AtkValues 16..20, in this order: Strength, Intelligence, Phys. Resistance,
-        /// Mag. Resistance, Constitution.
+        /// Five numbers, mostly 76..100 with at least one 1. **Not identified, and specifically not
+        /// the five stats**, though they were briefly labelled as such here.
+        ///
+        /// The party window shows a beast's Strength, Intelligence, Phys. Resistance,
+        /// Mag. Resistance and Constitution, and they do not match: dullahan reads 97 five times
+        /// across these columns while the window shows 109, 67, 80, 80, 100, and diremite reads 100
+        /// five times against 134, 83, 83, 83, 137. Twenty-eight of the fifty beasts have all five
+        /// equal, which no stat spread would do. Whatever these are, the stats are computed
+        /// elsewhere.
+        ///
+        /// The mistake worth not repeating: a window's column headers prove the window has those
+        /// columns, not that a sheet column is one of them.
         /// </summary>
-        public const int FirstStat = 22;
-        public const int StatCount = 5;
-
-        public const int Strength = 22;
-        public const int Intelligence = 23;
-        public const int PhysicalResistance = 24;
-        public const int MagicResistance = 25;
-        public const int Constitution = 26;
+        public const int FirstUnknownPercent = 22;
+        public const int UnknownPercentCount = 5;
     }
 
     /// <summary>
@@ -150,6 +153,43 @@ public static class XbmColumns
 
         /// <summary>Row id in <c>Status</c>, or 0 when the action applies none.</summary>
         public const int Status = 3;
+    }
+
+    /// <summary>
+    /// The team roster, <c>XBMPetParty</c>. **This is the window that shows which statuses a beast
+    /// inflicts** — the bestiary does not, which is why looking there for them finds nothing.
+    ///
+    /// One block of 77 AtkValues per roster slot. Blocks exist for empty slots too, so read the
+    /// name and skip the block when it is blank.
+    /// </summary>
+    public static class PetParty
+    {
+        public const string Addon = "XBMPetParty";
+
+        public const int FirstBlock = 9;
+        public const int BlockStride = 77;
+
+        /// <summary>The beast's name, and the start of its block.</summary>
+        public const int NameOffset = 0;
+
+        /// <summary>Five label/value pairs: STR, PHY R, CON, INT, MAG R, as the window orders them.</summary>
+        public const int FirstStatPairOffset = 15;
+        public const int StatPairCount = 5;
+
+        /// <summary>
+        /// Eleven bools, one per status, paired positionally with the eleven labels at
+        /// <see cref="FirstStatusLabelOffset"/>. **These follow the window's display order, not
+        /// <see cref="Rules.BeastStatus"/>'s storage order** — read the label rather than assuming.
+        /// </summary>
+        public const int FirstStatusFlagOffset = 44;
+
+        /// <summary>The eleven status names, in the same positional order as the flags.</summary>
+        public const int FirstStatusLabelOffset = 56;
+
+        public const int StatusCount = 11;
+
+        public static int Value(int block, int offset) =>
+            FirstBlock + (block * BlockStride) + offset;
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -30,6 +31,38 @@ public static unsafe class AddonReader
         return GenericHelpers.TryGetAddonByName(name, out addon)
                && addon != null
                && addon->UldManager.LoadedState == AtkLoadState.Loaded;
+    }
+
+    /// <summary>
+    /// Every loaded window whose name starts with <paramref name="prefix"/>.
+    ///
+    /// Needed because the interesting windows are not all known by name: the shop, and anything
+    /// that only exists while the cursor rests on something, were never in the hand written list.
+    /// Asking the game what is loaded finds them without having to guess.
+    /// </summary>
+    public static List<string> OpenAddonNames(string prefix = "XBM")
+    {
+        var names = new List<string>();
+        var stage = AtkStage.Instance();
+
+        if (stage == null || stage->RaptureAtkUnitManager == null)
+            return names;
+
+        var units = stage->RaptureAtkUnitManager->AllLoadedUnitsList;
+
+        for (var i = 0; i < units.Count; i++)
+        {
+            var unit = units.Entries[i].Value;
+            if (unit == null)
+                continue;
+
+            var name = unit->NameString;
+            if (name.StartsWith(prefix, StringComparison.Ordinal) && !names.Contains(name))
+                names.Add(name);
+        }
+
+        names.Sort(StringComparer.Ordinal);
+        return names;
     }
 
     // ---- AtkValues --------------------------------------------------------

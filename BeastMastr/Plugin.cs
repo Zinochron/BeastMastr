@@ -3,6 +3,7 @@ using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using ECommons;
+using BeastMastr.Data;
 using BeastMastr.UI;
 using BeastMastr.UI.Tabs;
 
@@ -14,6 +15,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly WindowSystem windowSystem = new("BeastMastr");
     private readonly MainWindow mainWindow;
+    private readonly DelayedSweep delayedSweep = new();
 
     public Configuration Configuration { get; }
 
@@ -28,7 +30,7 @@ public sealed class Plugin : IDalamudPlugin
         if (Configuration.ShowDataTab)
         {
             tabs.Add(new SheetsTab(Configuration));
-            tabs.Add(new AddonsTab(Configuration));
+            tabs.Add(new AddonsTab(Configuration, delayedSweep));
         }
 
         tabs.Add(new SettingsTab(Configuration));
@@ -75,6 +77,7 @@ public sealed class Plugin : IDalamudPlugin
 
         windowSystem.RemoveAllWindows();
         mainWindow.Dispose();
+        delayedSweep.Dispose();
 
         ECommonsMain.Dispose();
     }

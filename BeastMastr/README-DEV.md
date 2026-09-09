@@ -58,7 +58,7 @@ real sheet has 27 columns and no resistance array at all.
 | 8 | String | Flavour text |
 | 9, 10 | String | The Trick and the Tempered Release, in that order. Descriptions only — no names |
 | 11..21 | Bool ×11 | **Which status the beast inflicts.** The feature this plugin is built on |
-| 22..26 | UInt8 ×5 | Strength, Intelligence, Phys. Resistance, Mag. Resistance, Constitution |
+| 22..26 | UInt8 ×5 | Five numbers, 1..100. **Not identified** — see below; they are not the stats |
 
 Columns 11..21 follow `BNpcResist`'s indexer, which is itself 11 bools over 256 rows — so slot n is
 column 11 + n. `Rules/BeastStatus.cs` names them.
@@ -161,8 +161,11 @@ each board pays for each bonus, 0 where it does not offer it.
    apart on different screens, so this may be nothing — but a capture with both open at once is
    needed before an overlay pairs them up.
 
-Answered, and no longer open: what columns 22..26 are, whether the notebook's list recycles, and
-what all eleven status slots are.
+7. **What columns 22..26 are.** Briefly labelled here as the five stats. That was wrong — see the
+   party window capture below. Back to unknown.
+
+Answered, and no longer open: whether the notebook's list recycles, and what all eleven status
+slots are — the latter now confirmed against the game twice over.
 
 ## Verified against the installed Dalamud, not guessed
 
@@ -337,3 +340,57 @@ Treasure 5, Random Enemy or Treasure 6 — every one of them read off a descript
 What is **not** here is the thing the room cards most need: which beasts an enemy room actually
 holds, and their weaknesses. "Combat 2 types of beast" is all the selection screen says. That
 either arrives once a run is under way, or lives in `XBMBattleMonster` / `XBMBattleMonsterDetail`.
+
+### The team roster — 2026-09-09
+
+**`XBMPetParty` is the window that shows a beast's statuses.** The bestiary does not, which is why
+looking there for a mark against coblyn finds nothing — the detail page has Classification,
+auto-attack, habitat and the three actions, and no status flags at all.
+
+One block of 77 AtkValues per roster slot, from index 9. Within a block: `+0` the name, `+15` five
+label/value stat pairs (STR, PHY R, CON, INT, MAG R), `+44` eleven bools, `+56` the eleven status
+names in the same positional order as those bools. The window pairs them for you, so read the label
+rather than assuming an order.
+
+**This confirms the slot mapping against the game itself**, and it is the second independent
+confirmation after the legend:
+
+| Beast | Party window says | `XBMPet` slots | Agrees |
+|---|---|---|---|
+| dullahan | Interruption | 3 | yes |
+| diremite | Bind, Poison | 8, 5 | yes |
+| slime | Bind | 8 | yes |
+| pugil | nothing | none | yes |
+
+It also proves the display order is genuinely different from the storage order rather than a
+misreading: diremite's flags sit at display positions 7 and 10, which the labels call Bind and
+Poison, while its sheet columns are slots 8 and 5.
+
+**And it disproves what this file said about columns 22..26.** Those were labelled Strength,
+Intelligence, Phys. Resistance, Mag. Resistance and Constitution on the strength of the bestiary's
+column headers arriving in that order. The numbers do not match:
+
+| Beast | `XBMPet` 22..26 | Party window |
+|---|---|---|
+| dullahan | 97 97 97 97 97 | STR 109, PHY R 80, CON 100, INT 67, MAG R 80 |
+| diremite | 100 100 100 100 100 | STR 134, PHY R 83, CON 137, INT 83, MAG R 83 |
+| cu sith | 100 91 100 79 100 | STR 140, PHY R 82, CON 113, INT 87, MAG R 78 |
+
+Twenty-eight of the fifty beasts have all five equal, which no stat spread would do, and slime has
+a 1 among four 97s. Whatever these columns are, the stats are computed elsewhere.
+
+The mistake is worth naming because it was made twice in a row here: **a window's column headers
+prove the window has those columns, not that a sheet column is one of them.** Both times the
+reasoning was "five headers, five leftover columns, in order". Both times it needed a value to
+check against, and only the second one had it.
+
+### Capturing windows that only exist on hover
+
+The shop, item descriptions and an enemy's detail panel close the moment the cursor leaves them, so
+no button can capture them. `Data/DelayedSweep.cs` arms a timer instead: press, put the cursor
+back, hold it, and the sweep fires on its own.
+
+The sweep no longer walks the hand written window list either. `AddonReader.OpenAddonNames` asks
+`RaptureAtkUnitManager` for every loaded unit whose name starts with `XBM`, so windows nobody has
+named yet — the shop among them — are swept without having to guess what they are called. Anything
+not in `BeastmasterData.Addons` is flagged in the file as worth naming.

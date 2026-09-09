@@ -18,6 +18,8 @@ namespace BeastMastr.UI.Tabs;
 public sealed class AddonsTab : ITab
 {
     private readonly Configuration configuration;
+    private readonly DelayedSweep delayedSweep;
+    private int armSeconds = 5;
 
     private string addonName;
     private List<AddonReader.Node> nodes = [];
@@ -28,9 +30,10 @@ public sealed class AddonsTab : ITab
     private string lastNodePath = string.Empty;
     private string lastSweepPath = string.Empty;
 
-    public AddonsTab(Configuration configuration)
+    public AddonsTab(Configuration configuration, DelayedSweep delayedSweep)
     {
         this.configuration = configuration;
+        this.delayedSweep = delayedSweep;
         addonName = configuration.LastAddon;
     }
 
@@ -105,56 +108,67 @@ public sealed class AddonsTab : ITab
         configuration.Save();
     }
 
-    /// <summary>Which Beastmaster windows exist right now — the quickest way to find the one you want.</summary>
-    private void DrawOpenWindows()
+    /// <summary>
+    /// Which Beastmaster windows exist right now, asked of the game rather than tested against a
+    /// fixed list — that is how windows nobody has named yet show up at all.
+    /// </summary>
+    private static void DrawOpenWindows()
     {
         if (!ImGui.CollapsingHeader("Beastmaster windows open right now", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        var any = false;
-        foreach (var (addon, _) in BeastmasterData.Addons)
+        var open = AddonReader.OpenAddonNames();
+        if (open.Count == 0)
         {
-            if (!AddonReader.IsOpen(addon))
-                continue;
-
-            any = true;
-            ImGui.BulletText(addon);
+            ImGui.TextDisabled("None. Open one in game, then capture it.");
+            return;
         }
 
-        if (!any)
-            ImGui.TextDisabled("None. Open one in game, then capture it.");
+        foreach (var addon in open)
+        {
+            ImGui.BulletText(addon);
+            ImGui.SameLine();
+            ImGui.TextDisabled(BeastmasterData.NoteFor(addon));
+        }
     }
 
     /// <summary>
-    /// Everything open, in one file. Capturing windows one at a time means the game state drifts
-    /// between them — the roster changes, the board advances — and a sweep keeps them consistent.
+    /// Everything open, in one file — now, or after a delay.
+    ///
+    /// The delay is not a convenience. Several Beastmaster windows only exist while the cursor
+    /// rests on something and close the moment you reach for a button, so they cannot be captured
+    /// by pressing anything: arm the timer, put the cursor back, and let it fire on its own.
     /// </summary>
     private void DrawSweep()
     {
-        if (ImGui.Button("Save every open Beastmaster window to one file"))
-        {
-            var text = new StringBuilder();
-            text.AppendLine($"# BeastMastr sweep {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            text.AppendLine();
+        if (ImGui.Button("Sweep now"))
+            lastSweepPath = DelayedSweep.Capture() ?? "could not be written — see the log";
 
-            foreach (var (addon, note) in BeastmasterData.Addons)
-            {
-                if (!AddonReader.IsOpen(addon))
-                    continue;
+        ImGui.SameLine();
+        ImGui.SetNextItemWidth(120f * ImGuiHelpers.GlobalScale);
+        ImGui.SliderInt("##armSeconds", ref armSeconds, 2, 20, "%d s");
 
-                text.AppendLine($"<!-- {note} -->");
-                text.AppendLine(AddonReader.ToText(addon, AddonReader.Values(addon)));
-                text.AppendLine(AddonReader.ToText(addon, AddonReader.Nodes(addon)));
-                text.AppendLine();
-            }
-
-            lastSweepPath = CaptureStore.Save("sweep", text.ToString())
-                            ?? "could not be written — see the log";
-        }
+        ImGui.SameLine();
+        if (ImGui.Button($"Sweep in {armSeconds}s"))
+            delayedSweep.Arm(armSeconds);
 
         Widgets.HelpMarker(
-            "Writes the AtkValues and the full node tree of every Beastmaster window that is open " +
-            "right now, invisible nodes included, into one file next to the plugin's config.");
+            "For windows that only exist while you hover: the shop, item descriptions, an enemy's " +
+            "detail panel. Arm this, move the cursor onto the thing, and hold it there until the " +
+            "countdown reaches zero.");
+
+        if (delayedSweep.SecondsRemaining is { } remaining)
+        {
+            ImGui.SameLine();
+            if (ImGui.SmallButton("Cancel"))
+                delayedSweep.Cancel();
+
+            ImGui.TextColored(new Vector4(1f, 0.8f, 0.2f, 1f),
+                              $"Hold the cursor still — capturing in {remaining:0.0}s");
+        }
+
+        if (delayedSweep.LastPath.Length > 0)
+            ImGui.TextDisabled(delayedSweep.LastPath);
 
         if (lastSweepPath.Length > 0)
             ImGui.TextDisabled(lastSweepPath);

@@ -49,4 +49,17 @@ public static class BeastmasterData
         ("XBMRanking", "Score ranking."),
         ("XBMResult", "End of run result."),
     ];
+
+    /// <summary>What is known about a window, or a note that it is new — which is itself worth
+    /// seeing in a capture, because it means the hand written list above needs an entry.</summary>
+    public static string NoteFor(string addon)
+    {
+        foreach (var (known, note) in Addons)
+        {
+            if (known == addon)
+                return note;
+        }
+
+        return "Not in the known list — worth naming.";
+    }
 }
