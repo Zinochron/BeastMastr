@@ -28,6 +28,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public Dictionary<uint, int> KnownRanks { get; set; } = [];
 
+    /// <summary>
+    /// Beasts that go into every levelled team regardless of rank, to carry the rest. At most
+    /// <see cref="TeamPlanner.MaxCarries"/> of them — beyond that there is nothing left to level.
+    /// </summary>
+    public List<uint> CarryBeasts { get; set; } = [];
+
     /// <summary>What was taken into the last fight, so it can be taken into the next one.</summary>
     public List<uint> LastFightBeasts { get; set; } = [];
 
@@ -59,8 +65,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool DecorateNotebook { get; set; } = true;
 
-    /// <summary>Draw the room cards over the Crucible board.</summary>
-    public bool ShowBoardOverlay { get; set; } = true;
+    /// <summary>
+    /// Draw the room cards over the world markers. Off by default: the placement works, but cards
+    /// hanging under floating icons across a whole board is not yet a good way to read one. The
+    /// readers behind it stay, so a better presentation costs nothing but the presentation.
+    /// </summary>
+    public bool ShowBoardOverlay { get; set; } = false;
 
     /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>
     public bool ShowDataTab { get; set; } = true;

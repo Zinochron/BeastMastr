@@ -41,8 +41,9 @@ public sealed class SettingsTab : ITab
         }
 
         Widgets.HelpMarker(
-            "Marks each room on the board with what it holds, and lists the whole board beside it — " +
-            "the thing that otherwise costs a click per room to read.");
+            "Hangs a card under each room icon out in the world. Off by default: the placement is " +
+            "right but a card under every floating icon across a whole board is not yet a good way " +
+            "to read one. The reading behind it happens either way — the Board tab shows it.");
 
         ImGui.Separator();
 

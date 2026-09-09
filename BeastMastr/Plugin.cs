@@ -69,7 +69,7 @@ public sealed class Plugin : IDalamudPlugin
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
                                                 () => kamiToolKitReady.IsCompletedSuccessfully);
 
-        var tabs = new List<ITab> { new BeastsTab(Catalog, Filter) };
+        var tabs = new List<ITab> { new BeastsTab(Catalog, Filter, Configuration, rankWatcher) };
         if (Configuration.ShowDataTab)
         {
             tabs.Add(new SheetsTab(Configuration));

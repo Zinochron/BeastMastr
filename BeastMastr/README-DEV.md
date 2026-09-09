@@ -835,3 +835,31 @@ records what the game sends when **you** click — event type and parameter, new
 only and sends nothing. Once a real click is on record, replaying that is a known quantity rather
 than a guess, and the plan is still to confirm success by reading the window back rather than by
 trusting a return value.
+
+## Leveling: the plan, not yet the filling
+
+`TeamPlanner.ForLeveling` takes the beasts chosen to **carry** first and fills the rest with the
+least advanced. Carrying is the whole reason it takes that parameter: a team of nothing but the
+weakest levels them slowly or not at all, so a few strong ones do the work while the rest collect
+the experience. At most three of them — three of ten already leaves seven levelling, and beyond that
+the point of the exercise stops surviving.
+
+Ties break on the bestiary number rather than on the window's listing order, so the same roster
+produces the same team twice. A plan that shuffles under you is worse than one that is merely
+arguable.
+
+The Beasts tab shows the plan and the ranks it rests on, because those are only as complete as what
+`RankWatcher` has seen, and a team filled from half-known ranks is worth checking before it is
+filled rather than after.
+
+**What it cannot do yet is fill the team.** The team is assembled from all fifty in the bestiary's
+Team Composition mode, and how that window takes a selection has not been recorded — the fight
+window's `[1, row]` is that window's own callback and nothing says the bestiary's is the same. The
+recorder already watches `XBMMonsterNotebook`, so one recorded click there settles it.
+
+## The world cards are off by default
+
+The placement is right — they sit on the platforms and follow the camera. But a card hanging under
+every floating icon across a whole board is not a good way to read a board, which is worth admitting
+rather than shipping on. The readers behind them stay and the Board tab shows what they see, so a
+better presentation costs only the presentation.

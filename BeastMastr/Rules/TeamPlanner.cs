@@ -24,17 +24,41 @@ public static class TeamPlanner
         boardTier >= 0 && boardTier < TeamSizes.Count ? TeamSizes[boardTier] : DefaultTeamSize;
 
     /// <summary>
-    /// The least advanced beasts, so the ones that need the experience get it.
-    ///
-    /// Ties break on the bestiary number rather than on whatever order the window happened to list
-    /// them in, so the same roster produces the same team twice — a plan that shuffles under you is
-    /// worse than one that is merely arguable.
+    /// How many beasts may be brought along to carry the rest. Three of ten leaves seven levelling,
+    /// which is where the point of the exercise stops surviving more.
     /// </summary>
-    public static IReadOnlyList<Candidate> ForLeveling(IEnumerable<Candidate> available, int teamSize) =>
-        available.OrderBy(candidate => candidate.Rank)
-                 .ThenBy(candidate => candidate.BeastNumber)
-                 .Take(teamSize)
-                 .ToList();
+    public const int MaxCarries = 3;
+
+    /// <summary>
+    /// The team to level with: the beasts chosen to carry, then the least advanced to fill up.
+    ///
+    /// Carrying is the whole reason this takes a parameter. A team of nothing but the weakest
+    /// beasts levels them slowly or not at all, so a few strong ones are brought to do the work
+    /// while the rest collect the experience.
+    ///
+    /// Ties break on the bestiary number rather than on whatever order the window listed them in,
+    /// so the same roster produces the same team twice. A plan that shuffles under you is worse
+    /// than one that is merely arguable.
+    /// </summary>
+    public static IReadOnlyList<Candidate> ForLeveling(IEnumerable<Candidate> available,
+                                                       int teamSize,
+                                                       IEnumerable<uint>? carry = null)
+    {
+        var pool = available.ToList();
+        var wanted = (carry ?? []).Take(MaxCarries).ToHashSet();
+
+        var carried = pool.Where(candidate => wanted.Contains(candidate.BeastNumber))
+                          .OrderBy(candidate => candidate.BeastNumber)
+                          .Take(teamSize)
+                          .ToList();
+
+        var rest = pool.Where(candidate => !carried.Contains(candidate))
+                       .OrderBy(candidate => candidate.Rank)
+                       .ThenBy(candidate => candidate.BeastNumber)
+                       .Take(teamSize - carried.Count);
+
+        return carried.Concat(rest).ToList();
+    }
 
     /// <summary>
     /// The same beasts as last time, in the same call order, minus any that are not in the roster
