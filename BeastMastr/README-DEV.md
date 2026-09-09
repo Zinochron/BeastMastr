@@ -647,9 +647,18 @@ Map units are sixteen to the yalm, offset by the map's own origin, so world = ra
 `AgentMap`'s `CurrentOffsetX` / `CurrentOffsetY`. Markers carry no height at all; the player's own
 is used, which is right for a board walked across on the flat.
 
-## The world cards land in the wrong place
+## The world transform: add the offset, do not subtract it
 
-`world = raw / 16 - AgentMap.CurrentOffset` is not right. The board's columns sit at map X of -320,
+`world = raw / 16 + AgentMap.CurrentOffset`. The capture settles it outright: `offsetX = -700`,
+`offsetY = -38`, the board's middle column is map X zero, and the player walks that column at world
+X of about **-705**. Subtracting put every card seven hundred units the other way, which is what
+made the icons appear far off to one side when the camera turned.
+
+The board came out as world X -680, -700 and -720 for the three columns, and Z from 78 down to
+-186 for the twelve rooms, with the player at -21.8 partway along it. Map id 1204, territory 1339,
+size factor 400.
+
+### What it looked like when it was wrong The board's columns sit at map X of -320,
 0 and 320, which divides to -20, 0 and 20, while the player walks the middle column at world X of
 about **-699.9**. So every card lands roughly seven hundred units east of the board, which shows up
 in game as the icons all appearing far away when the camera turns.
@@ -677,12 +686,23 @@ is the team composition screen**. Its AtkValues carry "Team Composition" and "50
 node ids 27..51, and the icon id per slot already joins a tile to its beast. So filling a team means
 clicking tiles in a window this plugin has measured.
 
-What is missing is the beast's **rank** — the progression rank, not `XBMPet` column 3. Leveling
-cannot rank beasts by "least advanced" without it. It is not in the grid's AtkValues, and the
-bestiary detail page's rank panel is hidden. But the notebook's AtkValues 15..21 are the column
-headers of a **stats view** — "Beast Rank", "Strength", "Intelligence", "Phys. Resistance",
-"Mag. Resistance", "Constitution" — so that view is where per-beast rank lives, and a capture of the
-notebook with stats toggled on should have it in the per-slot blocks.
+### The progression rank is in the roster window, and the block was misaligned
+
+`XBMPetParty` carries it, and finding it also uncovered a real error: **a block starts three values
+before the name, not at it.** The icon is what proved it. Aligned on the name, every block's icon
+read as the *next* beast's; aligned three earlier, every icon matches its own beast's `XBMPet` icon
+column. So the constants were all off by three and any roster reading would have been quietly wrong.
+
+Corrected, a block is: `+0` progression rank as a string, `+1` icon, `+3` name, `+18` five stat
+pairs, `+47` eleven status flags, `+59` their labels, `+70` the sheet's own rank.
+
+**The two ranks are different numbers.** Behemoth reads 5 at `+0` against a sheet value of 4 at
+`+70`. The first is the one leveling has to sort on; the second is static and comes from
+`XBMPet` column 3 — which incidentally confirms what column 3 is, after it was twice claimed and
+once withdrawn.
+
+The roster window only lists the roster, though. Filling a team from all fifty beasts still needs
+their ranks, and where those come from outside a run is not yet known.
 
 `FightMode.RepeatLast` needs the pre-fight selection window, which has not been captured at all.
 Nothing is known about it yet, including its name.

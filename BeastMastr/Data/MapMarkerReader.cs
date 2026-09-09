@@ -108,9 +108,12 @@ public static unsafe class MapMarkerReader
     }
 
     /// <summary>
-    /// Map units to world units. Markers are stored at sixteen units per yalm, offset by the map's
-    /// own origin — so a marker's world position is the raw value divided by sixteen with the
-    /// offset taken back off.
+    /// Map units to world units: sixteen units to the yalm, **plus** the map's origin.
+    ///
+    /// The sign was wrong first time round, and the numbers say so plainly. The board's middle
+    /// column is map X zero and the map's offset is -700, and the player walks that column at world
+    /// X of about -705 — so the offset is added. Subtracting it put every card seven hundred units
+    /// the other way, which is why they all appeared far off to one side.
     ///
     /// The height is the one thing this cannot know: markers carry no Y at all. The player's own
     /// height is used, which is right for a board you walk across on the flat and wrong the moment
@@ -123,8 +126,8 @@ public static unsafe class MapMarkerReader
 
         var height = Services.Objects.LocalPlayer?.Position.Y ?? 0f;
 
-        return new Vector3((marker.X / 16f) - agent->CurrentOffsetX,
+        return new Vector3((marker.X / 16f) + agent->CurrentOffsetX,
                            height,
-                           (marker.Y / 16f) - agent->CurrentOffsetY);
+                           (marker.Y / 16f) + agent->CurrentOffsetY);
     }
 }

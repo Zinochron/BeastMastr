@@ -19,8 +19,15 @@ namespace BeastMastr.UI.Tabs;
 /// </summary>
 public sealed class BoardTab : ITab
 {
+    private readonly BeastCatalog catalog;
+
     private string lastPath = string.Empty;
     private float radius = 60f;
+
+    public BoardTab(BeastCatalog catalog)
+    {
+        this.catalog = catalog;
+    }
 
     public string Title => "Board";
     public string Id => "board";
@@ -40,6 +47,8 @@ public sealed class BoardTab : ITab
         DrawOpenAddons();
         ImGuiHelpers.ScaledDummy(4f);
         DrawReaders();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawRoster();
         ImGuiHelpers.ScaledDummy(4f);
         DrawMarkers();
         ImGuiHelpers.ScaledDummy(4f);
@@ -156,6 +165,29 @@ public sealed class BoardTab : ITab
     }
 
     /// <summary>
+    /// The roster, with the progression rank that leveling mode has to sort on.
+    /// </summary>
+    private void DrawRoster()
+    {
+        if (!ImGui.CollapsingHeader("Roster", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var slots = PetPartyReader.Read(catalog);
+        if (slots.Count == 0)
+        {
+            ImGui.TextDisabled("XBMPetParty is not open.");
+            return;
+        }
+
+        foreach (var slot in slots)
+        {
+            ImGui.TextUnformatted(
+                $"  {slot.Index,2}  {slot.Name,-16} rank {slot.Rank,-3} icon {slot.IconId}" +
+                $"  {(slot.Beast == null ? "(not matched to a beast)" : $"-> No. {slot.Beast.Number} {slot.Beast.ClassificationName}")}");
+        }
+    }
+
+    /// <summary>
     /// The map's markers, raw. The room icons float over the platforms and appear on the minimap,
     /// and they are neither objects nor a window — so if they are anywhere, they are here.
     /// </summary>
@@ -230,6 +262,12 @@ public sealed class BoardTab : ITab
         text.AppendLine("# Every window open right now");
         foreach (var name in AddonReader.OpenAddonNames(string.Empty))
             text.AppendLine(name);
+
+        text.AppendLine();
+        text.AppendLine("# Roster");
+        foreach (var slot in PetPartyReader.Read(catalog))
+            text.AppendLine($"{slot.Index}	{slot.Name}	rank={slot.Rank}	icon={slot.IconId}	" +
+                            $"beast={(slot.Beast == null ? "?" : slot.Beast.Number.ToString())}");
 
         text.AppendLine();
         text.AppendLine("# Map markers");

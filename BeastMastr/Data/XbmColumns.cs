@@ -317,27 +317,44 @@ public static class XbmColumns
     {
         public const string Addon = "XBMPetParty";
 
-        public const int FirstBlock = 9;
+        /// <summary>
+        /// A block starts three values *before* the name, not at it. The icon is what proved it:
+        /// aligned on the name the icon read as the next beast's, and aligned here every icon
+        /// matches its own beast's <see cref="XbmPet.Icon"/>.
+        /// </summary>
+        public const int FirstBlock = 6;
         public const int BlockStride = 77;
 
-        /// <summary>The beast's name, and the start of its block.</summary>
-        public const int NameOffset = 0;
+        /// <summary>
+        /// The beast's progression rank, as a string. Not the same as <see cref="XbmPet.Rank"/>:
+        /// behemoth reads 5 here against a sheet value of 4. This is the one that answers "least
+        /// advanced", and it is the only place found so far that carries it.
+        /// </summary>
+        public const int RankOffset = 0;
+
+        /// <summary>Matches <see cref="XbmPet.Icon"/>, so it is what identifies the beast.</summary>
+        public const int IconOffset = 1;
+
+        public const int NameOffset = 3;
 
         /// <summary>Five label/value pairs: STR, PHY R, CON, INT, MAG R, as the window orders them.</summary>
-        public const int FirstStatPairOffset = 15;
+        public const int FirstStatPairOffset = 18;
         public const int StatPairCount = 5;
 
         /// <summary>
         /// Eleven bools, one per status, paired positionally with the eleven labels at
-        /// <see cref="FirstStatusLabelOffset"/>. **These follow the window's display order, not
-        /// <see cref="Rules.BeastStatus"/>'s storage order** — read the label rather than assuming.
+        /// <see cref="FirstStatusLabelOffset"/>. These follow the window's display order, not
+        /// <see cref="Rules.BeastStatus"/>'s storage order — read the label rather than assuming.
         /// </summary>
-        public const int FirstStatusFlagOffset = 44;
+        public const int FirstStatusFlagOffset = 47;
 
         /// <summary>The eleven status names, in the same positional order as the flags.</summary>
-        public const int FirstStatusLabelOffset = 56;
+        public const int FirstStatusLabelOffset = 59;
 
         public const int StatusCount = 11;
+
+        /// <summary>The beast's <c>XBMPet</c> row, which the window also hands out directly.</summary>
+        public const int SheetRowOffset = 70;
 
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
