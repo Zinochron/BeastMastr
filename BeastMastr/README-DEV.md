@@ -191,6 +191,17 @@ Compiling against the installed assemblies is the cheapest way to check any of t
 member into a scratch file with a deliberately wrong type and read the real type out of the
 compiler error. That is how every signature above was pinned down.
 
+## Field initializers run before the services exist
+
+Anything that touches a Dalamud service on construction must be built **inside the constructor
+body, after `pluginInterface.Create<Services>()`** — never as a field initializer. Field
+initializers run first, while every `[PluginService]` property is still its `null!` placeholder, so
+a class that subscribes to `Services.Framework.Update` in its constructor throws there and the
+plugin fails to load outright with "Failed to create BeastMastr.Plugin (ctor invocation)".
+
+`DelayedSweep` was written as `= new()` and did exactly that. `WindowSystem` is fine as an
+initializer because it only stores a name.
+
 ## FFXIVClientStructs already knows the Beastmaster UI
 
 Confirmed present, which is why none of it has to be found by hand:

@@ -15,7 +15,14 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly WindowSystem windowSystem = new("BeastMastr");
     private readonly MainWindow mainWindow;
-    private readonly DelayedSweep delayedSweep = new();
+
+    /// <summary>
+    /// Assigned in the constructor body, never as a field initializer. Field initializers run
+    /// before the constructor runs, which is before <c>Create&lt;Services&gt;()</c> has filled
+    /// anything in — so anything reaching for a Dalamud service on construction has to be built
+    /// after that call, or it dies on a null service and the plugin fails to load.
+    /// </summary>
+    private readonly DelayedSweep delayedSweep;
 
     public Configuration Configuration { get; }
 
@@ -25,6 +32,7 @@ public sealed class Plugin : IDalamudPlugin
         ECommonsMain.Init(pluginInterface, this);
 
         Configuration = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        delayedSweep = new DelayedSweep();
 
         var tabs = new List<ITab>();
         if (Configuration.ShowDataTab)
