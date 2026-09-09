@@ -37,9 +37,29 @@ public sealed class BoardTab : ITab
         }
 
         ImGuiHelpers.ScaledDummy(4f);
+        DrawOpenAddons();
+        ImGuiHelpers.ScaledDummy(4f);
         DrawReaders();
         ImGuiHelpers.ScaledDummy(4f);
         DrawObjects();
+    }
+
+    /// <summary>
+    /// Every window the game has loaded, not only the XBM ones. The Crucible's overworld markers
+    /// are not objects — the object table holds nothing but the player out there — and they are not
+    /// in the HUD, so if any window draws them it is one nobody has named yet, and it will be in
+    /// here.
+    /// </summary>
+    private static void DrawOpenAddons()
+    {
+        if (!ImGui.CollapsingHeader("Every window open right now", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var open = AddonReader.OpenAddonNames(string.Empty);
+        ImGui.TextDisabled($"{open.Count} loaded");
+
+        foreach (var chunk in open.Chunk(6))
+            ImGui.TextUnformatted(string.Join("   ", chunk));
     }
 
     private void DrawReaders()
@@ -148,6 +168,11 @@ public sealed class BoardTab : ITab
         text.AppendLine();
         foreach (var room in StageDetailReader.Read())
             text.AppendLine($"room [{room.Index}] move={room.Move} kind={room.Kind} \"{room.Label}\" \"{room.Detail}\"");
+
+        text.AppendLine();
+        text.AppendLine("# Every window open right now");
+        foreach (var name in AddonReader.OpenAddonNames(string.Empty))
+            text.AppendLine(name);
 
         text.AppendLine();
         text.AppendLine("# Objects in the world");

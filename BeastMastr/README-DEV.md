@@ -559,7 +559,12 @@ thing.
 
 The board splits cleanly, and the split is what makes this tractable.
 
-`Data/StageMapReader.cs` answers only *where*. `XBMStageMap` carries two AtkValues and no text at
+**The board is drawn by two different windows.** `XBMStageMap` is the board *selection* screen
+before a run; during a run, "Board Layout" is `XBMStageDetailList`, which embeds the same
+`XBMContentStageEventMap` component. Looking only at the first meant the overlay never appeared
+inside a run at all. `StageMapReader` now finds the component in whichever window has it.
+
+`Data/StageMapReader.cs` answers only *where*. The window carries two AtkValues and no text at
 all, but its `AtkComponentXBMContentStageEventMap` hands out, per board position, an entry index, a
 component, and whether it is the current room — as four parallel `Span`s on each `Entry`. **So the
 pairing between a tile and a room is given, not guessed from where the tiles sit.** The component is
@@ -579,6 +584,20 @@ off screen.
 
 It is an overlay rather than injected nodes on purpose. The same readers will drive native nodes in
 the Kür, and building against a separate model first is what makes that swap cheap.
+
+### The overworld markers are neither an addon nor an object
+
+The room markers in the Crucible overworld — where the cards are actually wanted — are not any of
+the things checked so far. The object table holds nothing but the player out there,
+`XBMContentsMainHUD` is buttons and the item bar, and in the overworld neither board window is
+open. So they are drawn by something not yet identified, and the Board tab now lists **every**
+loaded window, not only the XBM ones, because that is the cheapest way to find a window nobody has
+named.
+
+Two numbers in `XBMStageDetailList` were also being read wrong, and wrong in the quiet way: move
+and kind arrive as `UInt`, and `AtkValuePtr.TryGet<int>` refuses a `UInt` rather than converting
+it, so every room came back as move 0 of kind Enemy with nothing failing anywhere. Both types are
+now accepted.
 
 ### Still to come
 

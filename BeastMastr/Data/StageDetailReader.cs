@@ -76,11 +76,21 @@ public static unsafe class StageDetailReader
         return values[index].GetValue()?.ToString() ?? string.Empty;
     }
 
+    /// <summary>
+    /// Numbers here arrive as UInt, and asking for an Int gets a refusal rather than a conversion —
+    /// which read every room as move 0 of kind Enemy without failing anywhere. Both are accepted.
+    /// </summary>
     private static int? Int(IReadOnlyList<Dalamud.Game.NativeWrapper.AtkValuePtr> values, int index)
     {
         if (index < 0 || index >= values.Count)
             return null;
 
-        return values[index].TryGet<int>(out var value) ? value : null;
+        if (values[index].TryGet<int>(out var signed))
+            return signed;
+
+        if (values[index].TryGet<uint>(out var unsigned))
+            return (int)unsigned;
+
+        return null;
     }
 }

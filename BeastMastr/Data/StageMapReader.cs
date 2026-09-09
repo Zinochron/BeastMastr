@@ -26,17 +26,42 @@ public static unsafe class StageMapReader
         public Vector2 Centre => ScreenPosition + (Size / 2f);
     }
 
-    public static bool IsOpen => AddonReader.IsOpen(XbmColumns.StageMap.Addon);
+    /// <summary>
+    /// The board is drawn by two different windows: <c>XBMStageMap</c> before a run, on the board
+    /// selection screen, and <c>XBMStageDetailList</c> during one, which embeds the same component.
+    /// Looking only at the first meant the overlay never appeared inside a run at all.
+    /// </summary>
+    private static readonly string[] BoardWindows =
+        [XbmColumns.StageMap.Addon, XbmColumns.StageDetailList.Addon];
+
+    public static bool IsOpen => Find(out _, out _);
+
+    private static bool Find(out AtkUnitBase* addon, out AtkComponentXBMContentStageEventMap* map)
+    {
+        foreach (var name in BoardWindows)
+        {
+            if (!AddonReader.TryGet(name, out var candidate))
+                continue;
+
+            var found = FindEventMap(candidate);
+            if (found == null)
+                continue;
+
+            addon = candidate;
+            map = found;
+            return true;
+        }
+
+        addon = null;
+        map = null;
+        return false;
+    }
 
     public static List<BoardRoom> Read()
     {
         var rooms = new List<BoardRoom>();
 
-        if (!AddonReader.TryGet(XbmColumns.StageMap.Addon, out var addon))
-            return rooms;
-
-        var map = FindEventMap(addon);
-        if (map == null)
+        if (!Find(out _, out var map))
             return rooms;
 
         foreach (ref var entry in map->Entries)
