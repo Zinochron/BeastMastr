@@ -36,11 +36,23 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
 
     private readonly Dictionary<int, TextNode> badges = [];
 
-    public MonsterNotebookDecorator(Configuration configuration, BeastCatalog catalog, BeastFilter filter)
+    /// <summary>True once KamiToolKit is ready. Building a node before that throws in its constructor.</summary>
+    private readonly Func<bool> nativeUiReady;
+
+    /// <summary>
+    /// Set once anything here throws, and never cleared. A node constructor that fails leaves the
+    /// runtime holding a half-built object whose finalizer takes the game down, so retrying every
+    /// frame turns one mistake into a crash. One failure disables the feature for the session.
+    /// </summary>
+    private bool broken;
+
+    public MonsterNotebookDecorator(Configuration configuration, BeastCatalog catalog, BeastFilter filter,
+                                    Func<bool> nativeUiReady)
     {
         this.configuration = configuration;
         this.catalog = catalog;
         this.filter = filter;
+        this.nativeUiReady = nativeUiReady;
 
         var addon = XbmColumns.MonsterNotebook.Addon;
         Services.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, addon, OnUpdate);
@@ -53,14 +65,34 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
     {
         var addon = (AtkUnitBase*)args.Addon.Address;
 
-        if (!configuration.DecorateNotebook)
-        {
-            Detach(addon);
+        if (broken)
             return;
-        }
 
-        Attach(addon);
-        Refresh(addon);
+        try
+        {
+            if (!configuration.DecorateNotebook || !nativeUiReady())
+            {
+                Detach(addon);
+                return;
+            }
+
+            Attach(addon);
+            Refresh(addon);
+        }
+        catch (Exception ex)
+        {
+            broken = true;
+            Services.Log.Error(ex, "Decorating the bestiary failed; leaving the window alone for the rest of this session.");
+
+            try
+            {
+                Detach(addon);
+            }
+            catch (Exception cleanup)
+            {
+                Services.Log.Error(cleanup, "Could not clean up after the failure either.");
+            }
+        }
     }
 
     private void OnFinalize(AddonEvent type, AddonArgs args) => Detach((AtkUnitBase*)args.Addon.Address);

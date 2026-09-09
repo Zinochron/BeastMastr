@@ -1,8 +1,10 @@
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using ECommons;
+using KamiToolKit;
 using BeastMastr.Data;
 using BeastMastr.Native;
 using BeastMastr.Rules;
@@ -34,6 +36,14 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly MonsterNotebookDecorator notebook;
 
+    /// <summary>
+    /// KamiToolKit has to be initialised before a single one of its nodes may be constructed, and
+    /// it initialises asynchronously. Constructing a node early throws inside the constructor, which
+    /// hands the runtime a half-built object it can only clean up in a finalizer — and that
+    /// finalizer crashes the game. Nothing native is created until this has completed.
+    /// </summary>
+    private readonly Task kamiToolKitReady;
+
     public Plugin(IDalamudPluginInterface pluginInterface)
     {
         pluginInterface.Create<Services>();
@@ -42,7 +52,10 @@ public sealed class Plugin : IDalamudPlugin
         Configuration = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         delayedSweep = new DelayedSweep();
         Catalog = new BeastCatalog();
-        notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter);
+
+        kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
+        notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
+                                                () => kamiToolKitReady.IsCompletedSuccessfully);
 
         var tabs = new List<ITab> { new BeastsTab(Catalog, Filter) };
         if (Configuration.ShowDataTab)
@@ -101,6 +114,7 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.Dispose();
         delayedSweep.Dispose();
         notebook.Dispose();
+        KamiToolKitLibrary.Dispose();
 
         ECommonsMain.Dispose();
     }

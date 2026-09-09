@@ -509,6 +509,26 @@ open. A node left attached or a tile left dimmed outlives the plugin.
 
 Badge node ids start at `0x42450000`, far above the window's own, which run to the low fifties.
 
+### KamiToolKit must be initialised first, or it crashes the game
+
+`KamiToolKitLibrary.InitializeAsync(pluginInterface)` has to have **completed** before a single
+node is constructed, and `KamiToolKitLibrary.Dispose()` belongs in the plugin's own dispose, after
+the nodes are detached. Other plugins announce this in the log — "KamiToolKit initialized for
+GlamourLog" — which is the clue that was there to be read.
+
+Skipping it does not fail politely. `new TextNode()` throws inside `NodeBase`'s constructor, from
+its internal service locator, so no reference ever comes back — the runtime is left holding a
+half-built object it can only clean up in a finalizer, and **that finalizer dereferences null and
+takes the game down**. The crash lands on the .NET finalizer thread, minutes later, pointing at
+`NodeBase.Finalize` with nothing about this plugin in the stack.
+
+Two guards follow from that, and both matter more than they look:
+
+- Nothing native is built until the initialisation task reports success.
+- Anything thrown while decorating sets a `broken` flag that is never cleared. Retrying a failing
+  node constructor twenty-five times a frame turns one mistake into a crash; one failure disables
+  the feature for the session and logs why.
+
 ### KamiToolKit, verified against 2.2.38
 
 There is no `NativeController`. Attaching is on the node:
