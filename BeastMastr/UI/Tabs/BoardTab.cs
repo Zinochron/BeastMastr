@@ -168,6 +168,8 @@ public sealed class BoardTab : ITab
         if (player != null)
             ImGui.TextDisabled($"player world {player.Position.X:0.0}/{player.Position.Y:0.0}/{player.Position.Z:0.0}");
 
+        ImGui.TextWrapped(MapMarkerReader.DescribeTransform());
+
         var markers = MapMarkerReader.Read();
         if (markers.Count == 0)
         {
@@ -182,20 +184,29 @@ public sealed class BoardTab : ITab
         ImGui.TableSetupColumn("From");
         ImGui.TableSetupColumn("Icon");
         ImGui.TableSetupColumn("Map X / Y");
-        ImGui.TableSetupColumn("Subtext");
+        ImGui.TableSetupColumn("World / screen");
         ImGui.TableHeadersRow();
 
         foreach (var marker in markers)
         {
             ImGui.TableNextRow();
             ImGui.TableNextColumn();
-            ImGui.TextDisabled(marker.Source);
+            ImGui.TextDisabled(marker.Kind?.ToString() ?? marker.Source);
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(marker.IconId.ToString());
             ImGui.TableNextColumn();
             ImGui.TextUnformatted($"{marker.MapX} / {marker.MapY}");
             ImGui.TableNextColumn();
-            ImGui.TextUnformatted(marker.Subtext);
+
+            if (marker.World is not { } world)
+            {
+                ImGui.TextDisabled(marker.Subtext);
+                continue;
+            }
+
+            var onScreen = Services.GameGui.WorldToScreen(world, out var screen);
+            ImGui.TextUnformatted($"{world.X:0.0}/{world.Z:0.0}  ->  " +
+                                  (onScreen ? $"{screen.X:0}/{screen.Y:0}" : "off screen"));
         }
     }
 
@@ -222,12 +233,14 @@ public sealed class BoardTab : ITab
 
         text.AppendLine();
         text.AppendLine("# Map markers");
+        text.AppendLine(MapMarkerReader.DescribeTransform());
         var self = Services.Objects.LocalPlayer;
         if (self != null)
             text.AppendLine($"player world {self.Position.X:0.0}/{self.Position.Y:0.0}/{self.Position.Z:0.0}");
 
         foreach (var marker in MapMarkerReader.Read())
-            text.AppendLine($"{marker.Source}	icon={marker.IconId}	map={marker.MapX}/{marker.MapY}	\"{marker.Subtext}\"");
+            text.AppendLine($"{marker.Source}	icon={marker.IconId}	kind={marker.Kind}	" +
+                            $"map={marker.MapX}/{marker.MapY}	world={marker.World?.X:0.0}/{marker.World?.Z:0.0}	\"{marker.Subtext}\"");
 
         text.AppendLine();
         text.AppendLine("# Objects in the world");

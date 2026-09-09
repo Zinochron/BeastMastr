@@ -646,3 +646,43 @@ room list, and the two halves join without anything being guessed.
 Map units are sixteen to the yalm, offset by the map's own origin, so world = raw / 16 minus
 `AgentMap`'s `CurrentOffsetX` / `CurrentOffsetY`. Markers carry no height at all; the player's own
 is used, which is right for a board walked across on the flat.
+
+## The world cards land in the wrong place
+
+`world = raw / 16 - AgentMap.CurrentOffset` is not right. The board's columns sit at map X of -320,
+0 and 320, which divides to -20, 0 and 20, while the player walks the middle column at world X of
+about **-699.9**. So every card lands roughly seven hundred units east of the board, which shows up
+in game as the icons all appearing far away when the camera turns.
+
+Either the offsets are zero here and the board's markers are in some other origin, or the board
+carries its own map. `MapMarkerReader.DescribeTransform` now prints `CurrentMapId`,
+`CurrentTerritoryId`, `CurrentMapSizeFactor` and both offsets beside the player's world position, and
+the marker table shows each computed world position and where it projects to. One capture in a run
+settles it — this is not worth another guess.
+
+## Automation: what it needs before it can be written
+
+Four modes are settled and recorded in `Configuration`, and deliberately **not** offered in Settings
+until they do something — a switch that does nothing is worse than no switch.
+
+| Mode | What it does |
+|---|---|
+| `TeamMode.Leveling` | Fill the roster with the least advanced beasts, so the ones needing experience get it |
+| `TeamMode.Recommended` | Fill for the board. Waits on enemy data |
+| `FightMode.RepeatLast` | Take what the last fight took |
+| `FightMode.Recommended` | Take what beats this enemy. Waits on enemy data |
+
+The team screen is already mapped, which was the pleasant surprise: **the Master's Bestiary window
+is the team composition screen**. Its AtkValues carry "Team Composition" and "50/50", its tiles are
+node ids 27..51, and the icon id per slot already joins a tile to its beast. So filling a team means
+clicking tiles in a window this plugin has measured.
+
+What is missing is the beast's **rank** — the progression rank, not `XBMPet` column 3. Leveling
+cannot rank beasts by "least advanced" without it. It is not in the grid's AtkValues, and the
+bestiary detail page's rank panel is hidden. But the notebook's AtkValues 15..21 are the column
+headers of a **stats view** — "Beast Rank", "Strength", "Intelligence", "Phys. Resistance",
+"Mag. Resistance", "Constitution" — so that view is where per-beast rank lives, and a capture of the
+notebook with stats toggled on should have it in the per-slot blocks.
+
+`FightMode.RepeatLast` needs the pre-fight selection window, which has not been captured at all.
+Nothing is known about it yet, including its name.

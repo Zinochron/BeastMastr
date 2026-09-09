@@ -59,6 +59,26 @@ public static unsafe class MapMarkerReader
         return rooms;
     }
 
+    /// <summary>
+    /// What the map says about its own coordinate space. Printed rather than trusted: the first
+    /// transform put every card roughly seven hundred units east of the board, which is what these
+    /// numbers are needed to explain.
+    /// </summary>
+    public static string DescribeTransform()
+    {
+        var agent = AgentMap.Instance();
+        if (agent == null)
+            return "no map agent";
+
+        var player = Services.Objects.LocalPlayer;
+        var at = player == null ? "unknown" : $"{player.Position.X:0.00}/{player.Position.Y:0.00}/{player.Position.Z:0.00}";
+
+        return $"mapId={agent->CurrentMapId} territory={agent->CurrentTerritoryId} " +
+               $"sizeFactor={agent->CurrentMapSizeFactor} " +
+               $"offsetX={agent->CurrentOffsetX} offsetY={agent->CurrentOffsetY} " +
+               $"player={at}";
+    }
+
     public static List<Marker> Read()
     {
         var markers = new List<Marker>();
