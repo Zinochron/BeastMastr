@@ -18,6 +18,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>How a team is filled before a run.</summary>
     public TeamMode TeamSelection { get; set; } = TeamMode.Off;
 
+    /// <summary>Which board is being played, which decides how many beasts the team holds.</summary>
+    public int BoardTier { get; set; }
+
     /// <summary>How beasts are picked for an individual fight.</summary>
     public FightMode FightSelection { get; set; } = FightMode.Off;
 

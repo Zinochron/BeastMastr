@@ -862,8 +862,26 @@ The recorder now holds four hundred entries, drops mouse-move events outright, a
 callbacks that arrive within four milliseconds of one as hover-driven so they can be skipped by eye.
 What is left is what a deliberate action sent.
 
-It did establish two of the bestiary's commands: `[5, slot]` is the cursor entering a tile and `[6]`
-is it leaving. The click is a third value, still unrecorded.
+### The bestiary's toggle
+
+```
+MouseDown  ->  FireCallback  [0] Int=7  [1] UInt=slot
+```
+
+Command **7** with the grid slot, recorded from a real click. `[5, slot]` and `[6]` are the cursor
+entering and leaving a tile, and they fire every ten milliseconds while it merely rests there — which
+is why the click had to be found by looking for the one command that was neither.
+
+**The fight window's toggle is `[1, row]` and the bestiary's is `[7, slot]`.** Two windows, two
+commands, no shared convention — which is the whole argument for recording each rather than
+generalising from the first.
+
+`Automation/TeamSelector.cs` uses it. It acts only while the bestiary and the roster are both open,
+because that pairing is what putting a team together looks like and it beats matching a localised
+prompt. Removals go before additions, since a full team refuses one more. Each toggle is verified by
+reading the roster back, and a beast on another page of the bestiary is reported rather than skipped
+— page turning has not been recorded, and skipping would quietly produce a different team than the
+one shown.
 
 ## The world cards are off by default
 

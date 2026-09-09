@@ -6,11 +6,14 @@ public sealed class SettingsTab : ITab
 {
     private readonly Configuration configuration;
     private readonly Automation.FightSelector fightSelector;
+    private readonly Automation.TeamSelector teamSelector;
 
-    public SettingsTab(Configuration configuration, Automation.FightSelector fightSelector)
+    public SettingsTab(Configuration configuration, Automation.FightSelector fightSelector,
+                       Automation.TeamSelector teamSelector)
     {
         this.configuration = configuration;
         this.fightSelector = fightSelector;
+        this.teamSelector = teamSelector;
     }
 
     public string Title => "Settings";
@@ -18,6 +21,9 @@ public sealed class SettingsTab : ITab
 
     public void Draw()
     {
+        DrawTeamAutomation();
+        ImGui.Separator();
+
         DrawFightAutomation();
         ImGui.Separator();
 
@@ -64,6 +70,28 @@ public sealed class SettingsTab : ITab
             configuration.SheetPageSize = pageSize;
             configuration.Save();
         }
+    }
+
+    /// <summary>
+    /// Filling a run's team. Acts only while the bestiary and the roster are both open, which is
+    /// when a team is being put together and at no other time.
+    /// </summary>
+    private void DrawTeamAutomation()
+    {
+        var leveling = configuration.TeamSelection == TeamMode.Leveling;
+        if (ImGui.Checkbox("Fill the team for levelling", ref leveling))
+        {
+            configuration.TeamSelection = leveling ? TeamMode.Leveling : TeamMode.Off;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "While putting a team together, sets it to the least advanced beasts plus the ones you " +
+            "chose to carry them — both picked in the Beasts tab. It stops as soon as a change does " +
+            "not take, and beasts on another page of the bestiary are reported rather than skipped.");
+
+        if (teamSelector.Status.Length > 0)
+            ImGui.TextDisabled(teamSelector.Status);
     }
 
     /// <summary>
