@@ -16,6 +16,20 @@ public sealed class SettingsTab : ITab
 
     public void Draw()
     {
+        var decorate = configuration.DecorateNotebook;
+        if (ImGui.Checkbox("Decorate the game's bestiary", ref decorate))
+        {
+            configuration.DecorateNotebook = decorate;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "Puts a status tag on each tile of the Master's Bestiary and dims the beasts the filter " +
+            "in the Beasts tab excludes. Turning this off hands the window back exactly as the game " +
+            "draws it, the next time it opens.");
+
+        ImGui.Separator();
+
         var showData = configuration.ShowDataTab;
         if (ImGui.Checkbox("Show the Data tab", ref showData))
         {

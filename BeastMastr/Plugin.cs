@@ -4,6 +4,8 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using ECommons;
 using BeastMastr.Data;
+using BeastMastr.Native;
+using BeastMastr.Rules;
 using BeastMastr.UI;
 using BeastMastr.UI.Tabs;
 
@@ -27,6 +29,11 @@ public sealed class Plugin : IDalamudPlugin
     public Configuration Configuration { get; }
     public BeastCatalog Catalog { get; }
 
+    /// <summary>One filter, shared: what is typed in the Beasts tab dims the game's own bestiary.</summary>
+    public BeastFilter Filter { get; } = new();
+
+    private readonly MonsterNotebookDecorator notebook;
+
     public Plugin(IDalamudPluginInterface pluginInterface)
     {
         pluginInterface.Create<Services>();
@@ -35,8 +42,9 @@ public sealed class Plugin : IDalamudPlugin
         Configuration = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
         delayedSweep = new DelayedSweep();
         Catalog = new BeastCatalog();
+        notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter);
 
-        var tabs = new List<ITab> { new BeastsTab(Catalog) };
+        var tabs = new List<ITab> { new BeastsTab(Catalog, Filter) };
         if (Configuration.ShowDataTab)
         {
             tabs.Add(new SheetsTab(Configuration));
@@ -92,6 +100,7 @@ public sealed class Plugin : IDalamudPlugin
         windowSystem.RemoveAllWindows();
         mainWindow.Dispose();
         delayedSweep.Dispose();
+        notebook.Dispose();
 
         ECommonsMain.Dispose();
     }

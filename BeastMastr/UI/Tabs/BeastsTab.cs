@@ -17,13 +17,16 @@ namespace BeastMastr.UI.Tabs;
 public sealed class BeastsTab : ITab
 {
     private readonly BeastCatalog catalog;
-    private readonly BeastFilter filter = new();
+
+    /// <summary>Shared with the notebook decorator, so filtering here dims the game's own tiles.</summary>
+    private readonly BeastFilter filter;
 
     private string search = string.Empty;
 
-    public BeastsTab(BeastCatalog catalog)
+    public BeastsTab(BeastCatalog catalog, BeastFilter filter)
     {
         this.catalog = catalog;
+        this.filter = filter;
     }
 
     public string Title => "Beasts";

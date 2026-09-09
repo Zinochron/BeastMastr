@@ -489,3 +489,41 @@ All five Soulkin interrupt and nobody else does, because Interruption comes from
 Borrow every Soulkin shares. So the interrupt filter has the same answer as picking a Soulkin —
 five beasts of fifty. Still worth offering, but it is a smaller fact than it first appeared, and
 the harness asserts the equivalence so a patch that breaks it surfaces the reason.
+
+## Phase 2: writing into the game's bestiary
+
+`Native/MonsterNotebookDecorator.cs` attaches a KamiToolKit `TextNode` to each of the twenty-five
+tiles of `XBMMonsterNotebook`, showing that beast's status tags, and dims every tile the shared
+`BeastFilter` excludes. Turning it off in Settings hands the window back exactly as the game draws
+it the next time it opens.
+
+**A tile is a slot, not a beast.** Fifty beasts page through twenty-five fixed node ids, so a tag
+attached once and left alone follows the slot and starts describing the wrong beast the moment the
+page turns. Everything is recomputed on every `PostRefresh` and `PostRequestedUpdate`, keyed to
+whichever beast the window currently has there — read from the icon id in its AtkValues, the only
+thing it gives out that identifies a beast, and one for one with `XBMPet`'s icon column.
+
+Dimming writes `AtkResNode.Color.A` on nodes the game owns, so it is undone in three places: when a
+slot turns out to be empty, on `PreFinalize`, and on plugin unload while the window may still be
+open. A node left attached or a tile left dimmed outlives the plugin.
+
+Badge node ids start at `0x42450000`, far above the window's own, which run to the low fifties.
+
+### KamiToolKit, verified against 2.2.38
+
+There is no `NativeController`. Attaching is on the node:
+
+```
+NodeBase.AttachNode(AtkResNode*, NodePosition)   // and an AtkUnitBase* overload
+NodeBase.DetachNode()
+TextNode.String        → ReadOnlySeString, assignable from a string
+TextNode.Position/Size → Vector2
+TextNode.TextColor     → Vector4
+```
+
+`NodePosition` lives in `KamiToolKit.Enums`, the nodes in `KamiToolKit.Nodes`, and `NodeBase` in
+`KamiToolKit.BaseTypes`.
+
+One trap: the AtkValue type enum is `AtkValueType`, not `ValueType` — and with `using System;` in
+the file, a bare `ValueType` silently resolves to `System.ValueType` and the error blames the wrong
+thing.

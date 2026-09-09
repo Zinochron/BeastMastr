@@ -23,6 +23,14 @@ public class Configuration : IPluginConfiguration
     /// <summary>Rows the sheet dumper shows at once. Some XBM sheets are long.</summary>
     public int SheetPageSize { get; set; } = 50;
 
+    // ---- Features ---------------------------------------------------------
+
+    /// <summary>
+    /// Put status tags on the game's own bestiary tiles and dim what the filter excludes.
+    /// Off turns the window back to exactly how the game draws it.
+    /// </summary>
+    public bool DecorateNotebook { get; set; } = true;
+
     /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>
     public bool ShowDataTab { get; set; } = true;
 
