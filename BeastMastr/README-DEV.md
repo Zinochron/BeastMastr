@@ -911,17 +911,25 @@ an Int as well is **silently ignored** — no error, no log, the window simply n
 selection. That is what "the window did not take X" had been reporting all along, after the command
 number was already right. `SetUInt` for the argument in both selectors.
 
-### Ranks were read out of a hidden panel
+### The ranks were fine — that diagnosis was wrong
 
-Fifty learned ranks came back with fifteen beasts at rank 1 in contiguous blocks — 22 through 30 all
-at 1. No save file looks like that. The rank sits under node 36 of the detail page, which is hidden
-while the bestiary is merely browsed, and **a hidden text node still returns what it held when it
-was last shown**. So the rank of whichever beast was last properly displayed was being attributed to
-every beast browsed afterwards.
+Recorded because the reasoning was the problem, not the code. Fifteen of fifty beasts read rank 1
+and the lowest twelve were numbers 22 through 30, which looked like a stale panel writing one
+beast's rank onto its neighbours. It was not: sorting by rank and then by number *produces*
+consecutive numbers within a rank. The listing was evidence of the sort, not of a bug.
 
-Two guards now: read only while that panel is visible, and believe a number only once the same
-reading repeats — the number and the rank are separate nodes and do not update in the same instant,
-and moving the cursor across the grid repaints the panel constantly.
+What settled it: the beasts actually used — the three carries — read 10, 8 and 10, and after the
+store was discarded the same fifty values came back. Reproducible re-reading is what a correct
+reading looks like.
 
-Ranks stored before this are discarded on load through `KnownRanksVersion`. A wrong rank is worse
-than a missing one: a missing one says so, and a wrong one quietly picks a team.
+`RankWatcher`'s two guards stayed anyway. Reading only while the panel is visible and only believing
+a reading that repeats are both cheap and both true things to want; they simply were not fixing what
+they were written to fix. `KnownRanksVersion` also stayed, since a way to discard a bad store is
+worth having whether or not this was one.
+
+### The team size was a setting, and settings go stale
+
+`BoardTier` is chosen by hand. Ask for twelve on a board with ten slots and the last two additions
+are refused with nothing explaining why — which reads exactly like the automation being broken. The
+roster window lists one row per slot, so the real size is there to be read: the plan is now clamped
+to it, and the status says so when the setting and the board disagree.

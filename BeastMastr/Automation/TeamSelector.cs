@@ -91,8 +91,14 @@ public sealed unsafe class TeamSelector : IDisposable
             return;
         }
 
-        var wanted = TeamPlanner.ForLeveling(known, TeamPlanner.TeamSizeFor(configuration.BoardTier),
-                                             configuration.CarryBeasts)
+        // The board tier is a setting, and a setting can be wrong. The roster window lists one row
+        // per slot the team has, so it knows the real size — and asking for more than that is how a
+        // fill ends with the last few refused and no explanation.
+        var slots = PetPartyReader.Read(catalog).Count;
+        var configured = TeamPlanner.TeamSizeFor(configuration.BoardTier);
+        var size = slots > 0 ? Math.Min(configured, slots) : configured;
+
+        var wanted = TeamPlanner.ForLeveling(known, size, configuration.CarryBeasts)
                                 .Select(candidate => candidate.BeastNumber)
                                 .ToHashSet();
 
@@ -107,7 +113,10 @@ public sealed unsafe class TeamSelector : IDisposable
         foreach (var beast in current.Except(wanted).Concat(wanted.Except(current)))
             pending.Enqueue(beast);
 
-        Status = $"Adjusting {pending.Count} beast(s) — {known.Count} of {catalog.Beasts.Count} ranks known.";
+        Status = size < configured
+                     ? $"Adjusting {pending.Count} beast(s) for {size} slots — the board offers {slots}, " +
+                       $"not the {configured} the setting asks for."
+                     : $"Adjusting {pending.Count} beast(s) — {known.Count} of {catalog.Beasts.Count} ranks known.";
         Services.Log.Information(Status);
     }
 
