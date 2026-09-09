@@ -146,6 +146,42 @@ Check("interruption is exactly the Soulkin",
       $"{interrupters.Count} interrupt, {soulkin.Count} Soulkin");
 Check("and there are few of them", soulkin.Count == 5, $"{soulkin.Count}");
 
+// Levelling picks the least advanced, keeps the carries, and changes as little as it can.
+var ranked = new[]
+{
+    new TeamPlanner.Candidate(1, "Carry", 10),
+    new TeamPlanner.Candidate(2, "OnTeamLow", 1),
+    new TeamPlanner.Candidate(3, "OffTeamLow", 1),
+    new TeamPlanner.Candidate(4, "OnTeamHigh", 9),
+    new TeamPlanner.Candidate(5, "OffTeamMid", 4),
+};
+
+var onTeam = new uint[] { 1, 2, 4 };
+var levelled = TeamPlanner.ForLeveling(ranked, 3, new uint[] { 1 }, onTeam).Select(c => c.BeastNumber).ToList();
+
+Check("levelling keeps the carry", levelled.Contains(1u), string.Join(",", levelled));
+Check("levelling takes the least advanced", levelled.Contains(2u) && levelled.Contains(3u),
+      string.Join(",", levelled));
+Check("a carry does not have to be least advanced to stay", levelled.Count == 3);
+
+// The tie-break that matters: two beasts at rank 1, one already on the team. Without preferring it,
+// the lower bestiary number wins and the team churns for nothing.
+var tie = new[]
+{
+    new TeamPlanner.Candidate(10, "OffTeam", 1),
+    new TeamPlanner.Candidate(20, "OnTeam", 1),
+};
+
+var kept = TeamPlanner.ForLeveling(tie, 1, null, new uint[] { 20 }).Single().BeastNumber;
+Check("an equal rank already on the team is kept over a lower number", kept == 20u, $"kept {kept}");
+
+var byNumber = TeamPlanner.ForLeveling(tie, 1, null, null).Single().BeastNumber;
+Check("with nobody on the team the number decides", byNumber == 10u, $"kept {byNumber}");
+
+Check("the same inputs give the same team twice",
+      TeamPlanner.ForLeveling(ranked, 3, new uint[] { 1 }, onTeam).Select(c => c.BeastNumber)
+                 .SequenceEqual(levelled));
+
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");
 foreach (var b in beasts.Where(b => b.Inflicts(BeastStatus.Interruption)))

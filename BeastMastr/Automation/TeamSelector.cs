@@ -98,7 +98,7 @@ public sealed unsafe class TeamSelector : IDisposable
         var configured = TeamPlanner.TeamSizeFor(configuration.BoardTier);
         var size = slots > 0 ? Math.Min(configured, slots) : configured;
 
-        var wanted = TeamPlanner.ForLeveling(known, size, configuration.CarryBeasts)
+        var wanted = TeamPlanner.ForLeveling(known, size, configuration.CarryBeasts, current)
                                 .Select(candidate => candidate.BeastNumber)
                                 .ToHashSet();
 

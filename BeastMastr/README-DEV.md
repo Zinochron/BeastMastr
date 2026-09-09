@@ -844,9 +844,14 @@ weakest levels them slowly or not at all, so a few strong ones do the work while
 the experience. At most three of them — three of ten already leaves seven levelling, and beyond that
 the point of the exercise stops surviving.
 
-Ties break on the bestiary number rather than on the window's listing order, so the same roster
-produces the same team twice. A plan that shuffles under you is worse than one that is merely
-arguable.
+Ties break on **who is already on the team first**, and only then on the bestiary number. That is
+the difference between "fill the team" and "overwrite the team": among beasts of equal rank, keeping
+the one already there changes nothing about how fast anybody levels, and swapping it changes
+everything about how much the automation has to touch. A two-change adjustment became a dozen
+without it, and every one of those is another chance for the window to refuse.
+
+The number is still the last tie-break, so the same roster produces the same team twice. A plan that
+shuffles under you is worse than one that is merely arguable.
 
 The Beasts tab shows the plan and the ranks it rests on, because those are only as complete as what
 `RankWatcher` has seen, and a team filled from half-known ranks is worth checking before it is

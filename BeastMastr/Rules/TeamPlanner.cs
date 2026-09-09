@@ -32,20 +32,27 @@ public static class TeamPlanner
     /// <summary>
     /// The team to level with: the beasts chosen to carry, then the least advanced to fill up.
     ///
-    /// Carrying is the whole reason this takes a parameter. A team of nothing but the weakest
+    /// Carrying is the whole reason this takes that parameter. A team of nothing but the weakest
     /// beasts levels them slowly or not at all, so a few strong ones are brought to do the work
     /// while the rest collect the experience.
     ///
-    /// Ties break on the bestiary number rather than on whatever order the window listed them in,
-    /// so the same roster produces the same team twice. A plan that shuffles under you is worse
-    /// than one that is merely arguable.
+    /// <paramref name="current"/> is what is on the team already, and it is a **tie-breaker, not a
+    /// preference**: among beasts of equal rank the one already there wins. Without that, a rank 1
+    /// beast gets swapped for a different rank 1 beast because its number is lower — churn that
+    /// levels nobody faster, and that turns a two-change adjustment into a dozen, each one another
+    /// chance for the window to refuse.
+    ///
+    /// The last tie-break is the bestiary number, so the same roster produces the same team twice.
+    /// A plan that shuffles under you is worse than one that is merely arguable.
     /// </summary>
     public static IReadOnlyList<Candidate> ForLeveling(IEnumerable<Candidate> available,
                                                        int teamSize,
-                                                       IEnumerable<uint>? carry = null)
+                                                       IEnumerable<uint>? carry = null,
+                                                       IEnumerable<uint>? current = null)
     {
         var pool = available.ToList();
         var wanted = (carry ?? []).Take(MaxCarries).ToHashSet();
+        var alreadyThere = (current ?? []).ToHashSet();
 
         var carried = pool.Where(candidate => wanted.Contains(candidate.BeastNumber))
                           .OrderBy(candidate => candidate.BeastNumber)
@@ -54,6 +61,7 @@ public static class TeamPlanner
 
         var rest = pool.Where(candidate => !carried.Contains(candidate))
                        .OrderBy(candidate => candidate.Rank)
+                       .ThenByDescending(candidate => alreadyThere.Contains(candidate.BeastNumber))
                        .ThenBy(candidate => candidate.BeastNumber)
                        .Take(teamSize - carried.Count);
 
