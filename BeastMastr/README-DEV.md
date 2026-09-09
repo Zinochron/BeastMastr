@@ -988,9 +988,39 @@ commands it uses were recorded from real clicks, so none of it is a guess.
 It is a button, not a background job: fifty tiles' worth of the detail page flickering past is
 something to ask for, not something to spring on someone.
 
-### Where the buttons sit
+### Where the buttons sit, in two wrong attempts
 
-Anchored to the last tile rather than to the window's edge. The first attempt offset from
-`GetScaledHeight`, which is screen pixels while a child node's position is local — with the UI
-scaled up those disagree by exactly the scale factor, and the button landed that far below the
-window. A sibling node's position needs no conversion at all.
+Both were coordinate-space mistakes, and the second one is the more interesting.
+
+The first offset from `GetScaledHeight`, which is screen pixels while a child node's position is
+local — with the UI scaled up those disagree by exactly the scale factor, and the button landed that
+far *below* the window.
+
+The second measured from the last tile, which is the right idea and still wrong: **the tiles do not
+hang off the window.** They sit in a container that has its own offset, so a tile's `Y` is measured
+from the container and the button's from the window, and adding one to the other put the button a
+whole row too *high*.
+
+`DistanceFromTop` sums `Y` up the parent chain, which is what makes the two comparable. Anchoring to
+a sibling is still the right instinct — it just has to be a sibling in the same space, or made into
+one.
+
+### The rank sweep is shelved
+
+`RankPuller` works and stays, but its button is gone from the bestiary. Fifty detail pages flickering
+past is not a good answer to "the ranks should just be there", and a button that does something
+awkward is worse than the awkwardness being visible. The Beasts tab still offers it.
+
+## Choosing carries where the beasts are
+
+`Native/CarryContextMenu.cs` adds "Add as carry" / "Remove as carry" to a beast's right-click menu.
+Carries are chosen while looking at the beasts, and the checkboxes in the Beasts tab ask you to find
+the same beast twice — once in the game and once in a list beside it.
+
+**Which beast was right-clicked is not in the menu.** `IMenuOpenedArgs` gives the addon and nothing
+about the tile, and the bestiary's grid is not a list with an item id. The only handle is the tile
+the cursor last entered, which the window announces as `[5, slot]` — so `EventRecorder` tracks that
+whether or not anything is being recorded, and the icon in that slot names the beast.
+
+Past three carries the entry is not offered at all rather than shown and refused: an entry that
+cannot do anything reads as a bug, while a missing one reads as a limit.

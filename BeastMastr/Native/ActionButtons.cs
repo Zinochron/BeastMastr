@@ -28,7 +28,6 @@ public sealed unsafe class ActionButtons : IDisposable
 
     private readonly Configuration configuration;
     private readonly TeamSelector teamSelector;
-    private readonly RankPuller rankPuller;
     private readonly Func<bool> nativeUiReady;
 
     private readonly Dictionary<string, TextButtonNode> buttons = [];
@@ -36,12 +35,10 @@ public sealed unsafe class ActionButtons : IDisposable
     private int ticksUntilRecheck;
     private bool broken;
 
-    public ActionButtons(Configuration configuration, TeamSelector teamSelector, RankPuller rankPuller,
-                         Func<bool> nativeUiReady)
+    public ActionButtons(Configuration configuration, TeamSelector teamSelector, Func<bool> nativeUiReady)
     {
         this.configuration = configuration;
         this.teamSelector = teamSelector;
-        this.rankPuller = rankPuller;
         this.nativeUiReady = nativeUiReady;
 
         Services.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, XbmColumns.MonsterNotebook.Addon, OnFinalize);
@@ -114,19 +111,6 @@ public sealed unsafe class ActionButtons : IDisposable
         fill.AttachNode(addon, NodePosition.AsLastChild);
         buttons["fill"] = fill;
 
-        var pull = new TextButtonNode
-        {
-            NodeId = ButtonNodeIdBase + 1,
-            Size = new Vector2(120f, 28f),
-            Position = new Vector2(180f, BelowTheTiles(addon)),
-            String = "Read ranks",
-            IsVisible = true,
-            OnClick = rankPuller.Start,
-        };
-
-        pull.AttachNode(addon, NodePosition.AsLastChild);
-        buttons["pull"] = pull;
-
         Services.Log.Debug("Team composition button attached.");
     }
 
@@ -144,10 +128,28 @@ public sealed unsafe class ActionButtons : IDisposable
             (uint)XbmColumns.MonsterNotebook.TileNodeId(XbmColumns.MonsterNotebook.TileCount - 1));
 
         if (lastTile != null)
-            return lastTile->Y + lastTile->Height + 6f;
+            return DistanceFromTop(lastTile) + lastTile->Height + 6f;
 
         var root = addon->RootNode;
         return (root != null && root->Height > 0 ? root->Height : 520f) - 60f;
+    }
+
+    /// <summary>
+    /// A node's offset from the top of its window, summed up the parents.
+    ///
+    /// The tiles do not hang off the window directly — they sit in a container that has its own
+    /// offset — so a tile's <c>Y</c> alone is measured from the container and the button's from the
+    /// window. Adding one to the other put the button a whole row high. Walking the chain is what
+    /// makes the two comparable.
+    /// </summary>
+    private static float DistanceFromTop(AtkResNode* node)
+    {
+        var total = 0f;
+
+        for (var current = node; current != null; current = current->ParentNode)
+            total += current->Y;
+
+        return total;
     }
 
     private void Detach()

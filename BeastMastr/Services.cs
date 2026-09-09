@@ -1,5 +1,6 @@
 using Dalamud.IoC;
 using Dalamud.Plugin;
+using Dalamud.Game.Gui.ContextMenu;
 using Dalamud.Plugin.Services;
 
 namespace BeastMastr;
@@ -22,6 +23,7 @@ public sealed class Services
     [PluginService] public static ICondition Condition { get; private set; } = null!;
     [PluginService] public static IObjectTable Objects { get; private set; } = null!;
     [PluginService] public static IGameInteropProvider Interop { get; private set; } = null!;
+    [PluginService] public static IContextMenu ContextMenu { get; private set; } = null!;
     [PluginService] public static IChatGui Chat { get; private set; } = null!;
     [PluginService] public static INotificationManager Notifications { get; private set; } = null!;
 }

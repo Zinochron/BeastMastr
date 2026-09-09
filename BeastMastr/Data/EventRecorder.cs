@@ -83,10 +83,35 @@ public sealed unsafe class EventRecorder : IDisposable
     /// <summary>When the cursor last moved over something, so its callbacks can be set aside.</summary>
     private DateTime lastNoiseAt = DateTime.MinValue;
 
+    /// <summary>
+    /// The bestiary tile the cursor is on, or -1. Tracked whether or not anything is being recorded,
+    /// because a right click has to know which beast it landed on and the window says so nowhere
+    /// else — <c>[5, slot]</c> is what it is told when the cursor enters a tile.
+    /// </summary>
+    public int HoveredNotebookSlot { get; private set; } = -1;
+
+    private void TrackHover(AtkUnitBase* addon, uint count, AtkValue* values)
+    {
+        if (addon->NameString != XbmColumns.MonsterNotebook.Addon || values == null)
+            return;
+
+        if (count == 1 && values[0].Int == 6)
+        {
+            HoveredNotebookSlot = -1;
+            return;
+        }
+
+        if (count == 2 && values[0].Int == XbmColumns.MonsterNotebook.HoverCommand)
+            HoveredNotebookSlot = values[1].Int;
+    }
+
     private bool OnFireCallback(AtkUnitBase* addon, uint count, AtkValue* values, bool close)
     {
         try
         {
+            if (addon != null)
+                TrackHover(addon, count, values);
+
             if (Recording && addon != null && addon->NameString.StartsWith("XBM", StringComparison.Ordinal))
             {
                 // A window answers a cursor crossing a tile with a callback of its own. Those are

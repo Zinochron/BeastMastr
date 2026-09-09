@@ -28,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly EnemyCache enemies;
     private readonly TeamSelector teamSelector;
     private readonly ActionButtons actionButtons;
+    private readonly CarryContextMenu carryMenu;
     private readonly RankPuller rankPuller;
 
     /// <summary>
@@ -73,8 +74,9 @@ public sealed class Plugin : IDalamudPlugin
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
                                                 () => kamiToolKitReady.IsCompletedSuccessfully);
-        actionButtons = new ActionButtons(Configuration, teamSelector, rankPuller,
+        actionButtons = new ActionButtons(Configuration, teamSelector,
                                           () => kamiToolKitReady.IsCompletedSuccessfully);
+        carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
 
         var tabs = new List<ITab> { new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller) };
         if (Configuration.ShowDataTab)
@@ -143,6 +145,7 @@ public sealed class Plugin : IDalamudPlugin
         enemies.Dispose();
         teamSelector.Dispose();
         actionButtons.Dispose();
+        carryMenu.Dispose();
         rankPuller.Dispose();
         KamiToolKitLibrary.Dispose();
 
