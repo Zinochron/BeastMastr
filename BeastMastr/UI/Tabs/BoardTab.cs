@@ -179,11 +179,14 @@ public sealed class BoardTab : ITab
             return;
         }
 
+        ImGui.TextDisabled(PetPartyReader.Prompt());
+
         foreach (var slot in slots)
         {
             ImGui.TextUnformatted(
-                $"  {slot.Index,2}  {slot.Name,-16} rank {slot.Rank,-3} icon {slot.IconId}" +
-                $"  {(slot.Beast == null ? "(not matched to a beast)" : $"-> No. {slot.Beast.Number} {slot.Beast.ClassificationName}")}");
+                $"  {slot.Index,2}  {slot.Name,-16} rank {slot.Rank,-3}" +
+                $"{(slot.IsCalled ? $" called into slot {slot.CallSlot}" : string.Empty)}" +
+                $"  {(slot.Beast == null ? "(not matched)" : $"No. {slot.Beast.Number} {slot.Beast.ClassificationName}")}");
         }
     }
 
@@ -265,9 +268,10 @@ public sealed class BoardTab : ITab
 
         text.AppendLine();
         text.AppendLine("# Roster");
+        text.AppendLine(PetPartyReader.Prompt());
         foreach (var slot in PetPartyReader.Read(catalog))
-            text.AppendLine($"{slot.Index}	{slot.Name}	rank={slot.Rank}	icon={slot.IconId}	" +
-                            $"beast={(slot.Beast == null ? "?" : slot.Beast.Number.ToString())}");
+            text.AppendLine($"{slot.Index}	{slot.Name}	rank={slot.Rank}	called={slot.CallSlot}	" +
+                            $"icon={slot.IconId}	beast={(slot.Beast == null ? "?" : slot.Beast.Number.ToString())}");
 
         // The roster window's raw values go in whole. The rank sits at a different offset
         // depending on what the window is showing, and reading it back from a capture beats

@@ -13,8 +13,12 @@ namespace BeastMastr.Data;
 public static class PetPartyReader
 {
     /// <param name="Rank">Progression rank. Zero when the window did not give one.</param>
+    /// <param name="CallSlot">0, 1 or 2 while this beast is called into a fight; otherwise null.</param>
     /// <param name="Beast">Resolved from the icon, which is what the window hands out.</param>
-    public sealed record Slot(int Index, uint IconId, string Name, int Rank, Beast? Beast);
+    public sealed record Slot(int Index, uint IconId, string Name, int Rank, int? CallSlot, Beast? Beast)
+    {
+        public bool IsCalled => CallSlot is not null;
+    }
 
     public static bool IsOpen => AddonReader.IsOpen(XbmColumns.PetParty.Addon);
 
@@ -39,16 +43,41 @@ public static class PetPartyReader
                 break;
 
             var icon = Number(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.IconOffset)) ?? 0;
+            var rank = Rank(Text(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.RankOffset)));
 
-            // The rank arrives as a string even though it is a number.
-            _ = int.TryParse(Text(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.RankOffset)),
-                             out var rank);
+            var called = Number(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.CallSlotOffset));
+            var callSlot = called is null or XbmColumns.PetParty.NotCalled ? (int?)null : called;
 
-            slots.Add(new Slot(block, (uint)icon, name, rank,
+            slots.Add(new Slot(block, (uint)icon, name, rank, callSlot,
                                catalog.ByIcon.GetValueOrDefault((uint)icon)));
         }
 
         return slots;
+    }
+
+    /// <summary>
+    /// The rank comes with the game's own icon glyphs in front of the digits — private use
+    /// characters that survive ToString and make a plain parse fail, which read every rank as zero
+    /// while the capture's text looked like a bare number. Only the digits are kept.
+    /// </summary>
+    private static int Rank(string text)
+    {
+        var digits = new string(text.Where(char.IsAsciiDigit).ToArray());
+        return int.TryParse(digits, out var rank) ? rank : 0;
+    }
+
+    /// <summary>
+    /// What the window is asking for. The same window fills a run's team and a fight's call slots,
+    /// and only its prompt tells them apart.
+    /// </summary>
+    public static string Prompt()
+    {
+        var addon = AddonReader.Find(XbmColumns.PetParty.Addon);
+        if (addon.IsNull)
+            return string.Empty;
+
+        var values = addon.AtkValues.ToList();
+        return Text(values, XbmColumns.PetParty.PromptValue);
     }
 
     private static string Text(IReadOnlyList<Dalamud.Game.NativeWrapper.AtkValuePtr> values, int index) =>

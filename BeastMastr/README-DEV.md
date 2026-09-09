@@ -709,8 +709,28 @@ pairs, `+47` eleven status flags, `+59` their labels, `+70` the sheet's own rank
 `XBMPet` column 3 — which incidentally confirms what column 3 is, after it was twice claimed and
 once withdrawn.
 
-The roster window only lists the roster, though. Filling a team from all fifty beasts still needs
-their ranks, and where those come from outside a run is not yet known.
+### The rank is written with icon glyphs, not digits
+
+Every rank read as zero while the captured text showed a bare number. The string is
+`U+E0BC U+E036 5` — the game's own boxed-number glyphs from the private use area, in front of the
+digit. They survive `ToString`, a plain `int.TryParse` refuses the lot, and the dump shows nothing
+because the glyphs do not render. Only the digits are kept now.
+
+**Anything read out of a game string may carry these.** The failure is silent and the evidence looks
+like proof that the value is absent.
+
+### One window, two jobs
+
+`XBMPetParty` fills a run's team *and* a fight's call slots, and only its prompt says which — "Select
+a team of familiars" against "Select familiars to call upon during combat". The prompt sits at a
+fixed index past the end of the blocks, which is fragile, but the alternative is matching those
+sentences and they are localised.
+
+While it is asking for a fight, `+74` in each block is that beast's call slot — 0, 1 or 2 — or 3 when
+it is not called. Diffing a capture before and after choosing three familiars showed exactly three
+blocks change from 3 to 0, 2 and 1, which is what `FightMode.RepeatLast` has to record.
+
+Also corrected: the `XBMPet` row is at `+76`, not `+70`. `+70` and `+71` are empty.
 
 `FightMode.RepeatLast` needs the pre-fight selection window, which has not been captured at all.
 Nothing is known about it yet, including its name.

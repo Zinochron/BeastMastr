@@ -354,7 +354,25 @@ public static class XbmColumns
         public const int StatusCount = 11;
 
         /// <summary>The beast's <c>XBMPet</c> row, which the window also hands out directly.</summary>
-        public const int SheetRowOffset = 70;
+        public const int SheetRowOffset = 76;
+
+        /// <summary>
+        /// Which of the fight's call slots this beast is in — 0, 1 or 2 — or
+        /// <see cref="NotCalled"/> when it is not called at all. Only meaningful while the window is
+        /// asking for a fight's familiars; on the run's team screen everything reads
+        /// <see cref="NotCalled"/>.
+        /// </summary>
+        public const int CallSlotOffset = 74;
+
+        public const int NotCalled = 3;
+
+        /// <summary>
+        /// The window's own prompt, which is how its two jobs are told apart: "Select a team of
+        /// familiars" before a run against "Select familiars to call upon during combat" before a
+        /// fight. It is a fixed index past the end of the blocks, which is fragile — but the
+        /// alternative is matching those sentences, and they are localised.
+        /// </summary>
+        public const int PromptValue = 1185;
 
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
