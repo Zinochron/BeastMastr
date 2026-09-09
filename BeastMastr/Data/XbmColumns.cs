@@ -20,15 +20,24 @@ public static class XbmColumns
         /// <summary>Row id in the <c>Pet</c> sheet, which holds the beast's name.</summary>
         public const int Pet = 0;
 
-        /// <summary>Kin class, 1..8 (beastkin, wavekin, cloudkin, …). Display names still unknown.</summary>
+        /// <summary>
+        /// Classification, 1..8. The detail page calls it that and shows it as a word; 1 is
+        /// Beastkin, confirmed against goobbue. The other seven names are not in the data yet.
+        /// </summary>
         public const int KinClass = 1;
 
         /// <summary>Where it is caught. Read against <see cref="LocationKey"/>, not on its own.</summary>
         public const int Location = 2;
 
         /// <summary>
-        /// Beast rank, 1..5. Confirmed: the notebook's own column header for it arrives in
-        /// AtkValue 15 as "Beast Rank".
+        /// Beast rank, 1..5, distributed 7/26/12/2/4.
+        ///
+        /// Inferred, not confirmed. The notebook has a "Beast Rank" column — its header arrives in
+        /// AtkValue 15, ahead of the five stat headers that name columns 22..26 — and this is the
+        /// only small-valued column left over. But the detail page does not show a rank, so nothing
+        /// has yet been seen putting a number against a named beast. The grid's roman numerals are
+        /// not it: two beasts both at 3 carry I and II, and one at 3 carries none. Those are
+        /// Battlehorn slot assignments, which are player state rather than sheet data.
         /// </summary>
         public const int Rank = 3;
 
@@ -47,12 +56,22 @@ public static class XbmColumns
         public const int Description = 8;
 
         /// <summary>
-        /// The two action descriptions, e.g. "Deals unaspected damage that paralyzes enemy."
-        /// The live notebook shows three actions per beast; only two are here, and where the third
-        /// lives is still open.
+        /// The beast's Trick, e.g. "Delivers a blunt physical attack." The detail page groups the
+        /// three actions as Trick, Tempered Release and Borrow, each with an unlock level, and
+        /// these two columns are the first two of those in that order — confirmed against goobbue,
+        /// whose Trick is Beatdown and whose Tempered Release is Moldy Sneeze.
         /// </summary>
-        public const int FirstActionText = 9;
-        public const int SecondActionText = 10;
+        public const int TrickText = 9;
+
+        /// <summary>The beast's Tempered Release. See <see cref="TrickText"/>.</summary>
+        public const int TemperedReleaseText = 10;
+
+        /// <summary>
+        /// There is no Borrow column. The third action is named on the detail page but is not in
+        /// this sheet, and only its description would be here anyway — none of the three action
+        /// *names* are. Where they come from is still open.
+        /// </summary>
+        public const int BorrowText = -1;
 
         /// <summary>
         /// Start of eleven bools saying which status the beast can inflict, in

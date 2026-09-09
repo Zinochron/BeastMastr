@@ -48,15 +48,15 @@ real sheet has 27 columns and no resistance array at all.
 | Col | Type | What |
 |---|---|---|
 | 0 | Int32 | `Pet` row id — the beast's name lives there |
-| 1 | UInt8 | Kin class, 1..8. Display names not found in the data yet |
+| 1 | UInt8 | Classification, 1..8. 1 is Beastkin; the other names are not in the data |
 | 2 | UInt8 | Location id, read against column 6 |
-| 3 | UInt8 | Beast rank, 1..5, distributed 6/26/12/2/4 |
+| 3 | UInt8 | Beast rank, 1..5, distributed 7/26/12/2/4. Inferred by elimination, not seen |
 | 4 | UInt32 | Icon, 242001 upward |
 | 5 | UInt16 | An `Action` row id, but those rows carry no name. Unconfirmed |
 | 6 | UInt8 | Location switch: 0 → `PlaceName`, 1 → `ContentFinderCondition` |
 | 7 | UInt16 | Mostly 30/42/54, one 350. Level or content id. Unconfirmed |
 | 8 | String | Flavour text |
-| 9, 10 | String | Two action descriptions |
+| 9, 10 | String | The Trick and the Tempered Release, in that order. Descriptions only — no names |
 | 11..21 | Bool ×11 | **Which status the beast inflicts.** The feature this plugin is built on |
 | 22..26 | UInt8 ×5 | Strength, Intelligence, Phys. Resistance, Mag. Resistance, Constitution |
 
@@ -128,15 +128,23 @@ each board pays for each bonus, 0 where it does not offer it.
 
 ## What is still open
 
-1. **The third beast action.** Columns 9 and 10 hold two descriptions; the notebook shows three.
-2. **Status slot 3.** Inferred as Silence. Open the notebook on coblyn or golem and read it.
-3. **Kin class names** for column 1's values 1..8.
-4. **Columns 2 and 6 together.** `PlaceName` resolves cleanly for some beasts (Sastasha, Southern
-   Thanalan, Central Thanalan) and to nonsense for others, so the switch matters. Confirm both
-   branches against beasts whose location the notebook shows.
+1. **Borrow.** Each beast has three actions, grouped on the detail page as **Trick**, **Tempered
+   Release** and **Borrow**, each with an unlock level. Columns 9 and 10 are the first two
+   descriptions in that order. Borrow is not in the sheet — and neither are any of the three
+   action *names*, only descriptions, so both have to come from somewhere else.
+2. **Status slot 3.** Inferred as Silence. Nothing seen yet puts a status against coblyn or golem.
+3. **Classification names** for column 1's values 2..8. 1 is Beastkin.
+4. **Beast rank.** Column 3 is inferred by elimination and has not been seen against a named beast.
+5. **The habitat column.** Column 2 is not a `PlaceName` id: goobbue's habitat is Lower La Noscea,
+   which is `PlaceName` 31, and its column 2 is 21. All 7912 sheets were searched for one holding
+   that string at row 21, and for one linking both goobbue's 21 → 31 and squirrel's 35 → Central
+   Shroud numerically. Both searches came back empty, so the resolution goes through something not
+   yet found. Column 6 switches between three branches, not two: 0 for one beast, 1 for the
+   overworld ones, 2 for the late ones that live in duties.
+6. **Auto-attack damage type.** The detail page shows one — goobbue's is Blunt, which is
+   `XBMElement` 7 — and no column of `XBMPet` has been matched to it.
 
-Answered, and no longer open: what columns 22..26 are, what column 3 is, and whether the
-notebook's list recycles — all three settled by the capture below.
+Answered, and no longer open: what columns 22..26 are, and whether the notebook's list recycles.
 
 ## Verified against the installed Dalamud, not guessed
 
@@ -229,3 +237,35 @@ Composition" dropdown, not to the bestiary, and is not where the beasts are.
 Still to capture from this window: a detail page, which is where the third action and status slot 3
 should become readable, and a second overview capture on a different page to confirm the slot
 mapping holds.
+
+### Beast detail page — 2026-09-09
+
+The bestiary is one window: the grid on the left, the selected beast's detail on the right, always
+populated. Goobbue, No. 30, read off the screen:
+
+```
+Classification  Beastkin          Appearance   S [M] L
+Auto-attack     Blunt             Natural Habitat  Lower La Noscea
+Borrow (Lv. 22)           Beastskin
+Tempered Release (Lv. 18) Moldy Sneeze   Area of Effect
+   Deals unaspected damage that sickens enemies.
+Trick (Lv. 8)             Beatdown       Area of Effect
+   Delivers a blunt physical attack.
+```
+
+Against `XBMPet` row 30: column 1 is 1, and the page says Beastkin. Column 9 is "Delivers a blunt
+physical attack." — the Trick — and column 10 is "Deals unaspected damage that sickens enemies." —
+the Tempered Release. **So the three actions are Trick, Tempered Release and Borrow, and the sheet
+holds the first two in that order.** Borrow is the one that is missing, and no action *name* is in
+the sheet at all.
+
+"Area of Effect" beside each action is `XBMActionEffectType`, which confirms that sheet is the AoE
+shape rather than an effect category.
+
+Goobbue's only status flag is column 20, slot 9, and its Tempered Release sickens. Mandragora and
+worm sit in the same slot and inflict heaviness. So **slot 9 is broader than plain Heavy** and
+covers sicken as well.
+
+The grid's roman numerals are a trap: tiles I, II and III sit on beasts whose column 3 reads 3, 3
+and 4, while a beast at 3 carries none. They are Battlehorn slot assignments — player state — not
+anything from a sheet.
