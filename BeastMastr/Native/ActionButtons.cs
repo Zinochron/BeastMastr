@@ -101,7 +101,11 @@ public sealed unsafe class ActionButtons : IDisposable
             Size = new Vector2(150f, 28f),
             // Under the window rather than inside it: the bestiary's own area is full of tiles, and
             // a button dropped among them would cover one.
-            Position = new Vector2(20f, addon->GetScaledHeight(true) + 4f),
+            //
+            // The height has to be the root node's, in the window's own units. GetScaledHeight
+            // returns screen pixels, and a child node's Position is local — so with the UI scaled
+            // up, that put the button far below the window instead of just under it.
+            Position = new Vector2(20f, BottomOf(addon) + 4f),
             String = "Fill for levelling",
             IsVisible = true,
             OnClick = teamSelector.RequestFill,
@@ -111,6 +115,16 @@ public sealed unsafe class ActionButtons : IDisposable
         buttons["fill"] = fill;
 
         Services.Log.Debug("Team composition button attached.");
+    }
+
+    /// <summary>
+    /// The window's height in its own coordinates, which is the space a child node's position is
+    /// measured in. Falls back to something sane rather than stacking the button on the title bar.
+    /// </summary>
+    private static float BottomOf(AtkUnitBase* addon)
+    {
+        var root = addon->RootNode;
+        return root != null && root->Height > 0 ? root->Height : 520f;
     }
 
     private void Detach()
