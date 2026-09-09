@@ -898,3 +898,30 @@ The placement is right — they sit on the platforms and follow the camera. But 
 every floating icon across a whole board is not a good way to read a board, which is worth admitting
 rather than shipping on. The readers behind them stay and the Board tab shows what they see, so a
 better presentation costs only the presentation.
+
+## Two bugs the saved config exposed
+
+Both were found by reading `pluginConfigs/BeastMastr.json` and the log rather than by trying things,
+and both had the same shape: something that fails without failing.
+
+### The second callback value is a UInt
+
+The recordings read `[0] Int=1 [1] UInt=0`, and only the first is an Int. Sending the row or slot as
+an Int as well is **silently ignored** — no error, no log, the window simply never takes the
+selection. That is what "the window did not take X" had been reporting all along, after the command
+number was already right. `SetUInt` for the argument in both selectors.
+
+### Ranks were read out of a hidden panel
+
+Fifty learned ranks came back with fifteen beasts at rank 1 in contiguous blocks — 22 through 30 all
+at 1. No save file looks like that. The rank sits under node 36 of the detail page, which is hidden
+while the bestiary is merely browsed, and **a hidden text node still returns what it held when it
+was last shown**. So the rank of whichever beast was last properly displayed was being attributed to
+every beast browsed afterwards.
+
+Two guards now: read only while that panel is visible, and believe a number only once the same
+reading repeats — the number and the rank are separate nodes and do not update in the same instant,
+and moving the cursor across the grid repaints the panel constantly.
+
+Ranks stored before this are discarded on load through `KnownRanksVersion`. A wrong rank is worse
+than a missing one: a missing one says so, and a wrong one quietly picks a team.

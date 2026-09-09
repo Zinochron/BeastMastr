@@ -32,6 +32,19 @@ public class Configuration : IPluginConfiguration
     public Dictionary<uint, int> KnownRanks { get; set; } = [];
 
     /// <summary>
+    /// Bumped whenever the way ranks are read changes in a way that invalidates what was stored.
+    /// Ranks learned before this are thrown away on load rather than kept: a wrong rank is worse
+    /// than a missing one, because a missing one says so and a wrong one quietly picks a team.
+    /// </summary>
+    public int KnownRanksVersion { get; set; }
+
+    /// <summary>
+    /// The reading before this was stale — it took a hidden panel's leftovers, which put fifteen
+    /// beasts on the same rank in contiguous blocks.
+    /// </summary>
+    public const int CurrentRanksVersion = 1;
+
+    /// <summary>
     /// Beasts that go into every levelled team regardless of rank, to carry the rest. At most
     /// <see cref="TeamPlanner.MaxCarries"/> of them — beyond that there is nothing left to level.
     /// </summary>

@@ -14,6 +14,12 @@ namespace BeastMastr.Data;
 /// Reading all fifty by driving the window would mean fifty selections under the player's hands to
 /// answer a question nobody asked yet. Watching costs nothing and fills in as the bestiary is
 /// browsed, so that is what this does. What it has not seen, it does not claim to know.
+///
+/// Two guards, both learned from getting it wrong. The first reading of fifty beasts produced
+/// fifteen at rank 1 in contiguous blocks, which is not a save file — it is a stale panel. The rank
+/// lives under a node that is **hidden** while the bestiary is merely being browsed, and a hidden
+/// text node still returns whatever it held when it was last shown. So: only read while that panel
+/// is visible, and only believe a number that is still the same a moment later.
 /// </summary>
 public sealed class RankWatcher : IDisposable
 {
@@ -26,7 +32,26 @@ public sealed class RankWatcher : IDisposable
     public RankWatcher(Configuration configuration)
     {
         this.configuration = configuration;
+
+        if (configuration.KnownRanksVersion != Configuration.CurrentRanksVersion)
+        {
+            var dropped = configuration.KnownRanks.Count;
+            configuration.KnownRanks.Clear();
+            configuration.KnownRanksVersion = Configuration.CurrentRanksVersion;
+            configuration.Save();
+
+            if (dropped > 0)
+                Services.Log.Information($"Discarded {dropped} rank(s) read the old way; they will fill in again.");
+        }
+
         Services.Framework.Update += OnUpdate;
+    }
+
+    /// <summary>Throw away everything learned, for when the numbers look wrong.</summary>
+    public void Forget()
+    {
+        configuration.KnownRanks.Clear();
+        configuration.Save();
     }
 
     public int KnownCount => configuration.KnownRanks.Count;
@@ -46,18 +71,44 @@ public sealed class RankWatcher : IDisposable
         SampleRoster();
     }
 
+    /// <summary>Last reading of the detail page, kept to see whether it has settled.</summary>
+    private (int Number, int Rank) previous;
+
     /// <summary>The one beast the bestiary currently has open.</summary>
     private void SampleDetailPage()
     {
         var addon = XbmColumns.MonsterBookDetail.Addon;
-        if (!AddonReader.IsOpen(addon))
+
+        // The panel is hidden while the bestiary is only being browsed, and its text nodes keep the
+        // last beast's numbers while it is. Reading them then attributes one beast's rank to
+        // another, which is exactly how fifteen beasts ended up sharing a rank.
+        if (!AddonReader.IsOpen(addon)
+            || !AddonReader.IsNodeVisible(addon, (uint)XbmColumns.MonsterBookDetail.RankPanelNodeId))
+        {
+            previous = default;
             return;
+        }
 
         var number = Digits(AddonReader.TextOf(addon, XbmColumns.MonsterBookDetail.NumberNodeId));
         var rank = Digits(AddonReader.TextOf(addon, XbmColumns.MonsterBookDetail.RankValueNodeId));
 
-        if (number is > 0 and <= 50 && rank > 0)
-            Remember((uint)number, rank);
+        if (number is <= 0 or > 50 || rank <= 0)
+        {
+            previous = default;
+            return;
+        }
+
+        // The number and the rank are separate nodes and do not update in the same instant, so a
+        // reading is only believed once it has repeated. Moving the cursor across the grid repaints
+        // this panel constantly; without this, most of what is caught is mid-update.
+        var reading = (number, rank);
+        if (previous != reading)
+        {
+            previous = reading;
+            return;
+        }
+
+        Remember((uint)number, rank);
     }
 
     /// <summary>The ten on the team, which the roster window gives all at once.</summary>

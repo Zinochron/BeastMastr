@@ -189,9 +189,9 @@ public sealed unsafe class FightSelector : IDisposable
     /// <c>FireCallback</c> with <c>[1, 0]</c> — command then row — and selecting and deselecting
     /// fire exactly the same thing, so it is a toggle rather than a set.
     ///
-    /// The first attempt used <c>AtkComponentList.SelectItem</c>, which moves the list's cursor and
-    /// performs no selection at all. The window simply never took the familiar, which is what the
-    /// read-back caught.
+    /// **The types matter.** The recording reads <c>[0] Int=1 [1] UInt=0</c>: the command is an Int
+    /// and the row is a UInt. Sending the row as an Int too was silently ignored — nothing errored,
+    /// the window simply never took the familiar, which is what the read-back kept reporting.
     /// </summary>
     private static bool Select(int index)
     {
@@ -200,7 +200,7 @@ public sealed unsafe class FightSelector : IDisposable
 
         var values = stackalloc AtkValue[2];
         values[0].SetInt(ToggleCommand);
-        values[1].SetInt(index);
+        values[1].SetUInt((uint)index);
 
         addon->FireCallback(2, values);
         return true;

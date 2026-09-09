@@ -224,6 +224,9 @@ public sealed unsafe class TeamSelector : IDisposable
     /// <summary>
     /// Sends one of the bestiary's own two-value commands. Both were recorded from real clicks:
     /// <c>[7, slot]</c> puts a beast in or out of the team, <c>[3, page]</c> turns the page.
+    ///
+    /// **The types matter.** The recordings read <c>[0] Int=n [1] UInt=n</c>: the command is an Int
+    /// and its argument a UInt. Sending the argument as an Int is silently ignored.
     /// </summary>
     private static bool Send(int command, int argument)
     {
@@ -232,7 +235,7 @@ public sealed unsafe class TeamSelector : IDisposable
 
         var values = stackalloc AtkValue[2];
         values[0].SetInt(command);
-        values[1].SetInt(argument);
+        values[1].SetUInt((uint)argument);
 
         addon->FireCallback(2, values);
         return true;

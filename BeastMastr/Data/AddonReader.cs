@@ -98,6 +98,19 @@ public static unsafe class AddonReader
         return ((AtkTextNode*)node)->NodeText.ToString();
     }
 
+    /// <summary>
+    /// Whether a node is actually being drawn. Reading a node inside a hidden panel returns whatever
+    /// it held last time it was shown, which looks exactly like a fresh value and is not one.
+    /// </summary>
+    public static bool IsNodeVisible(string addonName, uint nodeId)
+    {
+        if (!TryGet(addonName, out var addon))
+            return false;
+
+        var node = addon->GetNodeById(nodeId);
+        return node != null && node->IsVisible();
+    }
+
     // ---- Node tree --------------------------------------------------------
 
     /// <summary>
