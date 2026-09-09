@@ -735,7 +735,10 @@ Also corrected: the `XBMPet` row is at `+76`, not `+70`. `+70` and `+71` are emp
 `FightMode.RepeatLast`'s reading half is done: the roster comes back with correct ranks, and after
 choosing three familiars the three chosen slots read 0, 1 and 2.
 
-Team sizes are ten for a standard board, then twelve and fourteen. Only three boards are unlocked,
+**Leveling is still blocked.** Both of the roster window's jobs list only the ten beasts already on
+the team, so the pool of all fifty — and their ranks — is somewhere else, almost certainly the
+Master's Bestiary in its Team Composition mode. Team sizes are ten for a standard board, then twelve
+and fourteen. Only three boards are unlocked,
 so `TeamPlanner.TeamSizes` holds three and anything beyond falls back to the smallest — under-filling
 beats picking a beast that has no slot.
 
@@ -745,7 +748,28 @@ Sortr's notes are blunt about this: the first version built `AtkValue` payloads 
 callback's return as success, and it did not work. Selection there went to ECommons' `AddonMaster`
 wrappers instead — but there are none for the XBM windows, so that escape is not available.
 
-`Data/EventRecorder.cs` is the answer. It listens on `PreReceiveEvent` for the selection windows and
+The recorder answered it, though not the way it was aimed. `PreReceiveEvent` gives the event kind
+and its own parameter — `ListItemClick` with param 0, rollover with 1, rollout with 2 — and not
+which row was hit, so it does not identify a beast. What it did establish is that these windows are
+driven as ordinary `AtkComponentList`s, and that list has `SelectItem(index)`, `SelectedItemIndex`
+and `ListLength` in FFXIVClientStructs. **So selection is a method call, not a payload**, and the
+whole hand-built-AtkValue hazard is avoided.
+
+`Automation/FightSelector.cs` is the only place in this plugin that changes game state. It picks
+one row per six frames and reads the window back after each: a pick that did not take stops the run
+and says so, rather than pressing on. It only acts when nothing is chosen yet, so it never overrides
+a choice already begun.
+
+**Which window is which is learned, not matched.** The prompt differs — "Select a team of familiars
+to accompany you" against "Select familiars to call upon during combat" — but it is localised, so
+hardcoding either sentence would work in one client and quietly misfire in every other. Instead the
+first time familiars are actually called, whatever the window said at that moment is recorded as the
+fight prompt. Sortr learns its retainer menu entries the same way and for the same reason.
+
+Replacing a familiar reuses the freed slot rather than shifting the others up, so the slot number is
+the order and the list position is not. The remembered order follows the slots.
+
+`Data/EventRecorder.cs` stays. It listens on `PreReceiveEvent` for the selection windows and
 records what the game sends when **you** click — event type and parameter, newest first. It watches
 only and sends nothing. Once a real click is on record, replaying that is a known quantity rather
 than a guess, and the plan is still to confirm success by reading the window back rather than by

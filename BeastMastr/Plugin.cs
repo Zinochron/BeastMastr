@@ -5,6 +5,7 @@ using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
 using ECommons;
 using KamiToolKit;
+using BeastMastr.Automation;
 using BeastMastr.Data;
 using BeastMastr.Native;
 using BeastMastr.Rules;
@@ -22,6 +23,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly BoardOverlay boardOverlay;
     /// <summary>Built in the constructor body: it subscribes on construction. See the note above.</summary>
     private readonly EventRecorder recorder;
+    private readonly FightSelector fightSelector;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -57,6 +59,7 @@ public sealed class Plugin : IDalamudPlugin
         Catalog = new BeastCatalog();
 
         recorder = new EventRecorder();
+        fightSelector = new FightSelector(Configuration, Catalog);
 
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
@@ -70,7 +73,7 @@ public sealed class Plugin : IDalamudPlugin
             tabs.Add(new BoardTab(Catalog, recorder));
         }
 
-        tabs.Add(new SettingsTab(Configuration));
+        tabs.Add(new SettingsTab(Configuration, fightSelector));
 
         mainWindow = new MainWindow(tabs);
         windowSystem.AddWindow(mainWindow);
@@ -124,6 +127,7 @@ public sealed class Plugin : IDalamudPlugin
         delayedSweep.Dispose();
         notebook.Dispose();
         recorder.Dispose();
+        fightSelector.Dispose();
         KamiToolKitLibrary.Dispose();
 
         ECommonsMain.Dispose();

@@ -24,6 +24,13 @@ public class Configuration : IPluginConfiguration
     /// <summary>What was taken into the last fight, so it can be taken into the next one.</summary>
     public List<uint> LastFightBeasts { get; set; } = [];
 
+    /// <summary>
+    /// What the window says when it is asking for a fight's familiars rather than a run's team.
+    /// Learned the first time familiars are actually called, never hardcoded — the sentence is
+    /// localised, so a hardcoded one would work in a single client and misfire in every other.
+    /// </summary>
+    public string FightPrompt { get; set; } = string.Empty;
+
     // ---- Data explorer ----------------------------------------------------
     // Phase 0 tooling. The Beastmaster sheets are almost entirely unnamed upstream, so the
     // explorer is how column meanings get pinned down; these remember where you left off.

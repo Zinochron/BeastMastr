@@ -5,10 +5,12 @@ namespace BeastMastr.UI.Tabs;
 public sealed class SettingsTab : ITab
 {
     private readonly Configuration configuration;
+    private readonly Automation.FightSelector fightSelector;
 
-    public SettingsTab(Configuration configuration)
+    public SettingsTab(Configuration configuration, Automation.FightSelector fightSelector)
     {
         this.configuration = configuration;
+        this.fightSelector = fightSelector;
     }
 
     public string Title => "Settings";
@@ -16,6 +18,9 @@ public sealed class SettingsTab : ITab
 
     public void Draw()
     {
+        DrawFightAutomation();
+        ImGui.Separator();
+
         var decorate = configuration.DecorateNotebook;
         if (ImGui.Checkbox("Decorate the game's bestiary", ref decorate))
         {
@@ -58,6 +63,41 @@ public sealed class SettingsTab : ITab
             configuration.SheetPageSize = pageSize;
             configuration.Save();
         }
+    }
+
+    /// <summary>
+    /// The one setting here that changes the game rather than the plugin, so it says plainly what
+    /// it will do and shows what it last did.
+    /// </summary>
+    private void DrawFightAutomation()
+    {
+        var repeat = configuration.FightSelection == FightMode.RepeatLast;
+        if (ImGui.Checkbox("Call the same familiars as the last fight", ref repeat))
+        {
+            configuration.FightSelection = repeat ? FightMode.RepeatLast : FightMode.Off;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "When the window asks which familiars to call, picks the ones you took last time. It " +
+            "only acts when nothing is chosen yet, so it never overrides a choice you started, and " +
+            "it stops as soon as a pick does not take.");
+
+        if (configuration.FightPrompt.Length == 0)
+        {
+            ImGui.TextDisabled("Waiting to see a fight selection — call familiars once by hand first.");
+        }
+        else if (configuration.LastFightBeasts.Count == 0)
+        {
+            ImGui.TextDisabled("Nothing remembered yet.");
+        }
+        else
+        {
+            ImGui.TextDisabled($"Remembered: {configuration.LastFightBeasts.Count} familiar(s).");
+        }
+
+        if (fightSelector.Status.Length > 0)
+            ImGui.TextDisabled(fightSelector.Status);
     }
 
     public void Dispose() { }
