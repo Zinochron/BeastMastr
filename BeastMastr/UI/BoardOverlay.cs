@@ -20,14 +20,16 @@ namespace BeastMastr.UI;
 public sealed class BoardOverlay : Window
 {
     private readonly Configuration configuration;
+    private readonly EnemyCache enemies;
 
-    public BoardOverlay(Configuration configuration)
+    public BoardOverlay(Configuration configuration, EnemyCache enemies)
         : base("##BeastMastrBoard",
                ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoInputs | ImGuiWindowFlags.NoBackground |
                ImGuiWindowFlags.NoSavedSettings | ImGuiWindowFlags.NoFocusOnAppearing |
                ImGuiWindowFlags.NoNav | ImGuiWindowFlags.NoBringToFrontOnFocus)
     {
         this.configuration = configuration;
+        this.enemies = enemies;
         IsOpen = true;
         RespectCloseHotkey = false;
         DisableWindowSounds = true;
@@ -48,10 +50,17 @@ public sealed class BoardOverlay : Window
     {
         // The board window draws its own rooms with its own labels, and a second set of cards over
         // the top is just clutter in front of it. Cards are for the board you are standing on.
+        //
+        // It is still worth being here while that window is up, though: hovering a room is what
+        // brings the enemy panel out, and this is the only place with a mouse position to attribute
+        // it by.
         if (StageMapReader.IsOpen)
+        {
+            enemies.AttributeHover(ImGui.GetMousePos());
             return;
+        }
 
-        DrawWorldMarkers(StageDetailReader.Read());
+        DrawWorldMarkers(StageDetailReader.Read(), enemies);
     }
 
     /// <summary>
@@ -59,7 +68,7 @@ public sealed class BoardOverlay : Window
     /// floating over each, so this is where the cards belong — the board window is the thing you
     /// open to avoid needing them.
     /// </summary>
-    private static void DrawWorldMarkers(IReadOnlyList<StageDetailReader.Room> details)
+    private static void DrawWorldMarkers(IReadOnlyList<StageDetailReader.Room> details, EnemyCache enemies)
     {
         var markers = MapMarkerReader.ReadRooms();
         if (markers.Count == 0)
@@ -91,11 +100,20 @@ public sealed class BoardOverlay : Window
             draw.AddText(topLeft + padding,
                          ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f)), text);
 
-            if (info != null && info.Detail.Length > 0)
+            // What is actually in there, once it has been hovered once — the weakness, the statuses
+            // and whether it can be interrupted. Falls back to the game's own sentence until then.
+            var known = info == null ? [] : enemies.InRoom(info.Index);
+            var lines = known.Count > 0
+                            ? known.Select(enemy => $"{enemy.Name}: {enemy.Summary}").ToList()
+                            : info != null && info.Detail.Length > 0 ? [info.Detail] : new List<string>();
+
+            var y = topLeft.Y + size.Y + (padding.Y * 2f);
+            foreach (var line in lines)
             {
-                draw.AddText(new Vector2(topLeft.X, topLeft.Y + size.Y + (padding.Y * 2f)),
-                             ImGui.ColorConvertFloat4ToU32(new Vector4(0.88f, 0.88f, 0.92f, 0.95f)),
-                             info.Detail);
+                draw.AddText(new Vector2(topLeft.X, y),
+                             ImGui.ColorConvertFloat4ToU32(new Vector4(0.88f, 0.88f, 0.92f, 0.95f)), line);
+
+                y += ImGui.GetTextLineHeight();
             }
         }
     }

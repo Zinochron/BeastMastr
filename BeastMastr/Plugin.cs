@@ -82,7 +82,7 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow = new MainWindow(tabs);
         windowSystem.AddWindow(mainWindow);
 
-        boardOverlay = new BoardOverlay(Configuration);
+        boardOverlay = new BoardOverlay(Configuration, enemies);
         windowSystem.AddWindow(boardOverlay);
 
         Services.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)

@@ -628,12 +628,25 @@ longer need a card. Hovering enemies is what you do on the board anyway, so it f
 play. In memory only — a run's enemies mean nothing after it ends — and a newer reading replaces an
 older one, because the nullification note reflects the team you have right now.
 
+### Which room an enemy is in is not in the data
+
+Worth stating, because it was the obvious thing to look for: the room list's blocks carry the move,
+the kind and a sentence, and nothing about enemies. There is no enemy list per room anywhere that
+has been found.
+
+The attribution comes from the hovering instead. The panel appears when the cursor rests on a room
+**in the board window**, and those rooms' screen rectangles are already known — so the room under
+the cursor when the panel appears is the enemy's room. `BoardOverlay` does that during the draw
+pass, since that is the only place with a mouse position, and it is the one thing it does while the
+board window is open.
+
+It costs no extra clicking: looking at the board is already how you find out what is in a room. What
+has not been hovered is simply not known, and the card falls back to the game's own sentence.
+
 ### Still to come
 
-The room cards say what kind of room it is, not what is *in* it. Enemy weaknesses, the statuses they
-are open to, and whether their actions can be interrupted all live in `XBMBattleMonsterDetail`,
-which only exists while the cursor rests on an enemy — so it has to be read on hover and cached per
-enemy. That is the next piece, and the recommendation of which beasts to bring depends on it.
+Both `Recommended` modes: they can now be built on `EnemyCache`, matching a room's weaknesses and
+statuses against what the roster's beasts inflict. And Phase 4, the native cards.
 
 ### The rooms are map markers, and their icons name them
 
