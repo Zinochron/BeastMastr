@@ -6,6 +6,7 @@ using BeastMastr.Data;
 using BeastMastr.Rules;
 using Dalamud.Game.Addon.Lifecycle;
 using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
+using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 using KamiToolKit.Enums;
 using KamiToolKit.Nodes;
@@ -46,6 +47,11 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
     /// </summary>
     private bool broken;
 
+    /// <summary>Frames between two checks for an already-open window. Half a second is soon enough.</summary>
+    private const int RecheckInterval = 30;
+
+    private int ticksUntilRecheck;
+
     public MonsterNotebookDecorator(Configuration configuration, BeastCatalog catalog, BeastFilter filter,
                                     Func<bool> nativeUiReady)
     {
@@ -59,6 +65,39 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
         Services.AddonLifecycle.RegisterListener(AddonEvent.PostRefresh, addon, OnUpdate);
         Services.AddonLifecycle.RegisterListener(AddonEvent.PostRequestedUpdate, addon, OnUpdate);
         Services.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, addon, OnFinalize);
+
+        // The lifecycle events only fire when the window does something. A window that is already
+        // open and sitting still sends nothing, so enabling the plugin — or the setting — while the
+        // bestiary is open would leave it undecorated until it was closed and reopened.
+        Services.Framework.Update += OnFrameworkUpdate;
+    }
+
+    /// <summary>
+    /// Catches the two cases the addon events cannot: the window was already open and sitting still
+    /// when the plugin loaded, and the setting being turned on or off while it is open. Throttled,
+    /// because it is a window lookup and nothing here is urgent.
+    /// </summary>
+    private void OnFrameworkUpdate(IFramework framework)
+    {
+        if (broken || --ticksUntilRecheck > 0)
+            return;
+
+        ticksUntilRecheck = RecheckInterval;
+
+        var open = AddonReader.TryGet(XbmColumns.MonsterNotebook.Addon, out var addon) ? addon : null;
+
+        if (!configuration.DecorateNotebook || !nativeUiReady())
+        {
+            // Turned off, or never ready. Either way anything still attached has to come off, and
+            // the window will not tell us to do it if nobody is touching it.
+            if (badges.Count > 0)
+                Detach(open);
+
+            return;
+        }
+
+        if (badges.Count == 0 && open != null)
+            Decorate(open);
     }
 
     private void OnUpdate(AddonEvent type, AddonArgs args)
@@ -68,14 +107,22 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
         if (broken)
             return;
 
+        if (!configuration.DecorateNotebook || !nativeUiReady())
+        {
+            Detach(addon);
+            return;
+        }
+
+        Decorate(addon);
+    }
+
+    /// <summary>
+    /// The only place nodes are built or written to, so the circuit breaker only has to sit here.
+    /// </summary>
+    private void Decorate(AtkUnitBase* addon)
+    {
         try
         {
-            if (!configuration.DecorateNotebook || !nativeUiReady())
-            {
-                Detach(addon);
-                return;
-            }
-
             Attach(addon);
             Refresh(addon);
         }
@@ -231,6 +278,7 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
 
     public void Dispose()
     {
+        Services.Framework.Update -= OnFrameworkUpdate;
         Services.AddonLifecycle.UnregisterListener(OnUpdate, OnFinalize);
 
         // The window may still be open, in which case its tiles are still dimmed and still carry

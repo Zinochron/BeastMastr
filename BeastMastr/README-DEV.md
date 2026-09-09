@@ -509,6 +509,13 @@ open. A node left attached or a tile left dimmed outlives the plugin.
 
 Badge node ids start at `0x42450000`, far above the window's own, which run to the low fifties.
 
+**The addon events are not enough on their own.** They fire when the window does something, and a
+window that is already open and sitting still says nothing — so enabling the plugin, or the
+setting, with the bestiary open would leave it bare until it was closed and reopened. A throttled
+framework tick covers both directions: it attaches when there is an open window and nothing on it,
+and detaches when the setting goes off and no addon event is coming to notice. Once decorated it
+costs a field read per frame, because it returns immediately while badges exist.
+
 ### KamiToolKit must be initialised first, or it crashes the game
 
 `KamiToolKitLibrary.InitializeAsync(pluginInterface)` has to have **completed** before a single
