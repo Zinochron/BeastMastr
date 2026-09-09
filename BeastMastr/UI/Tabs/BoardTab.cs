@@ -41,6 +41,8 @@ public sealed class BoardTab : ITab
         ImGuiHelpers.ScaledDummy(4f);
         DrawReaders();
         ImGuiHelpers.ScaledDummy(4f);
+        DrawMarkers();
+        ImGuiHelpers.ScaledDummy(4f);
         DrawObjects();
     }
 
@@ -153,6 +155,50 @@ public sealed class BoardTab : ITab
         }
     }
 
+    /// <summary>
+    /// The map's markers, raw. The room icons float over the platforms and appear on the minimap,
+    /// and they are neither objects nor a window — so if they are anywhere, they are here.
+    /// </summary>
+    private static void DrawMarkers()
+    {
+        if (!ImGui.CollapsingHeader("Map markers", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var player = Services.Objects.LocalPlayer;
+        if (player != null)
+            ImGui.TextDisabled($"player world {player.Position.X:0.0}/{player.Position.Y:0.0}/{player.Position.Z:0.0}");
+
+        var markers = MapMarkerReader.Read();
+        if (markers.Count == 0)
+        {
+            ImGui.TextDisabled("None. If the room icons are visible right now, they are not map markers either.");
+            return;
+        }
+
+        using var table = ImRaii.Table("##markers", 4, ImGuiTableFlags.Borders | ImGuiTableFlags.RowBg);
+        if (!table.Success)
+            return;
+
+        ImGui.TableSetupColumn("From");
+        ImGui.TableSetupColumn("Icon");
+        ImGui.TableSetupColumn("Map X / Y");
+        ImGui.TableSetupColumn("Subtext");
+        ImGui.TableHeadersRow();
+
+        foreach (var marker in markers)
+        {
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            ImGui.TextDisabled(marker.Source);
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(marker.IconId.ToString());
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted($"{marker.MapX} / {marker.MapY}");
+            ImGui.TableNextColumn();
+            ImGui.TextUnformatted(marker.Subtext);
+        }
+    }
+
     private string Report()
     {
         var text = new StringBuilder();
@@ -173,6 +219,15 @@ public sealed class BoardTab : ITab
         text.AppendLine("# Every window open right now");
         foreach (var name in AddonReader.OpenAddonNames(string.Empty))
             text.AppendLine(name);
+
+        text.AppendLine();
+        text.AppendLine("# Map markers");
+        var self = Services.Objects.LocalPlayer;
+        if (self != null)
+            text.AppendLine($"player world {self.Position.X:0.0}/{self.Position.Y:0.0}/{self.Position.Z:0.0}");
+
+        foreach (var marker in MapMarkerReader.Read())
+            text.AppendLine($"{marker.Source}	icon={marker.IconId}	map={marker.MapX}/{marker.MapY}	\"{marker.Subtext}\"");
 
         text.AppendLine();
         text.AppendLine("# Objects in the world");

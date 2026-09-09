@@ -585,14 +585,27 @@ off screen.
 It is an overlay rather than injected nodes on purpose. The same readers will drive native nodes in
 the Kür, and building against a separate model first is what makes that swap cheap.
 
+### The Crucible board *is* the overworld
+
+Worth stating plainly, because it changes what the feature is: a run is not played from a map
+screen. You walk across the board — each room is a physical platform with an icon floating above it
+— and "Board Layout" is a window you open on top of that. So the cards belong on the floating icons
+first and on the board window second, which is the opposite of the order this was built in.
+
 ### The overworld markers are neither an addon nor an object
 
 The room markers in the Crucible overworld — where the cards are actually wanted — are not any of
 the things checked so far. The object table holds nothing but the player out there,
 `XBMContentsMainHUD` is buttons and the item bar, and in the overworld neither board window is
-open. So they are drawn by something not yet identified, and the Board tab now lists **every**
-loaded window, not only the XBM ones, because that is the cheapest way to find a window nobody has
-named.
+open. Listing every loaded window in the overworld ruled out a window as well: nothing is open there that
+could be drawing them.
+
+What is left is the **map's marker list**. The icons show on the minimap as well as in the world,
+which is what map markers do and what nothing else does. `Data/MapMarkerReader.cs` reads
+`AgentMap`'s `MapMarkers` and `TempMapMarkers`, both of which carry an icon id, a map X and Y and a
+subtext. Deliberately no conversion to world coordinates yet: map units and world units are not the
+same, and the diagnostic prints the raw numbers beside the player's known world position so the
+relationship can be established from data rather than assumed.
 
 Two numbers in `XBMStageDetailList` were also being read wrong, and wrong in the quiet way: move
 and kind arrive as `UInt`, and `AtkValuePtr.TryGet<int>` refuses a `UInt` rather than converting
