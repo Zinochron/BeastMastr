@@ -21,6 +21,13 @@ public sealed unsafe class TeamSelector : IDisposable
     /// <summary>Frames between two toggles, so the window can answer one before the next.</summary>
     private const int FramesBetweenToggles = 8;
 
+    /// <summary>
+    /// How long a toggle is given to show up in the roster before it counts as refused. One look was
+    /// not enough: the two windows do not update in the same frame, and failing on the first glance
+    /// reports a refusal that never happened.
+    /// </summary>
+    private const int FramesToConfirm = 45;
+
     /// <summary>Frames to let a page turn settle before looking for a beast on it.</summary>
     private const int FramesAfterPageTurn = 12;
 
@@ -32,6 +39,7 @@ public sealed unsafe class TeamSelector : IDisposable
     private int cooldown;
     private uint waitingFor;
     private bool waitingToJoin;
+    private int framesWaited;
     private bool givenUp;
 
     public TeamSelector(Configuration configuration, BeastCatalog catalog, RankWatcher ranks)
@@ -127,14 +135,21 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (waitingFor != 0)
         {
-            var inTeam = InTeam(waitingFor);
-            if (inTeam != waitingToJoin)
+            if (InTeam(waitingFor) != waitingToJoin)
             {
-                Stop($"The bestiary did not {(waitingToJoin ? "add" : "remove")} {Name(waitingFor)}.");
+                if (++framesWaited < FramesToConfirm)
+                {
+                    cooldown = 1;
+                    return;
+                }
+
+                Stop($"The bestiary did not {(waitingToJoin ? "add" : "remove")} {Name(waitingFor)} " +
+                     $"within {FramesToConfirm} frames.");
                 return;
             }
 
             waitingFor = 0;
+            framesWaited = 0;
         }
 
         if (pending.Count == 0)
@@ -151,9 +166,26 @@ public sealed unsafe class TeamSelector : IDisposable
         {
             // On another page. Turning it is a recorded click too, so this is not a dead end.
             var page = XbmColumns.MonsterNotebook.PageOf(next);
-            if (page == CurrentPage() || !Send(XbmColumns.MonsterNotebook.TurnPageCommand, page))
+            var showing = CurrentPage();
+
+            if (showing < 0)
             {
-                Stop($"Could not reach {Name(next)} in the bestiary.");
+                Stop($"The bestiary is open but says nothing about which page it is on, " +
+                     $"so {Name(next)} cannot be found.");
+                return;
+            }
+
+            if (page == showing)
+            {
+                Stop($"{Name(next)} should be on page {page + 1}, which the bestiary is already " +
+                     $"showing, but none of its tiles carries icon {IconOf(next)}. " +
+                     $"It is showing: {DescribeSlots()}");
+                return;
+            }
+
+            if (!Send(XbmColumns.MonsterNotebook.TurnPageCommand, page))
+            {
+                Stop($"The bestiary would not turn to page {page + 1} for {Name(next)}.");
                 return;
             }
 
@@ -250,6 +282,40 @@ public sealed unsafe class TeamSelector : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// What the bestiary's tiles actually hold. Written into the failure rather than left to be
+    /// guessed at: "the icon is not there" and "the icons are not where I am looking" produce the
+    /// same message otherwise, and they need different fixes.
+    /// </summary>
+    private static string DescribeSlots()
+    {
+        var addon = AddonReader.Find(XbmColumns.MonsterNotebook.Addon);
+        if (addon.IsNull)
+            return "(the window went away)";
+
+        var values = addon.AtkValues.ToList();
+        var seen = new List<string>();
+
+        for (var slot = 0; slot < XbmColumns.MonsterNotebook.TileCount; slot++)
+        {
+            var index = XbmColumns.MonsterNotebook.SlotIconValue(slot);
+            if (index >= values.Count)
+            {
+                seen.Add($"[{slot}] past the end of {values.Count} values");
+                break;
+            }
+
+            seen.Add(values[index].TryGet<uint>(out var icon)
+                         ? icon.ToString()
+                         : $"[{slot}] {values[index].ValueType}");
+        }
+
+        return string.Join(", ", seen);
+    }
+
+    private uint IconOf(uint beastNumber) =>
+        catalog.Beasts.FirstOrDefault(beast => beast.Number == beastNumber)?.IconId ?? 0;
+
     private string Name(uint beastNumber) =>
         catalog.Beasts.FirstOrDefault(beast => beast.Number == beastNumber)?.Name ?? $"beast {beastNumber}";
 
@@ -265,6 +331,7 @@ public sealed unsafe class TeamSelector : IDisposable
     {
         pending.Clear();
         waitingFor = 0;
+        framesWaited = 0;
         cooldown = 0;
     }
 
