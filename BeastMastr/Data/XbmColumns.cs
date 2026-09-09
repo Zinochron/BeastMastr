@@ -82,17 +82,12 @@ public static class XbmColumns
         public const int ActionNamesAreElsewhere = -1;
 
         /// <summary>
-        /// The <c>Action</c> row holding this beast's Trick; the Tempered Release is the next row.
-        ///
-        /// Arithmetic on row ids is fragile, so this was not guessed from a pattern and then hoped
-        /// for: the party window hands out the two ids per beast at its own offsets 29 and 30, and
-        /// those fixed the constant. It then resolved **all fifty** beasts to named actions, and
-        /// the names match what the bestiary shows — coblyn's Bestial Thunder and Vulcanize, for
-        /// one. Re-check it after a patch rather than trusting it blindly.
+        /// The action ids are not in this sheet at all — they are in <c>Pet</c>, which
+        /// <see cref="Pet"/> reaches. Go through <see cref="XbmColumns.Pet"/> rather than doing
+        /// arithmetic on row ids: an id computed from a row number breaks the moment a patch
+        /// inserts a beast, and a link does not.
         /// </summary>
-        public static uint TrickActionId(uint rowId) => 44933 + (2 * rowId);
-
-        public static uint TemperedReleaseActionId(uint rowId) => TrickActionId(rowId) + 1;
+        public const int ActionIdsAreInThePetSheet = -1;
 
         /// <summary>
         /// Start of eleven bools saying which status the beast can inflict, in
@@ -117,6 +112,48 @@ public static class XbmColumns
         /// </summary>
         public const int FirstUnknownPercent = 22;
         public const int UnknownPercentCount = 5;
+    }
+
+    /// <summary>
+    /// The <c>Pet</c> sheet, which <see cref="XbmPet.Pet"/> points at. 104 rows, 20 columns; the
+    /// fifty Beastmaster beasts are the rows whose <see cref="XbmPetRow"/> points back.
+    ///
+    /// This is where a beast's actions actually live. Reaching them through here beats computing
+    /// them: the ids also happen to sit at <c>44933 + 2 × XBMPet row</c> for all fifty beasts
+    /// today, but that is a coincidence of the current ordering and a patch inserting a beast would
+    /// silently shift every one of them.
+    /// </summary>
+    public static class Pet
+    {
+        public const string Sheet = "Pet";
+        public const int ColumnCount = 20;
+
+        public const int Name = 0;
+
+        /// <summary>The beast's Trick, as an <c>Action</c> row id.</summary>
+        public const int TrickAction = 1;
+
+        /// <summary>The beast's Tempered Release.</summary>
+        public const int TemperedReleaseAction = 2;
+
+        /// <summary>"Aetheric Burst" for every beast — shared, so not the per-beast Borrow.</summary>
+        public const int SharedActionA = 3;
+
+        /// <summary>"Threaten" for every beast.</summary>
+        public const int SharedActionB = 4;
+
+        /// <summary>
+        /// Three numbers that scale together — 70/100/120 for most beasts, 49/70/84 for goobbue,
+        /// which is exactly seven tenths of them. Unidentified.
+        /// </summary>
+        public const int FirstScalingNumber = 9;
+        public const int ScalingNumberCount = 3;
+
+        /// <summary>
+        /// Points back at the <c>XBMPet</c> row. Verified for all fifty, so it is the reliable way
+        /// to walk from a <c>Pet</c> row to its Beastmaster data.
+        /// </summary>
+        public const int XbmPetRow = 19;
     }
 
     /// <summary>
@@ -241,8 +278,14 @@ public static class XbmColumns
         public const int HabitatNodeId = 30;
         public const int DescriptionNodeId = 33;
 
-        /// <summary>Labels whose value nodes (40, 42, 45, 54) were empty in every capture so far.</summary>
+        /// <summary>
+        /// Rank, EXP, HP and Satiety, plus five stat components at 47..51, all live under node 36 —
+        /// which is **hidden** on this page. That is why the page shows no rank and why every value
+        /// node came back empty: the panel exists but is not displayed here.
+        /// </summary>
+        public const int HiddenRankPanelNodeId = 36;
         public const int RankLabelNodeId = 39;
+        public const int RankValueNodeId = 40;
     }
 
     /// <summary>

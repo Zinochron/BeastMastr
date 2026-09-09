@@ -141,9 +141,11 @@ each board pays for each bonus, 0 where it does not offer it.
 
 ## What is still open
 
-1. **Beast rank.** Column 3 is inferred by elimination. The bestiary detail page has a "Rank"
-   label at node 39, but its value node 40 was empty in every capture, so nothing has yet put a
-   number against a named beast.
+1. **Beast rank.** Column 3 is inferred by elimination and still unconfirmed. The bestiary detail
+   page does have a Rank field — node 39 label, node 40 value — but the whole panel holding it,
+   node 36, is **hidden**, along with EXP, HP, Satiety and five stat components at 47..51. It is
+   not that the value is missing; the panel is not displayed on this page at all. Confirming
+   column 3 needs whatever context does display it.
 2. **The habitat column.** Column 2 is not a `PlaceName` id and not a fixed offset from one:
    goobbue's 21 is Lower La Noscea (`PlaceName` 31), golem's 25 is Southern Thanalan (45), coblyn's
    43 is Western Thanalan. All 7912 sheets were searched for a direct or numeric link and came back
@@ -439,12 +441,15 @@ The bestiary detail page names them and groups them: **Trick**, **Tempered Relea
 Soul Crush; goobbue is Beastkin and borrows Beastskin. So it follows from column 1 and needs no
 column of its own. That closes the "missing third action" question — nothing is missing.
 
-**The names are in the `Action` sheet, at `44933 + 2 × XBMPet row id`**, with the Tempered Release
-in the next row. This was not pattern-matched and hoped for: the party window hands out both ids
-per beast at its offsets 29 and 30, and those fixed the constant. It then resolved **all fifty**
-beasts to named actions with no misses, and the names agree with what the bestiary shows — coblyn's
-Bestial Thunder and Vulcanize, pugil's Screwdriver and Water Wall. Arithmetic on row ids is still
-fragile, so re-check it after a patch.
+**The names come through the `Pet` sheet**, which `XBMPet` column 0 already points at. `Pet`
+column 1 is the Trick's `Action` row and column 2 the Tempered Release's; column 19 points back at
+the `XBMPet` row, verified for all fifty in both directions. Columns 3 and 4 are the same two
+actions for every beast — "Aetheric Burst" and "Threaten" — so neither is the Borrow.
+
+The ids also happen to sit at `44933 + 2 × XBMPet row id` for all fifty, which is how they were
+first found, from the two ids the party window hands out at its offsets 29 and 30. **Use the link,
+not the arithmetic.** A computed id is a coincidence of today's ordering and would shift silently
+the moment a patch inserts a beast; a link would not.
 
 Classification values so far: **1 Beastkin, 7 Soulkin**.
 
