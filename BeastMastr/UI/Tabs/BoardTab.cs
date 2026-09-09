@@ -269,6 +269,13 @@ public sealed class BoardTab : ITab
             text.AppendLine($"{slot.Index}	{slot.Name}	rank={slot.Rank}	icon={slot.IconId}	" +
                             $"beast={(slot.Beast == null ? "?" : slot.Beast.Number.ToString())}");
 
+        // The roster window's raw values go in whole. The rank sits at a different offset
+        // depending on what the window is showing, and reading it back from a capture beats
+        // another round trip guessing which.
+        text.AppendLine();
+        text.AppendLine(AddonReader.ToText(XbmColumns.PetParty.Addon,
+                                           AddonReader.Values(XbmColumns.PetParty.Addon)));
+
         text.AppendLine();
         text.AppendLine("# Map markers");
         text.AppendLine(MapMarkerReader.DescribeTransform());

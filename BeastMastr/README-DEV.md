@@ -647,16 +647,24 @@ Map units are sixteen to the yalm, offset by the map's own origin, so world = ra
 `AgentMap`'s `CurrentOffsetX` / `CurrentOffsetY`. Markers carry no height at all; the player's own
 is used, which is right for a board walked across on the flat.
 
-## The world transform: add the offset, do not subtract it
+## The world transform
 
-`world = raw / 16 + AgentMap.CurrentOffset`. The capture settles it outright: `offsetX = -700`,
-`offsetY = -38`, the board's middle column is map X zero, and the player walks that column at world
-X of about **-705**. Subtracting put every card seven hundred units the other way, which is what
-made the icons appear far off to one side when the camera turned.
+`world = raw / (16 × sizeFactor / 100) + offset`
 
-The board came out as world X -680, -700 and -720 for the three columns, and Z from 78 down to
--186 for the twelve rooms, with the player at -21.8 partway along it. Map id 1204, territory 1339,
-size factor 400.
+Both halves were wrong once, and both were settled by measurement rather than argument — which is
+the point worth keeping, because each error looked like the other from the outside.
+
+**The sign.** The board's middle column is map X zero against an offset of -700, and the player
+walks that column at world X of about -700, so the offset is added. Subtracting it put every card
+seven hundred units the other way, which in game looked like every icon being far off to one side
+whenever the camera turned.
+
+**The scale.** With a plain sixteen the middle of the board sat almost right while everything else
+spread too far out. That is a scale error and not an offset one, and the shape of the complaint said
+so. This map's size factor is 400, so the divisor is 64 — and the decisive measurement was standing
+in the boss room's trigger, which puts the player at Z -74.33 where a divisor of 64 places the boss
+marker at -75.00. A normal zone has a size factor of 100 and gives back the plain sixteen that the
+community formula quotes.
 
 ### What it looked like when it was wrong The board's columns sit at map X of -320,
 0 and 320, which divides to -20, 0 and 20, while the player walks the middle column at world X of

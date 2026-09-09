@@ -108,12 +108,19 @@ public static unsafe class MapMarkerReader
     }
 
     /// <summary>
-    /// Map units to world units: sixteen units to the yalm, **plus** the map's origin.
+    /// Map units to world units: <c>raw / (16 × sizeFactor / 100) + offset</c>.
     ///
-    /// The sign was wrong first time round, and the numbers say so plainly. The board's middle
-    /// column is map X zero and the map's offset is -700, and the player walks that column at world
-    /// X of about -705 — so the offset is added. Subtracting it put every card seven hundred units
-    /// the other way, which is why they all appeared far off to one side.
+    /// Both halves were got wrong once and both were settled by measurement rather than argument.
+    ///
+    /// The sign first: the board's middle column is map X zero against an offset of -700, and the
+    /// player walks that column at world X of about -700 — so the offset is added. Subtracting it
+    /// put every card seven hundred units the other way.
+    ///
+    /// Then the scale. With a plain sixteen the middle of the board sat almost right and everything
+    /// else spread too far out, which is what a scale error looks like and not an offset one. This
+    /// map's size factor is 400, so the divisor is 64 — and standing in the boss room's trigger puts
+    /// the player at Z -74.33 where that divisor places the boss marker at -75.00. A normal zone has
+    /// a size factor of 100, which gives back the plain sixteen.
     ///
     /// The height is the one thing this cannot know: markers carry no Y at all. The player's own
     /// height is used, which is right for a board you walk across on the flat and wrong the moment
@@ -125,9 +132,13 @@ public static unsafe class MapMarkerReader
             return null;
 
         var height = Services.Objects.LocalPlayer?.Position.Y ?? 0f;
+        var scale = 16f * (agent->CurrentMapSizeFactor / 100f);
 
-        return new Vector3((marker.X / 16f) + agent->CurrentOffsetX,
+        if (scale <= 0f)
+            return null;
+
+        return new Vector3((marker.X / scale) + agent->CurrentOffsetX,
                            height,
-                           (marker.Y / 16f) + agent->CurrentOffsetY);
+                           (marker.Y / scale) + agent->CurrentOffsetY);
     }
 }
