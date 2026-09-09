@@ -1,0 +1,199 @@
+# BeastMastr — implementation notes
+
+Written for whoever touches this next, including future me.
+
+## Layout
+
+| Folder | What lives there |
+|---|---|
+| `Data/` | Reading the game: Excel sheets, addon values and node trees |
+| `Rules/` | Pure calculation: trait classification, room requirements, beast ranking |
+| `Native/` | Everything that mutates the game's UI: KamiToolKit node injection |
+| `UI/` | ImGui windows and tabs |
+
+`Data` and `Rules` never change game state. `Native` is the only place that writes.
+`Rules` additionally holds no Dalamud references at all, so it can be exercised from a console
+harness the way LootMastr's `Planning` is.
+
+## The one constraint everything follows from
+
+**Beastmaster's game data is unnamed.** Everything Beastmaster is prefixed `XBM` internally —
+nothing is called Beastmaster or Crucible anywhere in the data — and EXDSchema's `latest` branch
+names almost none of the columns. Worse, where it does name them it is **out of date**: its
+`XBMPet` is a 12-column sheet with an 11-wide resistance array, and the real one has 27 columns and
+no resistance array. Its `XBMBattleDetailAction` has the columns in the wrong order.
+
+Consequences, and they shape the whole plugin:
+
+- Sheets are read **raw, by column index**. Lumina's generated structs only expose the handful of
+  columns somebody upstream has named, so they are useless here.
+- Every index lives in `Data/XbmColumns.cs` and nowhere else, so a patch that shifts one breaks in a
+  single place.
+- Every index is derived, never assumed, and how it was derived is written down below. An index with
+  no evidence behind it is a guess and will break silently.
+- Record the column count of every sheet used. A patch that inserts a column has to fail loudly
+  rather than quietly producing wrong traits.
+
+## What the sheets actually contain
+
+Read out of the installed game files with `Harness/`, against game version **2026.09.01.0000.0000**.
+None of it needed a client running. **The EXDSchema definitions are stale and partly wrong** — check
+here, not there.
+
+### XBMPet — 51 rows, 27 columns
+
+The capturable beasts. EXDSchema describes a 12-column sheet with an 11-wide resistance array; the
+real sheet has 27 columns and no resistance array at all.
+
+| Col | Type | What |
+|---|---|---|
+| 0 | Int32 | `Pet` row id — the beast's name lives there |
+| 1 | UInt8 | Kin class, 1..8. Display names not found in the data yet |
+| 2 | UInt8 | Location id, read against column 6 |
+| 3 | UInt8 | 1..5, distributed 6/26/12/2/4. Believed to be the star rank |
+| 4 | UInt32 | Icon, 242001 upward |
+| 5 | UInt16 | An `Action` row id, but those rows carry no name. Unconfirmed |
+| 6 | UInt8 | Location switch: 0 → `PlaceName`, 1 → `ContentFinderCondition` |
+| 7 | UInt16 | Mostly 30/42/54, one 350. Level or content id. Unconfirmed |
+| 8 | String | Flavour text |
+| 9, 10 | String | Two action descriptions |
+| 11..21 | Bool ×11 | **Which status the beast inflicts.** The feature this plugin is built on |
+| 22..26 | UInt8 ×5 | Percentages 76..100. *Not* damage resistances. Unconfirmed |
+
+Columns 11..21 follow `BNpcResist`'s indexer, which is itself 11 bools over 256 rows — so slot n is
+column 11 + n. `Rules/BeastStatus.cs` names them.
+
+**This is much better news than the plan assumed.** The bestiary filter — which of my beasts sleeps,
+poisons, stuns — comes straight out of these eleven bools. No hand-curated table is needed for
+statuses at all. What is still not in the data is interrupt, cleanse and dispel: vulture "dispels
+one beneficial status" and bat "removes a status ailment", and neither has a bool. Those come from
+the description strings or from the override file, and only those.
+
+### How the eleven status slots were named
+
+Correlation. For each column, list every beast that sets it beside its action descriptions and read
+off the common factor — the only three beasts setting column 13 are the three whose actions
+paralyse. Nine of eleven fell out in one pass:
+
+| Slot | Status | Evidence |
+|---|---|---|
+| 0 | Slow | apkallu, antling, morbol |
+| 1 | Petrification | ziz, cobra; chimera deep freezes |
+| 2 | Paralysis | opo-opo, coeurl, morbol |
+| 3 | **Silence — inferred** | coblyn, dullahan, golem, spriggan, ice golem: none inflicts anything in either visible description |
+| 4 | Blind | dodo, worm, morbol |
+| 5 | Poison | diremite, wespe, flying trap, uragnite |
+| 6 | Stun | buffalo, alone |
+| 7 | Sleep | lamb; treant causes nightmares |
+| 8 | Bind | diremite, slime |
+| 9 | Heavy | mandragora, worm; goobbue and hydra sicken, so it may be broader |
+| 10 | Doom | ghost, rafflesia; Karlabos cuts HP to a single digit |
+
+Slot 3 is the one to check against the notebook. That five beasts set a status none of their visible
+actions inflicts is also the best evidence that **the third action really is missing from XBMPet** —
+the live notebook shows three per beast, and columns 9 and 10 are only two.
+
+### The small sheets, in full
+
+- `XBMElement` — 9 damage types: Fire, Wind, Earth, Lightning, Ice, Water, Blunt, Piercing,
+  Slashing. Every value carries a leading space; trim it.
+- `XBMActionTarget` — Self, Ground, Highest Enmity, Random, Player, Allies.
+- `XBMActionEffectType` — Single Target, Front, Rear, Front/Rear, Lateral, Circle, Ring,
+  Circle/Ring, Universal, Cross. **AoE shapes, not effect categories**, despite the name.
+- `XBMItemType` — Beast Gear, Crucible Item, Feed.
+- `XBMScoreRank` — Legendary, Apex, Elite, Renowned, Exemplary, Adept, Journeyman, Novice,
+  Apprentice.
+- `XBMScoreBonus` — 33 rows, each a name and its condition ("Clear the board with no incapacitated
+  familiars").
+- `XBMStageEventType` — 9 rows, one UInt8 each: 0,0,3,2,1,5,6,4,7. A remap of some kind; the room
+  kinds are not spelled out here.
+- `XBMEntrance` — 6 rows: id, flag, and a UInt32 stepping 71030..71037 (a Level or EObj id).
+- `XBMItem` — 206 rows: icon, price, singular/plural, display name, full effect text, short text.
+  Fully readable, no reverse engineering needed.
+
+### XBMBattleDetailAction — 181 rows, 4 columns
+
+**Column order differs from EXDSchema**, which lists Action, Status, ActionTarget, ActionEffectType.
+The types settle it: the two middle columns are UInt8 and index sheets of 7 and 11 rows, while
+status ids are UInt32 and appear last.
+
+`0 Action(UInt32) · 1 ActionTarget(UInt8) · 2 ActionEffectType(UInt8) · 3 Status(UInt32)`
+
+### XBMContent — 6 rows, 37 columns
+
+One row per board (five real, plus the empty row 0), keyed by `ContentFinderCondition` 1088..1092.
+Columns 1..3 are three small numbers per board (10/3/5, 12/8/10, 14/13/15, 12/18/20, 15/23/25).
+**Columns 4..36 are 33 wide and line up one for one with `XBMScoreBonus`'s 33 rows** — the points
+each board pays for each bonus, 0 where it does not offer it.
+
+## What is still open
+
+These need the client, and are exactly what the Sheets and Addons tabs are for:
+
+1. **The third beast action.** Columns 9 and 10 hold two descriptions; the notebook shows three.
+2. **Status slot 3.** Inferred as Silence. Open the notebook on coblyn or golem and read it.
+3. **Columns 22..26.** Five percentages that are not resistances. Compare against what the notebook
+   shows for a beast with an uneven spread — Cu Sith is 100/91/100/79/100.
+4. **Kin class names** for column 1's values 1..8.
+5. **Columns 2 and 6 together.** `PlaceName` resolves cleanly for some beasts (Sastasha, Southern
+   Thanalan, Central Thanalan) and to nonsense for others, so the switch matters. Confirm both
+   branches against beasts whose location the notebook shows.
+6. **Does `XBMMonsterNotebook`'s list recycle its row nodes?** Turn on "Re-capture every frame" in
+   the Addons tab and scroll. If the same node ids come back holding different text, it recycles,
+   and anything attached to a row has to be keyed to the beast currently in it rather than to the
+   row index. This decides how the bestiary badges are built.
+
+## Verified against the installed Dalamud, not guessed
+
+Dalamud 15.0.3.3, Lumina 7.6 / Lumina.Excel 7.5.1, FFXIVClientStructs as shipped with it.
+
+Raw sheet access — `RawExcelSheet` itself is nearly bare (`Count`, `Columns`, `HasRow`,
+`GetColumnOffset`; no indexer, no enumerator, no `GetRow`), so raw reading goes through the typed
+sheet over `RawRow` instead:
+
+```
+Services.Data.Excel                                  → Lumina.Excel.ExcelModule
+ExcelModule.GetSheet<RawRow>(null, "XBMPet")         → ExcelSheet<RawRow>   (enumerable, Count, GetRowAt(int), TryGetRow)
+RawRow.RowId                                         → uint
+RawRow.Columns                                       → IReadOnlyList<ExcelColumnDefinition>
+RawRow.ReadColumn(int)                               → object
+RawRow.ReadStringColumn(int)                         → ReadOnlySeString      (use ExtractText())
+```
+
+Addons — `Services.GameGui.GetAddonByName(name)` → `AtkUnitBasePtr` for `AtkValues`; ECommons'
+`GenericHelpers.TryGetAddonByName` for the raw `AtkUnitBase*` needed to walk nodes.
+
+Compiling against the installed assemblies is the cheapest way to check any of this: write the
+member into a scratch file with a deliberately wrong type and read the real type out of the
+compiler error. That is how every signature above was pinned down.
+
+## FFXIVClientStructs already knows the Beastmaster UI
+
+Confirmed present, which is why none of it has to be found by hand:
+
+- Addons: `XBMMonsterNotebook`, `XBMPetParty`, `XBMStageMap`, `XBMStageList`, `XBMStageDetailList`,
+  `XBMBattleMonster`, `XBMBattleMonsterDetail`, `XBMContentsMainHUD`, `XBMItemDetail`,
+  `XBMRanking`, `XBMResult`.
+- `AtkComponentXBMContentStageEventMap` with `Entries[]`, each exposing `EventMapEntryIndices`,
+  `Components`, `TimelineStates` and `IsCurrentEvent` — per-room nodes *and* which room is current,
+  handed over directly. This is what the board overlay anchors to.
+- `AtkComponentXBMItem`; `XBMModule` / `XBMNoteModule` via `UIModule.GetXBMModule()`.
+
+There are no `AgentXBM*` structs, so those agents are reached generically.
+
+## Node walking
+
+`Data/AddonReader.Walk` follows `PrevSiblingNode`, not `NextSiblingNode`: a node's `ChildNode`
+points at its **last** child and the chain runs backwards from there. Component nodes (type id
+≥ 1000) keep their children behind their own `UldManager.RootNode` rather than in `ChildNode`, so
+they are followed separately — without that, list rows and the board's room entries never appear
+in the dump at all.
+
+## Captures
+
+Sheet dumps are reproducible from `Harness/` and are not pasted here; the tables above are their
+result. What belongs here is anything read off a **live client** — addon node trees, AtkValue
+layouts, and the notebook readings that settle the open questions above. Each under a heading
+saying what was on screen at the time.
+
+_No live captures yet._

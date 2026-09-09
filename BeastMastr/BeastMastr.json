@@ -1,0 +1,14 @@
+{
+  "Author": "Zinochron",
+  "Name": "BeastMastr",
+  "InternalName": "BeastMastr",
+  "Punchline": "Know your beasts and read the board at a glance.",
+  "Description": "Quality of life for Beastmaster.\n\nShows at a glance what each beast's actions actually do, so you can ask \"which of mine interrupts?\" instead of opening every entry, and puts the important facts about a Crucible of the Unbroken room next to the room itself.\n\nOpens with /beastmastr.",
+  "ApplicableVersion": "any",
+  "Tags": [
+    "beastmaster",
+    "bestiary",
+    "crucible",
+    "overlay"
+  ]
+}
