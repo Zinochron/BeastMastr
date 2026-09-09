@@ -202,6 +202,22 @@ public static class XbmColumns
         public const int SlotValueStride = 8;
         public const int SlotIconOffset = 4;
 
+        /// <summary>
+        /// Beasts per page. Fifty across two pages of a five by five grid.
+        /// </summary>
+        public const int PageSize = TileCount;
+
+        /// <summary>Command its own click sends to change page, with the page number after it, from zero.</summary>
+        public const int TurnPageCommand = 3;
+
+        /// <summary>Command its own click sends to put a beast in or out of the team, with the slot after it.</summary>
+        public const int ToggleTeamCommand = 7;
+
+        /// <summary>The bestiary number shown in a slot, which is how the current page is read back.</summary>
+        public static int SlotNumberValue(int slot) => FirstSlotValue + (slot * SlotValueStride);
+
+        public static int PageOf(uint beastNumber) => (int)(beastNumber - 1) / PageSize;
+
         public static int SlotIconValue(int slot) =>
             FirstSlotValue + (slot * SlotValueStride) + SlotIconOffset;
 

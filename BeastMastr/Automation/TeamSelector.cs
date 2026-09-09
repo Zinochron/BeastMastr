@@ -21,8 +21,8 @@ public sealed unsafe class TeamSelector : IDisposable
     /// <summary>Frames between two toggles, so the window can answer one before the next.</summary>
     private const int FramesBetweenToggles = 8;
 
-    /// <summary>Command the bestiary's own click sends. Recorded, not guessed.</summary>
-    private const int ToggleCommand = 7;
+    /// <summary>Frames to let a page turn settle before looking for a beast on it.</summary>
+    private const int FramesAfterPageTurn = 12;
 
     private readonly Configuration configuration;
     private readonly BeastCatalog catalog;
@@ -140,11 +140,26 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (slot < 0)
         {
-            Stop($"{Name(next)} is not on the page the bestiary is showing. Turn the page and try again.");
+            // On another page. Turning it is a recorded click too, so this is not a dead end.
+            var page = XbmColumns.MonsterNotebook.PageOf(next);
+            if (page == CurrentPage() || !Send(XbmColumns.MonsterNotebook.TurnPageCommand, page))
+            {
+                Stop($"Could not reach {Name(next)} in the bestiary.");
+                return;
+            }
+
+            // Put it back at the front: the page has to settle before the tile exists to click.
+            var requeued = new List<uint> { next };
+            requeued.AddRange(pending);
+            pending.Clear();
+            foreach (var beast in requeued)
+                pending.Enqueue(beast);
+
+            cooldown = FramesAfterPageTurn;
             return;
         }
 
-        if (!Toggle(slot))
+        if (!Send(XbmColumns.MonsterNotebook.ToggleTeamCommand, slot))
         {
             Stop("The bestiary went away mid-selection.");
             return;
@@ -187,14 +202,37 @@ public sealed unsafe class TeamSelector : IDisposable
         return -1;
     }
 
-    private static bool Toggle(int slot)
+    /// <summary>
+    /// Which page the bestiary is showing, read from the number in its first tile rather than
+    /// remembered — the player can turn it too.
+    /// </summary>
+    private static int CurrentPage()
+    {
+        var addon = AddonReader.Find(XbmColumns.MonsterNotebook.Addon);
+        if (addon.IsNull)
+            return -1;
+
+        var values = addon.AtkValues.ToList();
+        var index = XbmColumns.MonsterNotebook.SlotNumberValue(0);
+
+        if (index >= values.Count || !values[index].TryGet<uint>(out var number) || number == 0)
+            return -1;
+
+        return XbmColumns.MonsterNotebook.PageOf(number);
+    }
+
+    /// <summary>
+    /// Sends one of the bestiary's own two-value commands. Both were recorded from real clicks:
+    /// <c>[7, slot]</c> puts a beast in or out of the team, <c>[3, page]</c> turns the page.
+    /// </summary>
+    private static bool Send(int command, int argument)
     {
         if (!AddonReader.TryGet(XbmColumns.MonsterNotebook.Addon, out var addon))
             return false;
 
         var values = stackalloc AtkValue[2];
-        values[0].SetInt(ToggleCommand);
-        values[1].SetInt(slot);
+        values[0].SetInt(command);
+        values[1].SetInt(argument);
 
         addon->FireCallback(2, values);
         return true;

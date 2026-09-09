@@ -876,12 +876,21 @@ is why the click had to be found by looking for the one command that was neither
 commands, no shared convention — which is the whole argument for recording each rather than
 generalising from the first.
 
-`Automation/TeamSelector.cs` uses it. It acts only while the bestiary and the roster are both open,
-because that pairing is what putting a team together looks like and it beats matching a localised
-prompt. Removals go before additions, since a full team refuses one more. Each toggle is verified by
-reading the roster back, and a beast on another page of the bestiary is reported rather than skipped
-— page turning has not been recorded, and skipping would quietly produce a different team than the
-one shown.
+Turning the page is `[3, page]`, page counted from zero, recorded the same way. So the bestiary
+answers three commands, all of them read off real clicks:
+
+| Command | Meaning |
+|---|---|
+| `[3, page]` | turn to a page |
+| `[5, slot]` / `[6]` | the cursor entering and leaving a tile — noise, fires every 10 ms |
+| `[7, slot]` | put the beast in that tile into or out of the team |
+
+`Automation/TeamSelector.cs` uses them. It acts only while the bestiary and the roster are both
+open, because that pairing is what putting a team together looks like and it beats matching a
+localised prompt. Removals go before additions, since a full team refuses one more. Each toggle is
+verified by reading the roster back. A beast on the other page turns the page and requeues itself
+rather than being skipped — the page is read back from the number in the first tile rather than
+remembered, because the player can turn it too.
 
 ## The world cards are off by default
 
