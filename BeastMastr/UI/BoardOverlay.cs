@@ -35,8 +35,7 @@ public sealed class BoardOverlay : Window
         DisableWindowSounds = true;
     }
 
-    public override bool DrawConditions() =>
-        configuration.ShowBoardOverlay && StageMapReader.IsOpen;
+    public override bool DrawConditions() => configuration.ShowBoardOverlay;
 
     public override void PreDraw()
     {
@@ -49,20 +48,68 @@ public sealed class BoardOverlay : Window
 
     public override void Draw()
     {
-        var rooms = StageMapReader.Read();
-        if (rooms.Count == 0)
-            return;
-
         var details = StageDetailReader.Read();
-        var draw = ImGui.GetWindowDrawList();
 
-        foreach (var room in rooms)
+        // The board window, when it is open. Its tiles carry the index that pairs them with a room.
+        var tiles = StageMapReader.Read();
+        if (tiles.Count > 0)
         {
-            var info = details.ElementAtOrDefault(room.DetailIndex);
-            DrawChip(draw, room, info);
+            var draw = ImGui.GetWindowDrawList();
+
+            foreach (var tile in tiles)
+                DrawChip(draw, tile, details.ElementAtOrDefault(tile.DetailIndex));
+
+            DrawList(tiles, details);
+            return;
         }
 
-        DrawList(rooms, details);
+        DrawWorldMarkers(details);
+    }
+
+    /// <summary>
+    /// The board you are standing on. A run is walked across physical platforms with an icon
+    /// floating over each, so this is where the cards actually belong — the board window is the
+    /// thing you open to avoid needing them.
+    /// </summary>
+    private static void DrawWorldMarkers(IReadOnlyList<StageDetailReader.Room> details)
+    {
+        var markers = MapMarkerReader.ReadRooms();
+        if (markers.Count == 0)
+            return;
+
+        var draw = ImGui.GetWindowDrawList();
+
+        for (var i = 0; i < markers.Count; i++)
+        {
+            var marker = markers[i];
+            if (marker.World is not { } world)
+                continue;
+
+            if (!Services.GameGui.WorldToScreen(world, out var screen))
+                continue;
+
+            // The icon floats above the platform; the card goes under it rather than over it.
+            var info = details.ElementAtOrDefault(i);
+            var text = info == null ? marker.Kind?.ToString() ?? "?" : ShortLabel(info);
+            var kind = info?.Kind ?? marker.Kind ?? XbmColumns.RoomKind.Enemy;
+
+            var padding = new Vector2(5f, 2f) * ImGuiHelpers.GlobalScale;
+            var size = ImGui.CalcTextSize(text);
+            var topLeft = new Vector2(screen.X - ((size.X / 2f) + padding.X),
+                                      screen.Y + (14f * ImGuiHelpers.GlobalScale));
+
+            draw.AddRectFilled(topLeft, topLeft + size + (padding * 2f),
+                               ImGui.ColorConvertFloat4ToU32(Colour(kind) with { W = 0.88f }), 3f);
+            draw.AddText(topLeft + padding,
+                         ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f)), text);
+
+            if (info != null && info.Detail.Length > 0)
+            {
+                draw.AddText(new Vector2(topLeft.X, topLeft.Y + size.Y + (padding.Y * 2f)),
+                             ImGui.ColorConvertFloat4ToU32(new Vector4(0.88f, 0.88f, 0.92f, 0.95f)),
+                             info.Detail);
+            }
+        }
     }
 
     /// <summary>

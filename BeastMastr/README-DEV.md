@@ -600,7 +600,7 @@ the things checked so far. The object table holds nothing but the player out the
 open. Listing every loaded window in the overworld ruled out a window as well: nothing is open there that
 could be drawing them.
 
-What is left is the **map's marker list**. The icons show on the minimap as well as in the world,
+It is the **map's marker list**. The icons show on the minimap as well as in the world,
 which is what map markers do and what nothing else does. `Data/MapMarkerReader.cs` reads
 `AgentMap`'s `MapMarkers` and `TempMapMarkers`, both of which carry an icon id, a map X and Y and a
 subtext. Deliberately no conversion to world coordinates yet: map units and world units are not the
@@ -618,3 +618,31 @@ The room cards say what kind of room it is, not what is *in* it. Enemy weaknesse
 are open to, and whether their actions can be interrupted all live in `XBMBattleMonsterDetail`,
 which only exists while the cursor rests on an enemy — so it has to be read on hover and cached per
 enemy. That is the next piece, and the recommendation of which beasts to bring depends on it.
+
+### The rooms are map markers, and their icons name them
+
+A capture in the overworld settled it. Among the zone's own landmarks — Bentbranch, Haukke Manor
+and the rest of Central Shroud, since the board sits inside it — the first twelve markers are the
+board: icon ids 63850..63856, at map X of exactly -320, 0 or 320, which is the three columns.
+
+Laid against the minimap screenshot, the rows matched one for one, and that fixes the icons:
+
+| Icon | Room |
+|---|---|
+| 63850 | Campsite |
+| 63851 | Shop |
+| 63852 | Treasure |
+| 63854 | Enemy |
+| 63855 | Elite Enemy |
+| 63856 | Boss |
+
+63853 is the gap; no board seen so far has offered a Random Enemy or Treasure room.
+
+**Sorting the markers by map Y ascending and then map X descending reproduces the room list
+exactly** — boss, shop, campsite, treasure, elite, and on down — and every kind the icons imply
+agreed with the kind the list gives. So a marker's position in that order is its index into the
+room list, and the two halves join without anything being guessed.
+
+Map units are sixteen to the yalm, offset by the map's own origin, so world = raw / 16 minus
+`AgentMap`'s `CurrentOffsetX` / `CurrentOffsetY`. Markers carry no height at all; the player's own
+is used, which is right for a board walked across on the flat.
