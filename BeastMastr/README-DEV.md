@@ -611,6 +611,23 @@ and kind arrive as `UInt`, and `AtkValuePtr.TryGet<int>` refuses a `UInt` rather
 it, so every room came back as move 0 of kind Enemy with nothing failing anywhere. Both types are
 now accepted.
 
+### Reading the enemy panel
+
+`Data/BattleMonsterReader.cs` reads `XBMBattleMonsterDetail`: name, weakness, five stats as star
+counts, and per action its name, target, damage type, area of effect, the status it inflicts,
+whether it can be interrupted, and the game's own hidden note that the current team already covers
+that status.
+
+**Action blocks are found by shape, not by node id.** A component that has both a name and something
+to say about interrupting it is an action block. The ids were 35 and 39 for a two-action enemy, and
+hardcoding those would silently drop a third.
+
+`Data/EnemyCache.cs` keeps what it read, because the panel does not stay: it exists only while the
+cursor rests on an enemy, so the information you want on a card is visible exactly when you no
+longer need a card. Hovering enemies is what you do on the board anyway, so it fills during normal
+play. In memory only — a run's enemies mean nothing after it ends — and a newer reading replaces an
+older one, because the nullification note reflects the team you have right now.
+
 ### Still to come
 
 The room cards say what kind of room it is, not what is *in* it. Enemy weaknesses, the statuses they

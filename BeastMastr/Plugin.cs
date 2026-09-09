@@ -25,6 +25,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly EventRecorder recorder;
     private readonly FightSelector fightSelector;
     private readonly RankWatcher rankWatcher;
+    private readonly EnemyCache enemies;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -62,6 +63,7 @@ public sealed class Plugin : IDalamudPlugin
         recorder = new EventRecorder();
         fightSelector = new FightSelector(Configuration, Catalog);
         rankWatcher = new RankWatcher(Configuration);
+        enemies = new EnemyCache();
 
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
@@ -72,7 +74,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             tabs.Add(new SheetsTab(Configuration));
             tabs.Add(new AddonsTab(Configuration, delayedSweep));
-            tabs.Add(new BoardTab(Catalog, recorder, rankWatcher));
+            tabs.Add(new BoardTab(Catalog, recorder, rankWatcher, enemies));
         }
 
         tabs.Add(new SettingsTab(Configuration, fightSelector));
@@ -131,6 +133,7 @@ public sealed class Plugin : IDalamudPlugin
         recorder.Dispose();
         fightSelector.Dispose();
         rankWatcher.Dispose();
+        enemies.Dispose();
         KamiToolKitLibrary.Dispose();
 
         ECommonsMain.Dispose();

@@ -22,15 +22,17 @@ public sealed class BoardTab : ITab
     private readonly BeastCatalog catalog;
     private readonly EventRecorder recorder;
     private readonly RankWatcher ranks;
+    private readonly EnemyCache enemies;
 
     private string lastPath = string.Empty;
     private float radius = 60f;
 
-    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RankWatcher ranks)
+    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RankWatcher ranks, EnemyCache enemies)
     {
         this.catalog = catalog;
         this.recorder = recorder;
         this.ranks = ranks;
+        this.enemies = enemies;
     }
 
     public string Title => "Board";
@@ -53,6 +55,8 @@ public sealed class BoardTab : ITab
         DrawReaders();
         ImGuiHelpers.ScaledDummy(4f);
         DrawRecorder();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawEnemies();
         ImGuiHelpers.ScaledDummy(4f);
         DrawRoster();
         ImGuiHelpers.ScaledDummy(4f);
@@ -196,6 +200,43 @@ public sealed class BoardTab : ITab
     }
 
     /// <summary>
+    /// Everything hovered so far this session. The panel only exists under the cursor, so this is
+    /// what the room cards will have to draw on.
+    /// </summary>
+    private void DrawEnemies()
+    {
+        if (!ImGui.CollapsingHeader($"Enemies seen ({enemies.Count})", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        if (enemies.Count == 0)
+        {
+            ImGui.TextDisabled("None yet. Hover an enemy on the board and it lands here.");
+            return;
+        }
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Forget all"))
+            enemies.Clear();
+
+        foreach (var enemy in enemies.All)
+        {
+            using var node = ImRaii.TreeNode($"{enemy.Name} — {enemy.Summary}###enemy{enemy.Name}");
+            if (!node.Success)
+                continue;
+
+            ImGui.TextDisabled(string.Join("   ", enemy.Stats.Select(stat => $"{stat.Label} {stat.Stars}")));
+
+            foreach (var action in enemy.Actions)
+            {
+                ImGui.TextUnformatted(
+                    $"  {action.Name}: {action.DamageType} at {action.Target}, {action.AreaOfEffect}" +
+                    $"{(action.Status.Length > 0 ? $", inflicts {action.Status}" : string.Empty)}" +
+                    $" — interruption {action.Interruption}{(action.Nullified ? " (covered)" : string.Empty)}");
+            }
+        }
+    }
+
+    /// <summary>
     /// The roster, with the progression rank that leveling mode has to sort on.
     /// </summary>
     private void DrawRoster()
@@ -301,6 +342,18 @@ public sealed class BoardTab : ITab
         text.AppendLine();
         text.AppendLine("# Clicks");
         text.AppendLine(recorder.Report());
+
+        text.AppendLine();
+        text.AppendLine("# Enemies seen");
+        foreach (var enemy in enemies.All)
+        {
+            text.AppendLine($"{enemy.Name}	weak={enemy.Weakness}	" +
+                            string.Join(" ", enemy.Stats.Select(stat => $"{stat.Label}={stat.Stars}")));
+            foreach (var action in enemy.Actions)
+                text.AppendLine($"	{action.Name}	target={action.Target}	dmg={action.DamageType}	" +
+                                $"aoe={action.AreaOfEffect}	status={action.Status}	" +
+                                $"interruption={action.Interruption}	nullified={action.Nullified}");
+        }
 
         text.AppendLine();
         text.AppendLine("# Roster");
