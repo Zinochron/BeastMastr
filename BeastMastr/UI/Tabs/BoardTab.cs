@@ -160,7 +160,7 @@ public sealed class BoardTab : ITab
             ImGui.TableNextColumn();
             ImGui.TextUnformatted(obj.Name.TextValue.Length > 0 ? obj.Name.TextValue : "(unnamed)");
             ImGui.TableNextColumn();
-            ImGui.TextUnformatted(obj.DataId.ToString());
+            ImGui.TextUnformatted(obj.BaseId.ToString());
             ImGui.TableNextColumn();
             ImGui.TextUnformatted($"{distance:0.0}");
             ImGui.TableNextColumn();
@@ -338,7 +338,7 @@ public sealed class BoardTab : ITab
                 continue;
 
             var onScreen = Services.GameGui.WorldToScreen(obj.Position, out var screen);
-            text.AppendLine($"{obj.ObjectKind}\t{obj.Name.TextValue}\tdataId={obj.DataId}\tdist={distance:0.0}\t" +
+            text.AppendLine($"{obj.ObjectKind}\t{obj.Name.TextValue}\tdataId={obj.BaseId}\tdist={distance:0.0}\t" +
                             $"world={obj.Position.X:0}/{obj.Position.Y:0}/{obj.Position.Z:0}\t" +
                             $"screen={(onScreen ? $"{screen.X:0}/{screen.Y:0}" : "off")}");
         }

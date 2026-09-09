@@ -576,11 +576,10 @@ nothing has to be cached. Each room's sentence is split at its colon — "Elite 
 "Combat 3 types of beast." — which keeps both halves in the player's language for free, and is why
 there is no table of room names anywhere in this plugin.
 
-`UI/BoardOverlay.cs` draws a chip under each tile with the kind, outlines the current room, and puts
-the full list beside the board in move order. The chip is deliberately just the kind: three columns
-sixty pixels apart leave no room for a sentence, and a chip that covers its neighbours is worse than
-one that says less. The panel goes to the left of the board, or to the right when the left would run
-off screen.
+`UI/BoardOverlay.cs` draws a card under each floating icon, carrying the room's kind and the game's
+own sentence about it. **It draws nothing while the board window is open** — that window already
+shows its rooms with its own labels, and a second set of cards over the top is clutter in front of
+something that does not need them. Cards are for the board you are standing on.
 
 It is an overlay rather than injected nodes on purpose. The same readers will drive native nodes in
 the Kür, and building against a separate model first is what makes that swap cheap.

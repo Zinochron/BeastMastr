@@ -21,8 +21,6 @@ public sealed class BoardOverlay : Window
 {
     private readonly Configuration configuration;
 
-    private static readonly Vector4 CurrentRoomOutline = new(1f, 0.85f, 0.3f, 1f);
-
     public BoardOverlay(Configuration configuration)
         : base("##BeastMastrBoard",
                ImGuiWindowFlags.NoDecoration | ImGuiWindowFlags.NoInputs | ImGuiWindowFlags.NoBackground |
@@ -48,28 +46,18 @@ public sealed class BoardOverlay : Window
 
     public override void Draw()
     {
-        var details = StageDetailReader.Read();
-
-        // The board window, when it is open. Its tiles carry the index that pairs them with a room.
-        var tiles = StageMapReader.Read();
-        if (tiles.Count > 0)
-        {
-            var draw = ImGui.GetWindowDrawList();
-
-            foreach (var tile in tiles)
-                DrawChip(draw, tile, details.ElementAtOrDefault(tile.DetailIndex));
-
-            DrawList(tiles, details);
+        // The board window draws its own rooms with its own labels, and a second set of cards over
+        // the top is just clutter in front of it. Cards are for the board you are standing on.
+        if (StageMapReader.IsOpen)
             return;
-        }
 
-        DrawWorldMarkers(details);
+        DrawWorldMarkers(StageDetailReader.Read());
     }
 
     /// <summary>
     /// The board you are standing on. A run is walked across physical platforms with an icon
-    /// floating over each, so this is where the cards actually belong — the board window is the
-    /// thing you open to avoid needing them.
+    /// floating over each, so this is where the cards belong — the board window is the thing you
+    /// open to avoid needing them.
     /// </summary>
     private static void DrawWorldMarkers(IReadOnlyList<StageDetailReader.Room> details)
     {
@@ -109,88 +97,6 @@ public sealed class BoardOverlay : Window
                              ImGui.ColorConvertFloat4ToU32(new Vector4(0.88f, 0.88f, 0.92f, 0.95f)),
                              info.Detail);
             }
-        }
-    }
-
-    /// <summary>
-    /// A chip beside the tile. The board is three columns sixty pixels apart, so a chip wide enough
-    /// for a sentence would cover its neighbours — this carries the kind and nothing else, and the
-    /// panel beside the board carries the sentences.
-    /// </summary>
-    private static void DrawChip(ImDrawListPtr draw, StageMapReader.BoardRoom room,
-                                 StageDetailReader.Room? info)
-    {
-        if (room.IsCurrent)
-        {
-            draw.AddRect(room.ScreenPosition - new Vector2(2f),
-                         room.ScreenPosition + room.Size + new Vector2(2f),
-                         ImGui.ColorConvertFloat4ToU32(CurrentRoomOutline), 4f, ImDrawFlags.None, 2.5f);
-        }
-
-        if (info == null)
-            return;
-
-        var text = ShortLabel(info);
-        var padding = new Vector2(4f, 1f) * ImGuiHelpers.GlobalScale;
-        var textSize = ImGui.CalcTextSize(text);
-
-        // Under the tile rather than beside it: the columns are tight, the rows are not.
-        var topLeft = new Vector2(room.Centre.X - ((textSize.X / 2f) + padding.X),
-                                  room.ScreenPosition.Y + room.Size.Y - (2f * ImGuiHelpers.GlobalScale));
-        var bottomRight = topLeft + textSize + (padding * 2f);
-
-        draw.AddRectFilled(topLeft, bottomRight, ImGui.ColorConvertFloat4ToU32(Colour(info.Kind) with { W = 0.85f }), 3f);
-        draw.AddText(topLeft + padding, ImGui.ColorConvertFloat4ToU32(new Vector4(1f, 1f, 1f, 1f)), text);
-    }
-
-    /// <summary>
-    /// The room list, in move order, beside the board. This is where the game's own sentence goes —
-    /// the thing that currently costs a click per room to read.
-    /// </summary>
-    private void DrawList(IReadOnlyList<StageMapReader.BoardRoom> rooms,
-                          IReadOnlyList<StageDetailReader.Room> details)
-    {
-        if (details.Count == 0)
-            return;
-
-        var anchor = rooms.Aggregate(new Vector2(float.MaxValue, float.MaxValue),
-                                     (left, room) => Vector2.Min(left, room.ScreenPosition));
-
-        var currentIndex = rooms.FirstOrDefault(room => room.IsCurrent)?.DetailIndex ?? -1;
-
-        var draw = ImGui.GetWindowDrawList();
-        var lineHeight = ImGui.GetTextLineHeightWithSpacing();
-        var width = 300f * ImGuiHelpers.GlobalScale;
-        var origin = new Vector2(anchor.X - width - (16f * ImGuiHelpers.GlobalScale), anchor.Y);
-
-        // Off the left edge on a narrow screen; put it to the right of the board instead.
-        if (origin.X < 0f)
-        {
-            var rightmost = rooms.Max(room => room.ScreenPosition.X + room.Size.X);
-            origin = new Vector2(rightmost + (16f * ImGuiHelpers.GlobalScale), anchor.Y);
-        }
-
-        var ordered = details.OrderBy(room => room.Move).ThenBy(room => room.Index).ToList();
-        var height = (ordered.Count + 1) * lineHeight;
-
-        draw.AddRectFilled(origin - new Vector2(8f), origin + new Vector2(width, height) + new Vector2(8f),
-                           ImGui.ColorConvertFloat4ToU32(new Vector4(0.05f, 0.05f, 0.07f, 0.82f)), 6f);
-
-        var y = origin.Y;
-        foreach (var room in ordered)
-        {
-            var isCurrent = room.Index == currentIndex;
-            var label = $"{room.Move,2}  {room.Label}";
-
-            draw.AddText(new Vector2(origin.X, y),
-                         ImGui.ColorConvertFloat4ToU32(isCurrent ? CurrentRoomOutline : Colour(room.Kind)),
-                         label);
-
-            draw.AddText(new Vector2(origin.X + (130f * ImGuiHelpers.GlobalScale), y),
-                         ImGui.ColorConvertFloat4ToU32(new Vector4(0.82f, 0.82f, 0.85f, 1f)),
-                         room.Detail);
-
-            y += lineHeight;
         }
     }
 
