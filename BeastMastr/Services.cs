@@ -21,6 +21,7 @@ public sealed class Services
     [PluginService] public static IAddonLifecycle AddonLifecycle { get; private set; } = null!;
     [PluginService] public static ICondition Condition { get; private set; } = null!;
     [PluginService] public static IObjectTable Objects { get; private set; } = null!;
+    [PluginService] public static IGameInteropProvider Interop { get; private set; } = null!;
     [PluginService] public static IChatGui Chat { get; private set; } = null!;
     [PluginService] public static INotificationManager Notifications { get; private set; } = null!;
 }

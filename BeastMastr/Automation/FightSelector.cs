@@ -28,6 +28,13 @@ public sealed unsafe class FightSelector : IDisposable
     private int cooldown;
     private uint waitingFor;
 
+    /// <summary>
+    /// Set when a pick did not take, and never cleared while the plugin is loaded. Retrying a
+    /// selection that does not work is not harmless — it moves the highlight under your hands every
+    /// time the window opens — and one failure is enough to know the mechanism is wrong.
+    /// </summary>
+    private bool givenUp;
+
     public FightSelector(Configuration configuration, BeastCatalog catalog)
     {
         this.configuration = configuration;
@@ -98,7 +105,7 @@ public sealed unsafe class FightSelector : IDisposable
 
     private void Start(IReadOnlyList<PetPartyReader.Slot> slots)
     {
-        if (configuration.FightSelection != FightMode.RepeatLast)
+        if (givenUp || configuration.FightSelection != FightMode.RepeatLast)
             return;
 
         // Only ever on the window that asks for a fight's familiars, and only one it recognises.
@@ -206,8 +213,9 @@ public sealed unsafe class FightSelector : IDisposable
     private void Stop(string why)
     {
         Reset();
-        Status = why;
-        Services.Log.Warning(why);
+        givenUp = true;
+        Status = $"{why} Not trying again until the plugin reloads.";
+        Services.Log.Warning(Status);
     }
 
     private void Reset()
