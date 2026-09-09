@@ -1,54 +1,78 @@
+using System.Collections.Generic;
+
 namespace BeastMastr.Rules;
 
 /// <summary>
 /// The eleven statuses a beast's actions can inflict, in the order <c>BNpcResist</c> uses — the
 /// same order <c>XBMPet</c>'s eleven bool columns follow, so slot n is column 11 + n.
 ///
-/// These names were not read out of the game; nothing names them. They were derived by taking every
-/// beast that sets a given column and reading what its action descriptions have in common: the only
-/// three beasts setting slot 2 are the three whose actions paralyse. Nine of the eleven are
-/// confirmed that way. See <c>README-DEV.md</c> for the evidence and for the two that are not.
+/// The names are the game's own: the board detail window lists all eleven as a legend, and every
+/// one of them lines up with a slot that had already been identified by correlating the beasts
+/// setting it against their action descriptions. See <c>README-DEV.md</c>.
 /// </summary>
 public enum BeastStatus
 {
-    /// <summary>Confirmed: apkallu, antling and morbol, all of which slow.</summary>
     Slow = 0,
-
-    /// <summary>Confirmed: ziz and cobra petrify; chimera deep freezes, which sits in the same slot.</summary>
-    Petrification = 1,
-
-    /// <summary>Confirmed: opo-opo, coeurl and morbol, all of which paralyse.</summary>
+    PetrificationOrFreeze = 1,
     Paralysis = 2,
 
     /// <summary>
-    /// Inferred, not confirmed. The five beasts setting it — coblyn, dullahan, golem, spriggan and
-    /// ice golem — inflict nothing in either of their two visible action descriptions, which is
-    /// itself evidence that the third action is missing from the sheet. Silence is what the slot
-    /// would be in the usual eleven; check it against the notebook before relying on it.
+    /// The one the plugin exists for, and the one that was guessed wrong before the legend turned
+    /// up — it had been inferred as Silence. Slot 3 is set by coblyn, dullahan, golem, spriggan and
+    /// ice golem, none of which interrupts in either of the two action descriptions the sheet
+    /// carries, which fits: their interrupt is the Borrow the sheet does not hold.
     /// </summary>
-    Silence = 3,
+    Interruption = 3,
 
-    /// <summary>Confirmed: dodo, worm and morbol blind.</summary>
     Blind = 4,
-
-    /// <summary>Confirmed: diremite, wespe, flying trap and uragnite poison.</summary>
     Poison = 5,
-
-    /// <summary>Confirmed: buffalo, the only beast that stuns.</summary>
     Stun = 6,
-
-    /// <summary>Confirmed: lamb puts enemies to sleep; treant causes nightmares.</summary>
     Sleep = 7,
-
-    /// <summary>Confirmed: diremite and slime bind.</summary>
     Bind = 8,
 
-    /// <summary>
-    /// Confirmed for mandragora and worm, which inflict heaviness. Goobbue and hydra sicken rather
-    /// than slow, so the slot may be broader than "heavy" alone.
-    /// </summary>
+    /// <summary>Heavy, and also sicken — goobbue sickens and sits here, as do the beasts that inflict heaviness.</summary>
     Heavy = 9,
 
-    /// <summary>Confirmed: ghost and rafflesia doom; Karlabos cuts HP to a single digit.</summary>
-    Doom = 10,
+    /// <summary>Doom and the like: ghost and rafflesia doom, Karlabos cuts HP to a single digit.</summary>
+    FlatDamageOrDeath = 10,
+}
+
+public static class BeastStatusNames
+{
+    /// <summary>The labels the game uses, so nothing here invents a word the player has not seen.</summary>
+    public static string Label(this BeastStatus status) => status switch
+    {
+        BeastStatus.Slow => "Slow",
+        BeastStatus.PetrificationOrFreeze => "Petrification/Freeze",
+        BeastStatus.Paralysis => "Paralysis",
+        BeastStatus.Interruption => "Interruption",
+        BeastStatus.Blind => "Blind",
+        BeastStatus.Poison => "Poison",
+        BeastStatus.Stun => "Stun",
+        BeastStatus.Sleep => "Sleep",
+        BeastStatus.Bind => "Bind",
+        BeastStatus.Heavy => "Heavy",
+        BeastStatus.FlatDamageOrDeath => "Flat Damage/Death",
+        _ => status.ToString(),
+    };
+
+    /// <summary>
+    /// The order the game shows them in, which is not the order it stores them in: the legend runs
+    /// down the slots but puts Poison at the end rather than at 5. Anything the player reads should
+    /// follow this, so a badge row matches the window they already know.
+    /// </summary>
+    public static readonly IReadOnlyList<BeastStatus> DisplayOrder =
+    [
+        BeastStatus.Slow,
+        BeastStatus.PetrificationOrFreeze,
+        BeastStatus.Paralysis,
+        BeastStatus.Interruption,
+        BeastStatus.Blind,
+        BeastStatus.Stun,
+        BeastStatus.Sleep,
+        BeastStatus.Bind,
+        BeastStatus.Heavy,
+        BeastStatus.FlatDamageOrDeath,
+        BeastStatus.Poison,
+    ];
 }

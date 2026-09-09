@@ -63,35 +63,48 @@ real sheet has 27 columns and no resistance array at all.
 Columns 11..21 follow `BNpcResist`'s indexer, which is itself 11 bools over 256 rows — so slot n is
 column 11 + n. `Rules/BeastStatus.cs` names them.
 
-**This is much better news than the plan assumed.** The bestiary filter — which of my beasts sleeps,
-poisons, stuns — comes straight out of these eleven bools. No hand-curated table is needed for
-statuses at all. What is still not in the data is interrupt, cleanse and dispel: vulture "dispels
-one beneficial status" and bat "removes a status ailment", and neither has a bool. Those come from
-the description strings or from the override file, and only those.
+**This is much better news than the plan assumed.** The bestiary filter — which of my beasts
+sleeps, poisons, stuns, **interrupts** — comes straight out of these eleven bools. No hand-curated
+table is needed for any of it. Interrupt in particular is slot 3, not something that has to be
+parsed out of prose. What is genuinely absent is cleanse and dispel: vulture "dispels one
+beneficial status" and bat "removes a status ailment", and neither has a bool. Those two, and only
+those two, need the description strings or an override file.
 
-### How the eleven status slots were named
+### The eleven status slots
 
-Correlation. For each column, list every beast that sets it beside its action descriptions and read
-off the common factor — the only three beasts setting column 13 are the three whose actions
-paralyse. Nine of eleven fell out in one pass:
+The names are the game's own. The board detail window carries the full legend in its AtkValues,
+indices 40019 to 40029:
+
+> Slow · Petrification/Freeze · Paralysis · **Interruption** · Blind · Stun · Sleep · Bind · Heavy ·
+> Flat Damage/Death · Poison
+
+Which slot each belongs to was worked out separately, before the legend turned up, by correlation:
+list every beast that sets a column beside its action descriptions and read off the common factor —
+the only three beasts setting column 13 are the three whose actions paralyse. The two agree, and
+between them every slot is now named:
 
 | Slot | Status | Evidence |
 |---|---|---|
 | 0 | Slow | apkallu, antling, morbol |
-| 1 | Petrification | ziz, cobra; chimera deep freezes |
+| 1 | Petrification/Freeze | ziz, cobra petrify; chimera deep freezes — hence the double name |
 | 2 | Paralysis | opo-opo, coeurl, morbol |
-| 3 | **Silence — inferred** | coblyn, dullahan, golem, spriggan, ice golem: none inflicts anything in either visible description |
+| 3 | **Interruption** | coblyn, dullahan, golem, spriggan, ice golem |
 | 4 | Blind | dodo, worm, morbol |
 | 5 | Poison | diremite, wespe, flying trap, uragnite |
 | 6 | Stun | buffalo, alone |
 | 7 | Sleep | lamb; treant causes nightmares |
 | 8 | Bind | diremite, slime |
-| 9 | Heavy | mandragora, worm; goobbue and hydra sicken, so it may be broader |
-| 10 | Doom | ghost, rafflesia; Karlabos cuts HP to a single digit |
+| 9 | Heavy | mandragora, worm; goobbue sickens — the slot covers both |
+| 10 | Flat Damage/Death | ghost, rafflesia doom; Karlabos cuts HP to a single digit |
 
-Slot 3 is the one to check against the notebook. That five beasts set a status none of their visible
-actions inflicts is also the best evidence that **the third action really is missing from XBMPet** —
-the live notebook shows three per beast, and columns 9 and 10 are only two.
+**Slot 3 had been inferred as Silence and that was wrong.** The five beasts setting it inflict
+nothing in either description the sheet carries, which is consistent either way — but the legend
+has no Silence in it at all, and Interruption is the name left over. It also explains those five:
+their interrupt is the Borrow the sheet does not hold.
+
+The legend's order is *not* the storage order. It runs down the slots but moves Poison from 5 to
+the end. `BeastStatusNames.DisplayOrder` keeps the legend's order, because that is the one the
+player already knows from the window.
 
 ### The small sheets, in full
 
@@ -132,19 +145,24 @@ each board pays for each bonus, 0 where it does not offer it.
    Release** and **Borrow**, each with an unlock level. Columns 9 and 10 are the first two
    descriptions in that order. Borrow is not in the sheet — and neither are any of the three
    action *names*, only descriptions, so both have to come from somewhere else.
-2. **Status slot 3.** Inferred as Silence. Nothing seen yet puts a status against coblyn or golem.
-3. **Classification names** for column 1's values 2..8. 1 is Beastkin.
-4. **Beast rank.** Column 3 is inferred by elimination and has not been seen against a named beast.
-5. **The habitat column.** Column 2 is not a `PlaceName` id: goobbue's habitat is Lower La Noscea,
+2. **Classification names** for column 1's values 2..8. 1 is Beastkin.
+3. **Beast rank.** Column 3 is inferred by elimination and has not been seen against a named beast.
+4. **The habitat column.** Column 2 is not a `PlaceName` id: goobbue's habitat is Lower La Noscea,
    which is `PlaceName` 31, and its column 2 is 21. All 7912 sheets were searched for one holding
    that string at row 21, and for one linking both goobbue's 21 → 31 and squirrel's 35 → Central
    Shroud numerically. Both searches came back empty, so the resolution goes through something not
    yet found. Column 6 switches between three branches, not two: 0 for one beast, 1 for the
    overworld ones, 2 for the late ones that live in duties.
-6. **Auto-attack damage type.** The detail page shows one — goobbue's is Blunt, which is
+5. **Auto-attack damage type.** The detail page shows one — goobbue's is Blunt, which is
    `XBMElement` 7 — and no column of `XBMPet` has been matched to it.
 
-Answered, and no longer open: what columns 22..26 are, and whether the notebook's list recycles.
+6. **Whether the map and the detail list agree on room count.** The board capture showed thirteen
+   visible room nodes; the detail list described sixteen rooms. The two were taken eight seconds
+   apart on different screens, so this may be nothing — but a capture with both open at once is
+   needed before an overlay pairs them up.
+
+Answered, and no longer open: what columns 22..26 are, whether the notebook's list recycles, and
+what all eleven status slots are.
 
 ## Verified against the installed Dalamud, not guessed
 
@@ -269,3 +287,53 @@ covers sicken as well.
 The grid's roman numerals are a trap: tiles I, II and III sit on beasts whose column 3 reads 3, 3
 and 4, while a beast at 3 carries none. They are Battlehorn slot assignments — player state — not
 anything from a sheet.
+
+### The Crucible board — 2026-09-09
+
+Taken on the board **selection** screen, not inside a run: the values carry "Challenge This Board",
+"Level: 50 (Sync to 50)" and the entry costs.
+
+**`XBMStageMap` holds position, not content.** Its own AtkValues are two numbers. What it has is a
+`Component/XBMContentStageEventMap` at the top of its tree, and under that a flat set of
+`Component/Base` children carrying no text at all:
+
+| Node ids | What |
+|---|---|
+| 30001 upward | the rooms — 50x50 tiles, three columns 60px apart, 13 visible |
+| 40001 upward | straight links between two rooms |
+| 50001, 70001 upward | the two diagonal link graphics |
+| 60001 upward | all hidden in this capture |
+
+Room tiles sat at x ∈ {1651, 1711, 1771} and y from 395 to 935 in steps of 60 — a single column down
+the middle that forks left and right three times and rejoins. **The overlay anchors here**, and
+because the tiles carry no text, everything a card says has to come from the detail list.
+
+**`XBMStageDetailList` holds the content**, as one block of forty AtkValues per room, listed from
+the last move backwards. Within a block: `+2` the move number, `+4` its "Move 12" label, `+5` the
+room kind, `+7` the description. A whole board read out of one capture:
+
+```
+Move  1  Enemy          Enemy #1: Combat 2 types of beast.
+Move  2  Enemy          Enemy #2: Combat 2 types of beast.
+Move  3  Shop           Shop #1
+Move  4  Enemy          Enemy #3: Combat 1 type of beast.
+Move  4  EliteEnemy     Elite Enemy #1: Combat 3 types of beast.
+Move  5  Campsite       Campsite #1: Recover HP for yourself and up to 3 familiars.
+Move  5  Treasure       Treasure #1
+Move  6  Enemy          Enemy #4: Combat 2 types of beast.
+Move  7  Shop           Shop #2
+Move  7  Treasure       Treasure #2
+Move  8  EliteEnemy     Elite Enemy #2: Combat 3 types of beast.
+Move  9  Treasure       Treasure #3
+Move 10  Campsite       Campsite #2
+Move 10  Random         Random Enemy or Treasure #1: Take your chances.
+Move 11  Shop           Shop #3
+Move 12  Boss           Boss of the Board: Combat 2 types of beast.
+```
+
+A move listed twice is a fork. The kind ids run Enemy 0, Elite Enemy 1, Boss 2, Shop 3, Campsite 4,
+Treasure 5, Random Enemy or Treasure 6 — every one of them read off a description that names it.
+
+What is **not** here is the thing the room cards most need: which beasts an enemy room actually
+holds, and their weaknesses. "Combat 2 types of beast" is all the selection screen says. That
+either arrives once a run is under way, or lives in `XBMBattleMonster` / `XBMBattleMonsterDetail`.

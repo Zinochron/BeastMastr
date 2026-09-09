@@ -153,6 +153,72 @@ public static class XbmColumns
     }
 
     /// <summary>
+    /// The board, <c>XBMStageMap</c>. Its own AtkValues hold almost nothing — the room content
+    /// comes from <see cref="StageDetailList"/> — but its node tree is where the rooms sit on
+    /// screen, which is what an overlay has to anchor to.
+    /// </summary>
+    public static class StageMap
+    {
+        public const string Addon = "XBMStageMap";
+
+        /// <summary>
+        /// Room nodes run from here upward inside the <c>XBMContentStageEventMap</c> component,
+        /// as 50x50 tiles on a three column grid 60 pixels apart. Not every id is in use; read the
+        /// visible ones rather than assuming a count.
+        /// </summary>
+        public const int FirstRoomNodeId = 30001;
+
+        /// <summary>Straight links between two rooms, 40001 upward.</summary>
+        public const int FirstStraightLinkNodeId = 40001;
+
+        /// <summary>The two diagonal link graphics, 50001 and 70001 upward.</summary>
+        public const int FirstDiagonalLinkNodeId = 50001;
+        public const int SecondDiagonalLinkNodeId = 70001;
+    }
+
+    /// <summary>
+    /// The board's room list, <c>XBMStageDetailList</c>. One block of forty AtkValues per room,
+    /// starting at <see cref="FirstBlock"/>, listed from the last move backwards.
+    /// </summary>
+    public static class StageDetailList
+    {
+        public const string Addon = "XBMStageDetailList";
+
+        public const int FirstBlock = 6;
+        public const int BlockStride = 40;
+
+        /// <summary>Which move the room is on. Branching moves appear twice, once per option.</summary>
+        public const int MoveOffset = 2;
+
+        /// <summary>"Move 12", as shown.</summary>
+        public const int MoveLabelOffset = 4;
+
+        /// <summary>Room kind, see <see cref="RoomKind"/>.</summary>
+        public const int KindOffset = 5;
+
+        /// <summary>"Elite Enemy #2: Combat 3 types of beast."</summary>
+        public const int DescriptionOffset = 7;
+
+        public static int Value(int block, int offset) =>
+            FirstBlock + (block * BlockStride) + offset;
+    }
+
+    /// <summary>
+    /// Room kinds as <see cref="StageDetailList.KindOffset"/> reports them. Read off a full board:
+    /// every value carried a description naming its kind.
+    /// </summary>
+    public enum RoomKind
+    {
+        Enemy = 0,
+        EliteEnemy = 1,
+        Boss = 2,
+        Shop = 3,
+        Campsite = 4,
+        Treasure = 5,
+        RandomEnemyOrTreasure = 6,
+    }
+
+    /// <summary>
     /// A board. 6 rows, 37 columns. Columns 4..36 are 33 wide and line up one for one with
     /// <c>XBMScoreBonus</c>'s 33 rows: the points that board pays for each bonus, 0 when it does not
     /// offer it.
