@@ -755,6 +755,21 @@ driven as ordinary `AtkComponentList`s, and that list has `SelectItem(index)`, `
 and `ListLength` in FFXIVClientStructs. **So selection is a method call, not a payload**, and the
 whole hand-built-AtkValue hazard is avoided.
 
+### What a click actually sends
+
+Recorded, not derived. Clicking the first familiar makes `XBMPetParty` fire:
+
+```
+FireCallback  [0] Int=1  [1] Int=0
+```
+
+Command then row. **Selecting and deselecting fire exactly the same thing**, so it is a toggle and
+not a set — which matters: sending it for a familiar already called would take it back out.
+
+The first attempt used `AtkComponentList.SelectItem`, which moves the list's cursor and performs no
+selection at all. Nothing errored; the window simply never took the familiar, and only the read-back
+caught it. That is the whole argument for reading back rather than trusting a call to have worked.
+
 `Automation/FightSelector.cs` is the only place in this plugin that changes game state. It picks
 one row per six frames and reads the window back after each: a pick that did not take stops the run
 and says so, rather than pressing on. It only acts when nothing is chosen yet, so it never overrides

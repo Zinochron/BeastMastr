@@ -11,10 +11,10 @@ namespace BeastMastr.Automation;
 /// <summary>
 /// Calls the same familiars into a fight as last time.
 ///
-/// The only place in this plugin that changes game state. Everything it does is a
-/// <c>SelectItem</c> on the window's own list, and nothing is ever judged by a return value —
-/// after each pick the window is read back, and a pick that did not take stops the run rather than
-/// pressing on. That rule is Sortr's, learned there the hard way.
+/// The only place in this plugin that changes game state. It sends the window the same callback a
+/// real click sends — recorded from an actual click rather than guessed — and nothing is ever
+/// judged by a return value: after each pick the window is read back, and a pick that did not take
+/// stops the run rather than pressing on. That rule is Sortr's, learned there the hard way.
 /// </summary>
 public sealed unsafe class FightSelector : IDisposable
 {
@@ -156,17 +156,24 @@ public sealed unsafe class FightSelector : IDisposable
         }
 
         var next = pending.Dequeue();
-        var index = slots.FirstOrDefault(slot => slot.Beast?.Number == next)?.Index ?? -1;
+        var slot = slots.FirstOrDefault(candidate => candidate.Beast?.Number == next);
 
-        if (index < 0)
+        if (slot == null)
         {
             Stop("A familiar left the roster mid-selection; stopping.");
             return;
         }
 
-        if (!Select(index))
+        // The callback toggles, so sending it for one already called would take it back out.
+        if (slot.IsCalled)
         {
-            Stop("The window has no list to select in; stopping.");
+            cooldown = 1;
+            return;
+        }
+
+        if (!Select(slot.Index))
+        {
+            Stop("The roster window went away mid-selection; stopping.");
             return;
         }
 
@@ -174,37 +181,29 @@ public sealed unsafe class FightSelector : IDisposable
         cooldown = FramesBetweenPicks;
     }
 
+    /// <summary>Command the window's own click sends. Recorded, not guessed.</summary>
+    private const int ToggleCommand = 1;
+
     /// <summary>
-    /// Clicks a row the way the window's own list does. Not a hand-built AtkValue payload: those are
-    /// undocumented and version specific, and this repository's neighbours have the scars.
+    /// Sends what clicking that row sends. A real click on the first familiar fires
+    /// <c>FireCallback</c> with <c>[1, 0]</c> — command then row — and selecting and deselecting
+    /// fire exactly the same thing, so it is a toggle rather than a set.
+    ///
+    /// The first attempt used <c>AtkComponentList.SelectItem</c>, which moves the list's cursor and
+    /// performs no selection at all. The window simply never took the familiar, which is what the
+    /// read-back caught.
     /// </summary>
     private static bool Select(int index)
     {
-        if (!AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
+        if (index < 0 || !AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
             return false;
 
-        var list = FindList(addon);
-        if (list == null || index < 0 || index >= list->ListLength)
-            return false;
+        var values = stackalloc AtkValue[2];
+        values[0].SetInt(ToggleCommand);
+        values[1].SetInt(index);
 
-        list->SelectItem(index);
+        addon->FireCallback(2, values);
         return true;
-    }
-
-    private static AtkComponentList* FindList(AtkUnitBase* addon)
-    {
-        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
-        {
-            var node = addon->UldManager.NodeList[i];
-            if (node == null || (uint)node->Type < 1000)
-                continue;
-
-            var component = ((AtkComponentNode*)node)->Component;
-            if (component != null && component->GetComponentType() == ComponentType.List)
-                return (AtkComponentList*)component;
-        }
-
-        return null;
     }
 
     private static string Name(IEnumerable<PetPartyReader.Slot> slots, uint beastNumber) =>
