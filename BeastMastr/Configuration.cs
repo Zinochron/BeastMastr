@@ -31,6 +31,9 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool DecorateNotebook { get; set; } = true;
 
+    /// <summary>Draw the room cards over the Crucible board.</summary>
+    public bool ShowBoardOverlay { get; set; } = true;
+
     /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>
     public bool ShowDataTab { get; set; } = true;
 

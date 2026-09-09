@@ -28,6 +28,17 @@ public sealed class SettingsTab : ITab
             "in the Beasts tab excludes. Turning this off hands the window back exactly as the game " +
             "draws it, the next time it opens.");
 
+        var overlay = configuration.ShowBoardOverlay;
+        if (ImGui.Checkbox("Show room cards on the Crucible board", ref overlay))
+        {
+            configuration.ShowBoardOverlay = overlay;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "Marks each room on the board with what it holds, and lists the whole board beside it — " +
+            "the thing that otherwise costs a click per room to read.");
+
         ImGui.Separator();
 
         var showData = configuration.ShowDataTab;

@@ -554,3 +554,35 @@ TextNode.TextColor     → Vector4
 One trap: the AtkValue type enum is `AtkValueType`, not `ValueType` — and with `using System;` in
 the file, a bare `ValueType` silently resolves to `System.ValueType` and the error blames the wrong
 thing.
+
+## Phase 3: room cards on the board
+
+The board splits cleanly, and the split is what makes this tractable.
+
+`Data/StageMapReader.cs` answers only *where*. `XBMStageMap` carries two AtkValues and no text at
+all, but its `AtkComponentXBMContentStageEventMap` hands out, per board position, an entry index, a
+component, and whether it is the current room — as four parallel `Span`s on each `Entry`. **So the
+pairing between a tile and a room is given, not guessed from where the tiles sit.** The component is
+found by walking the window for `ComponentType.XBMContentStageEventMap` rather than by node id;
+the id was 2 in the capture, but a component located by what it is survives a layout change.
+
+`Data/StageDetailReader.cs` answers *what*. `XBMStageDetailList` is open whenever the board is, so
+nothing has to be cached. Each room's sentence is split at its colon — "Elite Enemy #2" and
+"Combat 3 types of beast." — which keeps both halves in the player's language for free, and is why
+there is no table of room names anywhere in this plugin.
+
+`UI/BoardOverlay.cs` draws a chip under each tile with the kind, outlines the current room, and puts
+the full list beside the board in move order. The chip is deliberately just the kind: three columns
+sixty pixels apart leave no room for a sentence, and a chip that covers its neighbours is worse than
+one that says less. The panel goes to the left of the board, or to the right when the left would run
+off screen.
+
+It is an overlay rather than injected nodes on purpose. The same readers will drive native nodes in
+the Kür, and building against a separate model first is what makes that swap cheap.
+
+### Still to come
+
+The room cards say what kind of room it is, not what is *in* it. Enemy weaknesses, the statuses they
+are open to, and whether their actions can be interrupted all live in `XBMBattleMonsterDetail`,
+which only exists while the cursor rests on an enemy — so it has to be read on hover and cached per
+enemy. That is the next piece, and the recommendation of which beasts to bring depends on it.

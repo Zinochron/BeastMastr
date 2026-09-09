@@ -27,6 +27,27 @@ public sealed class BeastFilter
         && Classifications.Count == 0
         && DamageTypes.Count == 0;
 
+    /// <summary>
+    /// Cheap stand-in for "has this changed". The sets are public and mutated in place, so there is
+    /// no event to subscribe to; a watcher compares this instead of diffing four collections.
+    /// </summary>
+    public int Signature()
+    {
+        var hash = new HashCode();
+        hash.Add(Search);
+        hash.Add(Statuses.Count);
+        hash.Add(Traits.Count);
+        hash.Add(Classifications.Count);
+        hash.Add(DamageTypes.Count);
+
+        foreach (var status in Statuses.Order()) hash.Add(status);
+        foreach (var trait in Traits.Order()) hash.Add(trait);
+        foreach (var classification in Classifications.Order()) hash.Add(classification);
+        foreach (var damage in DamageTypes.Order()) hash.Add(damage);
+
+        return hash.ToHashCode();
+    }
+
     public void Clear()
     {
         Search = string.Empty;

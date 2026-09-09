@@ -52,6 +52,9 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
 
     private int ticksUntilRecheck;
 
+    /// <summary>What the filter looked like when the tiles were last dimmed.</summary>
+    private int drawnFilter;
+
     public MonsterNotebookDecorator(Configuration configuration, BeastCatalog catalog, BeastFilter filter,
                                     Func<bool> nativeUiReady)
     {
@@ -96,7 +99,18 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
             return;
         }
 
-        if (badges.Count == 0 && open != null)
+        if (open == null)
+            return;
+
+        if (badges.Count == 0)
+        {
+            Decorate(open);
+            return;
+        }
+
+        // Changing the filter does not touch the window, so nothing tells it to redraw. Without
+        // this, dimming only caught up whenever the game happened to send an update — seconds later.
+        if (filter.Signature() != drawnFilter)
             Decorate(open);
     }
 
@@ -125,6 +139,7 @@ public sealed unsafe class MonsterNotebookDecorator : IDisposable
         {
             Attach(addon);
             Refresh(addon);
+            drawnFilter = filter.Signature();
         }
         catch (Exception ex)
         {

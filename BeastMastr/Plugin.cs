@@ -19,6 +19,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private readonly WindowSystem windowSystem = new("BeastMastr");
     private readonly MainWindow mainWindow;
+    private readonly BoardOverlay boardOverlay;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -68,6 +69,9 @@ public sealed class Plugin : IDalamudPlugin
 
         mainWindow = new MainWindow(tabs);
         windowSystem.AddWindow(mainWindow);
+
+        boardOverlay = new BoardOverlay(Configuration);
+        windowSystem.AddWindow(boardOverlay);
 
         Services.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
