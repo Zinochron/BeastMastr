@@ -938,3 +938,34 @@ worth having whether or not this was one.
 are refused with nothing explaining why — which reads exactly like the automation being broken. The
 roster window lists one row per slot, so the real size is there to be read: the plan is now clamped
 to it, and the status says so when the setting and the board disagree.
+
+## Phase 4: the game's own windows, not a window of our own
+
+Asked for: only the next room shown, in detail, and buttons for the extras in the screens they
+belong to.
+
+The first of those changes the shape of the whole thing. If only one room is ever shown, the card
+does not need to hang off a world marker at all — it does not need per-frame projection, it does not
+fight the camera, and it can be a panel in the run's own HUD. **Both halves then become the same
+mechanism**: attach KamiToolKit nodes to a window the game already has, which is what the bestiary
+badges do and what is therefore already proven.
+
+`KamiToolKit` has `NativeAddon` for a standalone window, and it is not needed here. Verified while
+looking: `NativeAddon.InternalName` is a string, `Title` a `ReadOnlySeString`, `Size` a `Vector2`,
+with `Open()`/`Close()` and a `ContentStartPosition`; nodes go on with the `AttachNode(NativeAddon,
+NodePosition)` overload rather than a method on the addon. `TextButtonNode` takes `String`, `Size`,
+`Position`, `IsVisible` and an `OnClick` action — and has no `Tooltip`.
+
+### Buttons
+
+`Native/ActionButtons.cs` puts "Fill for levelling" under the bestiary, and only while the roster is
+open beside it — that pairing is team composition, and anywhere else the button would do nothing.
+It sits below the window rather than inside it, because the bestiary's own area is tiles all the way
+across and a button among them covers one.
+
+**A button is a better home for this than a mode.** You press it when you mean it, pressing it again
+is how you retry after a failure, and nothing happens while you are only looking. `RequestFill`
+therefore also clears the give-up flag, which until now needed a plugin reload. The automatic mode
+stays for anyone who wants it, and its description now says it does what the button does.
+
+Node ids start at `0x42460000`, clear of the bestiary badges at `0x42450000`.

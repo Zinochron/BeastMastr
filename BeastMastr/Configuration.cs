@@ -86,6 +86,12 @@ public class Configuration : IPluginConfiguration
     /// hanging under floating icons across a whole board is not yet a good way to read one. The
     /// readers behind it stay, so a better presentation costs nothing but the presentation.
     /// </summary>
+    /// <summary>
+    /// Put the plugin's actions into the game's own windows as buttons. On by default: a
+    /// button that is only offered where it does something is not in the way.
+    /// </summary>
+    public bool ShowActionButtons { get; set; } = true;
+
     public bool ShowBoardOverlay { get; set; } = false;
 
     /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>

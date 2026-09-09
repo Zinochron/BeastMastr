@@ -78,6 +78,17 @@ public sealed class SettingsTab : ITab
     /// </summary>
     private void DrawTeamAutomation()
     {
+        var showButtons = configuration.ShowActionButtons;
+        if (ImGui.Checkbox("Put buttons in the game's own windows", ref showButtons))
+        {
+            configuration.ShowActionButtons = showButtons;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "Adds a \"Fill for levelling\" button under the bestiary while a team is being put " +
+            "together. It only appears where it does something.");
+
         var leveling = configuration.TeamSelection == TeamMode.Leveling;
         if (ImGui.Checkbox("Fill the team for levelling", ref leveling))
         {
@@ -86,9 +97,8 @@ public sealed class SettingsTab : ITab
         }
 
         Widgets.HelpMarker(
-            "While putting a team together, sets it to the least advanced beasts plus the ones you " +
-            "chose to carry them — both picked in the Beasts tab. It stops as soon as a change does " +
-            "not take, and beasts on another page of the bestiary are reported rather than skipped.");
+            "Does the same as the button, but on its own as soon as a team is being put together. " +
+            "Leave it off if you would rather ask for it — the button is there either way.");
 
         if (teamSelector.Status.Length > 0)
             ImGui.TextDisabled(teamSelector.Status);

@@ -27,6 +27,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RankWatcher rankWatcher;
     private readonly EnemyCache enemies;
     private readonly TeamSelector teamSelector;
+    private readonly ActionButtons actionButtons;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -70,6 +71,8 @@ public sealed class Plugin : IDalamudPlugin
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
                                                 () => kamiToolKitReady.IsCompletedSuccessfully);
+        actionButtons = new ActionButtons(Configuration, teamSelector,
+                                          () => kamiToolKitReady.IsCompletedSuccessfully);
 
         var tabs = new List<ITab> { new BeastsTab(Catalog, Filter, Configuration, rankWatcher) };
         if (Configuration.ShowDataTab)
@@ -137,6 +140,7 @@ public sealed class Plugin : IDalamudPlugin
         rankWatcher.Dispose();
         enemies.Dispose();
         teamSelector.Dispose();
+        actionButtons.Dispose();
         KamiToolKitLibrary.Dispose();
 
         ECommonsMain.Dispose();

@@ -53,6 +53,21 @@ public sealed unsafe class TeamSelector : IDisposable
 
     public string Status { get; private set; } = string.Empty;
 
+    /// <summary>Set by the button. Runs once, whatever the mode says, and clears the give-up flag.</summary>
+    private bool requested;
+
+    /// <summary>
+    /// Fill the team now, asked for rather than triggered. A button is a better place for this than
+    /// a mode that fires on its own the moment a window opens — you press it when you mean it, and
+    /// pressing it again after a failure is how you retry.
+    /// </summary>
+    public void RequestFill()
+    {
+        requested = true;
+        givenUp = false;
+        Reset();
+    }
+
     /// <summary>
     /// Only while the bestiary and the roster are both up. That pairing happens when a team is being
     /// put together and at no other time, which beats matching a localised prompt.
@@ -62,7 +77,7 @@ public sealed unsafe class TeamSelector : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
-        if (givenUp || configuration.TeamSelection != TeamMode.Leveling)
+        if (givenUp || (!requested && configuration.TeamSelection != TeamMode.Leveling))
             return;
 
         if (!ComposingTeam)
@@ -95,6 +110,7 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (known.Count == 0)
         {
+            requested = false;
             Status = "No ranks known yet, so there is nothing to sort on. Browse the bestiary once.";
             return;
         }
@@ -112,6 +128,7 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (wanted.SetEquals(current))
         {
+            requested = false;
             Status = $"Team already matches ({wanted.Count} beasts).";
             return;
         }
@@ -120,6 +137,8 @@ public sealed unsafe class TeamSelector : IDisposable
         // filling it.
         foreach (var beast in current.Except(wanted).Concat(wanted.Except(current)))
             pending.Enqueue(beast);
+
+        requested = false;
 
         Status = size < configured
                      ? $"Adjusting {pending.Count} beast(s) for {size} slots — the board offers {slots}, " +
