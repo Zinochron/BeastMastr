@@ -628,20 +628,28 @@ longer need a card. Hovering enemies is what you do on the board anyway, so it f
 play. In memory only — a run's enemies mean nothing after it ends — and a newer reading replaces an
 older one, because the nullification note reflects the team you have right now.
 
-### Which room an enemy is in is not in the data
+### The enemies are in the board window, in the node tree
 
-Worth stating, because it was the obvious thing to look for: the room list's blocks carry the move,
-the kind and a sentence, and nothing about enemies. There is no enemy list per room anywhere that
-has been found.
+This was got wrong first, and the mistake is worth naming because it is a general one: the room
+list's **AtkValues** carry only the move, the kind and a sentence, so the conclusion was that
+enemies were not in the window at all and had to be caught from the hover panel. They are in the
+window — in its **node tree**, which is a different place entirely. Checking one and concluding
+about the other cost a detour through mouse-position attribution that has now been deleted.
 
-The attribution comes from the hovering instead. The panel appears when the cursor rests on a room
-**in the board window**, and those rooms' screen rectangles are already known — so the room under
-the cursor when the panel appears is the enemy's room. `BoardOverlay` does that during the draw
-pass, since that is the only place with a mouse position, and it is the one thing it does while the
-board window is open.
+`XBMStageDetailList` holds two `AtkComponentList`s: the rooms, and the enemies of whichever room is
+selected. The room list's `SelectedItemIndex` says which room the enemies belong to, so clicking
+through the rooms — what you do to read a board anyway — fills everything in with no hovering.
 
-It costs no extra clicking: looking at the board is already how you find out what is in a room. What
-has not been hovered is simply not known, and the card falls back to the game's own sentence.
+Inside an enemy row, the label/value pairs are told apart **by their values, not their labels**: a
+value made only of stars is a stat, the one that is not is the weakness. Labels are localised;
+shapes are not.
+
+### Two sources, because neither is complete
+
+The room list gives which enemies are in which room, plus their weakness and stats. It does not give
+what they *do* — the statuses they inflict and whether their actions can be interrupted are only in
+the hover panel. So `EnemyCache` reads both: the room list by selection, the panel by name, merged
+on the card. A room only selected shows its enemies and weaknesses; one also hovered shows the rest.
 
 ### Still to come
 

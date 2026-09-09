@@ -200,17 +200,21 @@ public sealed class BoardTab : ITab
     }
 
     /// <summary>
-    /// Everything hovered so far this session. The panel only exists under the cursor, so this is
-    /// what the room cards will have to draw on.
+    /// What the board has said about each room's enemies so far. Fills in as rooms are selected.
     /// </summary>
     private void DrawEnemies()
     {
-        if (!ImGui.CollapsingHeader($"Enemies seen ({enemies.Count})", ImGuiTreeNodeFlags.DefaultOpen))
+        if (!ImGui.CollapsingHeader($"Rooms with enemies known ({enemies.RoomsKnown})", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        if (enemies.Count == 0)
+        var live = RoomEnemyReader.Read();
+        ImGui.TextDisabled(live == null
+                               ? "Board window closed."
+                               : $"Selected room: {live.SelectedRoom}, listing {live.Enemies.Count} enemies.");
+
+        if (enemies.RoomsKnown == 0)
         {
-            ImGui.TextDisabled("None yet. Hover an enemy on the board and it lands here.");
+            ImGui.TextDisabled("Open the board and click through the rooms.");
             return;
         }
 
@@ -218,20 +222,28 @@ public sealed class BoardTab : ITab
         if (ImGui.SmallButton("Forget all"))
             enemies.Clear();
 
-        foreach (var enemy in enemies.All)
+        foreach (var room in StageDetailReader.Read())
         {
-            using var node = ImRaii.TreeNode($"{enemy.Name} — {enemy.Summary}###enemy{enemy.Name}");
+            var known = enemies.InRoom(room.Index);
+            if (known.Count == 0)
+                continue;
+
+            using var node = ImRaii.TreeNode($"move {room.Move} {room.Label}###room{room.Index}");
             if (!node.Success)
                 continue;
 
-            ImGui.TextDisabled(string.Join("   ", enemy.Stats.Select(stat => $"{stat.Label} {stat.Stars}")));
-
-            foreach (var action in enemy.Actions)
+            foreach (var enemy in known)
             {
-                ImGui.TextUnformatted(
-                    $"  {action.Name}: {action.DamageType} at {action.Target}, {action.AreaOfEffect}" +
-                    $"{(action.Status.Length > 0 ? $", inflicts {action.Status}" : string.Empty)}" +
-                    $" — interruption {action.Interruption}{(action.Nullified ? " (covered)" : string.Empty)}");
+                ImGui.TextUnformatted("  " + enemies.Describe(enemy));
+                ImGui.TextDisabled("    " + string.Join("   ", enemy.Stats.Select(stat => $"{stat.Label} {stat.Stars}")));
+
+                foreach (var action in enemies.Details(enemy.Name)?.Actions ?? [])
+                {
+                    ImGui.TextDisabled(
+                        $"    {action.Name}: {action.DamageType} at {action.Target}, {action.AreaOfEffect}" +
+                        $"{(action.Status.Length > 0 ? $", inflicts {action.Status}" : string.Empty)}" +
+                        $" — interruption {action.Interruption}{(action.Nullified ? " (covered)" : string.Empty)}");
+                }
             }
         }
     }
@@ -344,15 +356,12 @@ public sealed class BoardTab : ITab
         text.AppendLine(recorder.Report());
 
         text.AppendLine();
-        text.AppendLine("# Enemies seen");
-        foreach (var enemy in enemies.All)
+        text.AppendLine("# Enemies per room");
+        foreach (var room in StageDetailReader.Read())
         {
-            text.AppendLine($"{enemy.Name}	weak={enemy.Weakness}	" +
-                            string.Join(" ", enemy.Stats.Select(stat => $"{stat.Label}={stat.Stars}")));
-            foreach (var action in enemy.Actions)
-                text.AppendLine($"	{action.Name}	target={action.Target}	dmg={action.DamageType}	" +
-                                $"aoe={action.AreaOfEffect}	status={action.Status}	" +
-                                $"interruption={action.Interruption}	nullified={action.Nullified}");
+            foreach (var enemy in enemies.InRoom(room.Index))
+                text.AppendLine($"move {room.Move}	{room.Label}	{enemy.Name}	weak={enemy.Weakness}	" +
+                                string.Join(" ", enemy.Stats.Select(stat => $"{stat.Label}={stat.Stars}")));
         }
 
         text.AppendLine();

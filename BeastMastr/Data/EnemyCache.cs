@@ -1,24 +1,22 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Numerics;
 using Dalamud.Plugin.Services;
 
 namespace BeastMastr.Data;
 
 /// <summary>
-/// Keeps what the enemy panel said, because the panel does not stay.
+/// Keeps the enemies of each room as the board window shows them.
 ///
-/// It exists only while the cursor rests on an enemy, so the information you want on a card is
-/// visible exactly when you no longer need a card. Reading it while it is up and keeping it is the
-/// whole trick — and hovering enemies is what you do on the board anyway, so the cache fills itself
-/// during normal play rather than needing a collection pass.
+/// Two sources, because neither is complete on its own.
 ///
-/// Which room an enemy belongs to is not in the data anywhere — the room list carries only the
-/// move, the kind and a sentence. But the hovering happens over the board's own rooms, so the room
-/// under the cursor when the panel appears *is* the enemy's room. That attribution costs nothing
-/// and needs no extra clicking, and without it the cards could say what an enemy does but not where
-/// it is.
+/// The board window has a room list and, beside it, the enemies of whichever room is selected —
+/// name, weakness and stats. Clicking through the rooms is what you do to read a board anyway, so
+/// that fills in by itself and says **which enemies are in which room**.
+///
+/// What it does not say is what those enemies *do*. The statuses they inflict and whether their
+/// actions can be interrupted are only in the hover panel, so that is read too, keyed by name and
+/// merged in. A room hovered as well as selected gets the full picture; one only selected still
+/// gets its weakness.
 ///
 /// In memory only. A run's enemies mean nothing after it ends.
 /// </summary>
@@ -27,10 +25,11 @@ public sealed class EnemyCache : IDisposable
     /// <summary>Frames between samples. The panel changes when the cursor moves, not per frame.</summary>
     private const int Interval = 10;
 
-    private readonly Dictionary<string, BattleMonsterReader.Enemy> byName = new(StringComparer.Ordinal);
+    /// <summary>Room index to the enemies the board listed for it.</summary>
+    private readonly Dictionary<int, IReadOnlyList<RoomEnemyReader.Enemy>> byRoom = [];
 
-    /// <summary>Room index to the enemies seen while hovering it, in the order they were seen.</summary>
-    private readonly Dictionary<int, List<string>> byRoom = [];
+    /// <summary>Enemy name to what the hover panel said about it, when it has been hovered.</summary>
+    private readonly Dictionary<string, BattleMonsterReader.Enemy> hovered = new(StringComparer.Ordinal);
 
     private int ticks;
 
@@ -39,52 +38,32 @@ public sealed class EnemyCache : IDisposable
         Services.Framework.Update += OnUpdate;
     }
 
-    public int Count => byName.Count;
-
-    public IReadOnlyCollection<BattleMonsterReader.Enemy> All => byName.Values;
-
-    /// <summary>What has been seen in a room, in the order it was seen. Empty until it is hovered.</summary>
-    public IReadOnlyList<BattleMonsterReader.Enemy> InRoom(int roomIndex) =>
-        byRoom.TryGetValue(roomIndex, out var names)
-            ? names.Select(Get).Where(enemy => enemy != null).ToList()!
-            : [];
-
     public int RoomsKnown => byRoom.Count;
 
+    /// <summary>What the board listed for a room, or empty until that room has been selected once.</summary>
+    public IReadOnlyList<RoomEnemyReader.Enemy> InRoom(int roomIndex) =>
+        byRoom.TryGetValue(roomIndex, out var enemies) ? enemies : [];
+
+    /// <summary>The hover panel's reading for an enemy, or null if it has never been hovered.</summary>
+    public BattleMonsterReader.Enemy? Details(string name) =>
+        hovered.TryGetValue(name, out var enemy) ? enemy : null;
+
     /// <summary>
-    /// Attributes whatever is hovered right now to the room under the cursor. Called from a draw
-    /// pass because that is the only place the mouse position is available.
+    /// One line per enemy: its weakness always, and what it inflicts and whether it can be
+    /// interrupted once it has been hovered.
     /// </summary>
-    public void AttributeHover(Vector2 mouse)
+    public string Describe(RoomEnemyReader.Enemy enemy)
     {
-        if (BattleMonsterReader.Read() is not { } enemy)
-            return;
+        var details = Details(enemy.Name);
+        var summary = details?.Summary ?? enemy.Summary;
 
-        byName[enemy.Name] = enemy;
-
-        foreach (var room in StageMapReader.Read())
-        {
-            if (mouse.X < room.ScreenPosition.X || mouse.Y < room.ScreenPosition.Y
-                || mouse.X > room.ScreenPosition.X + room.Size.X
-                || mouse.Y > room.ScreenPosition.Y + room.Size.Y)
-                continue;
-
-            var seen = byRoom.TryGetValue(room.DetailIndex, out var list) ? list : byRoom[room.DetailIndex] = [];
-            if (!seen.Contains(enemy.Name))
-                seen.Add(enemy.Name);
-
-            return;
-        }
+        return summary.Length > 0 ? $"{enemy.Name} — {summary}" : enemy.Name;
     }
-
-    /// <summary>What was last seen for this enemy, or null if it has never been hovered.</summary>
-    public BattleMonsterReader.Enemy? Get(string name) =>
-        byName.TryGetValue(name, out var enemy) ? enemy : null;
 
     public void Clear()
     {
-        byName.Clear();
         byRoom.Clear();
+        hovered.Clear();
     }
 
     private void OnUpdate(IFramework framework)
@@ -94,12 +73,16 @@ public sealed class EnemyCache : IDisposable
 
         ticks = Interval;
 
-        if (BattleMonsterReader.Read() is not { } enemy)
+        // Replaced rather than merged: the nullification note reflects the team you have right now.
+        if (BattleMonsterReader.Read() is { } detailed)
+            hovered[detailed.Name] = detailed;
+
+        if (RoomEnemyReader.Read() is not { } selection || selection.Enemies.Count == 0)
             return;
 
-        // Replaced rather than kept: the nullification note reflects the team you have right now,
-        // so the newest reading is the true one.
-        byName[enemy.Name] = enemy;
+        // A room with enemies listed is a room whose enemies are now known. Rooms that hold no
+        // enemies never fill this in, which is correct — there is nothing to say about a shop.
+        byRoom[selection.SelectedRoom] = selection.Enemies;
     }
 
     public void Dispose() => Services.Framework.Update -= OnUpdate;

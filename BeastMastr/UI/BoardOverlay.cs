@@ -51,14 +51,8 @@ public sealed class BoardOverlay : Window
         // The board window draws its own rooms with its own labels, and a second set of cards over
         // the top is just clutter in front of it. Cards are for the board you are standing on.
         //
-        // It is still worth being here while that window is up, though: hovering a room is what
-        // brings the enemy panel out, and this is the only place with a mouse position to attribute
-        // it by.
         if (StageMapReader.IsOpen)
-        {
-            enemies.AttributeHover(ImGui.GetMousePos());
             return;
-        }
 
         DrawWorldMarkers(StageDetailReader.Read(), enemies);
     }
@@ -104,7 +98,7 @@ public sealed class BoardOverlay : Window
             // and whether it can be interrupted. Falls back to the game's own sentence until then.
             var known = info == null ? [] : enemies.InRoom(info.Index);
             var lines = known.Count > 0
-                            ? known.Select(enemy => $"{enemy.Name}: {enemy.Summary}").ToList()
+                            ? known.Select(enemies.Describe).ToList()
                             : info != null && info.Detail.Length > 0 ? [info.Detail] : new List<string>();
 
             var y = topLeft.Y + size.Y + (padding.Y * 2f);
