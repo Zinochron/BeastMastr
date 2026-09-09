@@ -852,10 +852,18 @@ The Beasts tab shows the plan and the ranks it rests on, because those are only 
 `RankWatcher` has seen, and a team filled from half-known ranks is worth checking before it is
 filled rather than after.
 
-**What it cannot do yet is fill the team.** The team is assembled from all fifty in the bestiary's
-Team Composition mode, and how that window takes a selection has not been recorded — the fight
-window's `[1, row]` is that window's own callback and nothing says the bestiary's is the same. The
-recorder already watches `XBMMonsterNotebook`, so one recorded click there settles it.
+**What it cannot do yet is fill the team**, and the first attempt to record how says something
+useful about the recorder. Every one of the 29 entries captured on the bestiary was `MouseOver` or
+`MouseOut`: crossing a grid of tiles produces two events and two callbacks per tile, so a
+sixty-entry buffer fills with cursor movement in under a second and pushes out the click it was
+opened for.
+
+The recorder now holds four hundred entries, drops mouse-move events outright, and marks the
+callbacks that arrive within four milliseconds of one as hover-driven so they can be skipped by eye.
+What is left is what a deliberate action sent.
+
+It did establish two of the bestiary's commands: `[5, slot]` is the cursor entering a tile and `[6]`
+is it leaving. The click is a third value, still unrecorded.
 
 ## The world cards are off by default
 

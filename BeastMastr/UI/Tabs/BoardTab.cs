@@ -195,8 +195,10 @@ public sealed class BoardTab : ITab
         if (ImGui.SmallButton("Clear"))
             recorder.Clear();
 
-        foreach (var entry in recorder.Entries.Take(12))
-            ImGui.TextUnformatted($"  {entry.At:HH:mm:ss.fff}  {entry.Addon}  {entry.EventType}  param={entry.EventParam}");
+        ImGui.TextDisabled($"{recorder.Entries.Count} recorded; cursor movement is dropped.");
+
+        foreach (var entry in recorder.WithoutHover().Take(14))
+            ImGui.TextUnformatted($"  {entry.At:HH:mm:ss.fff}  {entry.Addon}  {entry.EventType}  {entry.Detail}");
     }
 
     /// <summary>

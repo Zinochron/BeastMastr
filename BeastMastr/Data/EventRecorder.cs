@@ -20,7 +20,24 @@ namespace BeastMastr.Data;
 /// </summary>
 public sealed unsafe class EventRecorder : IDisposable
 {
-    private const int Capacity = 60;
+    /// <summary>
+    /// Deliberately large. Moving the cursor across a grid of tiles produces two events and two
+    /// callbacks per tile crossed, so a small buffer fills with mouse movement in under a second and
+    /// pushes out the click that was being looked for — which is exactly what happened the first
+    /// time this was used on the bestiary.
+    /// </summary>
+    private const int Capacity = 400;
+
+    /// <summary>
+    /// Events that are only ever the cursor passing over something. They are never the thing being
+    /// hunted, and they arrive in their hundreds.
+    /// </summary>
+    private static readonly string[] Noise =
+    [
+        "MouseOver", "MouseOut", "MouseMove",
+        "ListItemRollOver", "ListItemRollOut",
+        "ButtonRollOver", "ButtonRollOut",
+    ];
 
     /// <summary>The windows worth listening to. All of them are ones a selection happens in.</summary>
     private static readonly string[] Watched =
@@ -63,12 +80,22 @@ public sealed unsafe class EventRecorder : IDisposable
         }
     }
 
+    /// <summary>When the cursor last moved over something, so its callbacks can be set aside.</summary>
+    private DateTime lastNoiseAt = DateTime.MinValue;
+
     private bool OnFireCallback(AtkUnitBase* addon, uint count, AtkValue* values, bool close)
     {
         try
         {
             if (Recording && addon != null && addon->NameString.StartsWith("XBM", StringComparison.Ordinal))
-                Record(addon->NameString, "FireCallback", (int)count, Describe(count, values));
+            {
+                // A window answers a cursor crossing a tile with a callback of its own. Those are
+                // marked rather than dropped: they are noise for finding a click and evidence for
+                // anything else.
+                var fromHover = (DateTime.Now - lastNoiseAt).TotalMilliseconds < 4;
+                Record(addon->NameString, fromHover ? "FireCallback (hover)" : "FireCallback",
+                       (int)count, Describe(count, values));
+            }
         }
         catch (Exception ex)
         {
@@ -98,8 +125,15 @@ public sealed unsafe class EventRecorder : IDisposable
         if (!Recording || args is not AddonReceiveEventArgs received)
             return;
 
-        Record(args.AddonName, received.AtkEventType.ToString(), received.EventParam,
-               $"event=0x{received.AtkEvent:X}");
+        var kind = received.AtkEventType.ToString();
+        if (Noise.Contains(kind))
+        {
+            // Remembered only so the callbacks it drags along can be told from real ones.
+            lastNoiseAt = DateTime.Now;
+            return;
+        }
+
+        Record(args.AddonName, kind, received.EventParam, $"event=0x{received.AtkEvent:X}");
     }
 
     /// <summary>Newest first: the click you just made is the one you are looking for.</summary>
@@ -116,6 +150,10 @@ public sealed unsafe class EventRecorder : IDisposable
             ? "(nothing recorded)"
             : string.Join(Environment.NewLine,
                           entries.Select(e => $"{e.At:HH:mm:ss.fff}\t{e.Addon}\t{e.EventType}\tparam={e.EventParam}\t{e.Detail}"));
+
+    /// <summary>Just the callbacks a cursor crossing did not cause — which is where a click will be.</summary>
+    public IEnumerable<Entry> WithoutHover() =>
+        entries.Where(entry => !entry.EventType.EndsWith("(hover)", StringComparison.Ordinal));
 
     public void Dispose()
     {
