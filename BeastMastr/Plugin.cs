@@ -20,6 +20,8 @@ public sealed class Plugin : IDalamudPlugin
     private readonly WindowSystem windowSystem = new("BeastMastr");
     private readonly MainWindow mainWindow;
     private readonly BoardOverlay boardOverlay;
+    /// <summary>Built in the constructor body: it subscribes on construction. See the note above.</summary>
+    private readonly EventRecorder recorder;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -54,6 +56,8 @@ public sealed class Plugin : IDalamudPlugin
         delayedSweep = new DelayedSweep();
         Catalog = new BeastCatalog();
 
+        recorder = new EventRecorder();
+
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
                                                 () => kamiToolKitReady.IsCompletedSuccessfully);
@@ -63,7 +67,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             tabs.Add(new SheetsTab(Configuration));
             tabs.Add(new AddonsTab(Configuration, delayedSweep));
-            tabs.Add(new BoardTab(Catalog));
+            tabs.Add(new BoardTab(Catalog, recorder));
         }
 
         tabs.Add(new SettingsTab(Configuration));
@@ -119,6 +123,7 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.Dispose();
         delayedSweep.Dispose();
         notebook.Dispose();
+        recorder.Dispose();
         KamiToolKitLibrary.Dispose();
 
         ECommonsMain.Dispose();

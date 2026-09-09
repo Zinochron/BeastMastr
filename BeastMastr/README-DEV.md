@@ -732,5 +732,21 @@ blocks change from 3 to 0, 2 and 1, which is what `FightMode.RepeatLast` has to 
 
 Also corrected: the `XBMPet` row is at `+76`, not `+70`. `+70` and `+71` are empty.
 
-`FightMode.RepeatLast` needs the pre-fight selection window, which has not been captured at all.
-Nothing is known about it yet, including its name.
+`FightMode.RepeatLast`'s reading half is done: the roster comes back with correct ranks, and after
+choosing three familiars the three chosen slots read 0, 1 and 2.
+
+Team sizes are ten for a standard board, then twelve and fourteen. Only three boards are unlocked,
+so `TeamPlanner.TeamSizes` holds three and anything beyond falls back to the smallest — under-filling
+beats picking a beast that has no slot.
+
+### Selecting is the risky half, so nothing is guessed
+
+Sortr's notes are blunt about this: the first version built `AtkValue` payloads by hand, treated the
+callback's return as success, and it did not work. Selection there went to ECommons' `AddonMaster`
+wrappers instead — but there are none for the XBM windows, so that escape is not available.
+
+`Data/EventRecorder.cs` is the answer. It listens on `PreReceiveEvent` for the selection windows and
+records what the game sends when **you** click — event type and parameter, newest first. It watches
+only and sends nothing. Once a real click is on record, replaying that is a known quantity rather
+than a guess, and the plan is still to confirm success by reading the window back rather than by
+trusting a return value.

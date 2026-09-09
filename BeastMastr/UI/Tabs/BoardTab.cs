@@ -20,13 +20,15 @@ namespace BeastMastr.UI.Tabs;
 public sealed class BoardTab : ITab
 {
     private readonly BeastCatalog catalog;
+    private readonly EventRecorder recorder;
 
     private string lastPath = string.Empty;
     private float radius = 60f;
 
-    public BoardTab(BeastCatalog catalog)
+    public BoardTab(BeastCatalog catalog, EventRecorder recorder)
     {
         this.catalog = catalog;
+        this.recorder = recorder;
     }
 
     public string Title => "Board";
@@ -47,6 +49,8 @@ public sealed class BoardTab : ITab
         DrawOpenAddons();
         ImGuiHelpers.ScaledDummy(4f);
         DrawReaders();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawRecorder();
         ImGuiHelpers.ScaledDummy(4f);
         DrawRoster();
         ImGuiHelpers.ScaledDummy(4f);
@@ -165,6 +169,31 @@ public sealed class BoardTab : ITab
     }
 
     /// <summary>
+    /// What the game sends a window when you click in it. Selecting a beast means sending the same
+    /// thing, and the only safe way to know what that is, is to watch a real click first.
+    /// </summary>
+    private void DrawRecorder()
+    {
+        if (!ImGui.CollapsingHeader("Clicks", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        var recording = recorder.Recording;
+        if (ImGui.Checkbox("Record clicks", ref recording))
+            recorder.Recording = recording;
+
+        Widgets.HelpMarker(
+            "Watches only, sends nothing. Turn it on, click one beast in the selection window, and " +
+            "the entry at the top is what selecting that beast looks like.");
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Clear"))
+            recorder.Clear();
+
+        foreach (var entry in recorder.Entries.Take(12))
+            ImGui.TextUnformatted($"  {entry.At:HH:mm:ss.fff}  {entry.Addon}  {entry.EventType}  param={entry.EventParam}");
+    }
+
+    /// <summary>
     /// The roster, with the progression rank that leveling mode has to sort on.
     /// </summary>
     private void DrawRoster()
@@ -265,6 +294,10 @@ public sealed class BoardTab : ITab
         text.AppendLine("# Every window open right now");
         foreach (var name in AddonReader.OpenAddonNames(string.Empty))
             text.AppendLine(name);
+
+        text.AppendLine();
+        text.AppendLine("# Clicks");
+        text.AppendLine(recorder.Report());
 
         text.AppendLine();
         text.AppendLine("# Roster");
