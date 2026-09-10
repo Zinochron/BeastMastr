@@ -49,6 +49,9 @@ public sealed unsafe class FightSelector : IDisposable
     /// <summary>Frames left before the automatic call, or -1 when none is due.</summary>
     private int automaticCountdown = -1;
 
+    /// <summary>The team list's mode last frame, so each change is logged once.</summary>
+    private uint? lastMode;
+
     public FightSelector(Configuration configuration, BeastCatalog catalog)
     {
         this.configuration = configuration;
@@ -77,12 +80,23 @@ public sealed unsafe class FightSelector : IDisposable
             Reset();
             wasFightWindow = false;
             automaticCountdown = -1;
+            lastMode = null;
             return;
         }
 
-        // The team list does two jobs in one window, and its own mode number says which. An opening
-        // is the moment it turns into the fight window — exactly once per fight.
-        var fightWindow = !PetPartyReader.IsTeamComposition;
+        // The team list does several jobs in one window — building a team, calling a fight's
+        // familiars, picking one to feed at a shop, picking who rests at a campsite — and its own
+        // mode number says which. Only the fight is this one's: the first version took "not building
+        // a team" to mean a fight, and called familiars at shops and campsites too.
+        var mode = PetPartyReader.Mode();
+        if (mode != lastMode)
+        {
+            lastMode = mode;
+            Services.Log.Information($"Team list mode {mode}: {PetPartyReader.Describe()}");
+        }
+
+        // An opening is the moment the window turns into the fight window — exactly once per fight.
+        var fightWindow = mode == XbmColumns.PetParty.FightMode;
         if (fightWindow && !wasFightWindow && configuration.CallLastFamiliarsOnOpen)
             automaticCountdown = FramesBeforeAutomaticCall;
 
@@ -226,30 +240,7 @@ public sealed unsafe class FightSelector : IDisposable
         cooldown = FramesBetweenPicks;
     }
 
-    /// <summary>Command the window's own click sends. Recorded, not guessed.</summary>
-    private const int ToggleCommand = 1;
-
-    /// <summary>
-    /// Sends what clicking that row sends. A real click on the first familiar fires
-    /// <c>FireCallback</c> with <c>[1, 0]</c> — command then row — and selecting and deselecting
-    /// fire exactly the same thing, so it is a toggle rather than a set.
-    ///
-    /// **The types matter.** The recording reads <c>[0] Int=1 [1] UInt=0</c>: the command is an Int
-    /// and the row is a UInt. Sending the row as an Int too was silently ignored — nothing errored,
-    /// the window simply never took the familiar, which is what the read-back kept reporting.
-    /// </summary>
-    private static bool Select(int index)
-    {
-        if (index < 0 || !AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
-            return false;
-
-        var values = stackalloc AtkValue[2];
-        values[0].SetInt(ToggleCommand);
-        values[1].SetUInt((uint)index);
-
-        addon->FireCallback(2, values);
-        return true;
-    }
+    private static bool Select(int index) => TeamListCommands.ToggleRow(index);
 
     private static string Name(IEnumerable<PetPartyReader.Slot> slots, uint beastNumber) =>
         slots.FirstOrDefault(slot => slot.Beast?.Number == beastNumber)?.Name ?? $"beast {beastNumber}";

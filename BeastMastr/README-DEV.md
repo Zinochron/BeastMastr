@@ -1267,3 +1267,33 @@ them back if that is what you want.
 It says nothing in chat when it works. Once per fight, a line saying that what always happens has
 happened is noise; failures still go to chat. It can be switched off in Settings and is on by default.
 The team fill stays on its button alone.
+
+### The team list has more than two jobs
+
+"Not team composition" was taken to mean "a fight", so the familiar call fired at shops (choosing
+who to feed) and at campsites (choosing who rests) too. The window does at least four jobs, and only
+two of their mode numbers are captured: 0 team composition, 2 fight. The automatic call and its
+button now need exactly 2.
+
+The others are not guessed. Every change of mode is logged with the header values, the counter and
+the prompt, so opening a shop and a campsite once is enough to pin their numbers down from the log,
+without anyone taking a capture.
+
+Reading only up to the counter is now limited to team composition, the one mode where the stale
+rows were seen. At a shop or campsite the counter could count something else entirely, and a "0/2"
+there would have hidden every row.
+
+### Pick lowest HP
+
+Shops and campsites get a "Pick lowest HP" button. The row HP is offset 4, "2943/2943". It picks
+the lowest share of HP left first, and between equal shares the one missing more. A share rather
+than a raw number, because a big HP pool can have more left and still be closer to going down.
+Full HP is never picked.
+
+Those windows allow different numbers of picks, and the limit does not need to be known: it picks
+one at a time until the window refuses the next. A refusal after at least one pick is the expected
+end. A refusal of the very first pick says so plainly. The pick is confirmed through the same call
+slot flag a fight uses, and whether these windows use that flag is not yet captured, so that message
+is written to point at the likely cause if it does not hold.
+
+The row click itself now lives once, in `TeamListCommands`, shared by the fight call and this.

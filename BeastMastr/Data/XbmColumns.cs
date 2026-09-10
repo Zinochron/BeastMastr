@@ -432,6 +432,17 @@ public static class XbmColumns
         public const uint TeamCompositionMode = 0;
 
         /// <summary>
+        /// Calling a fight's familiars, from the fight capture. The window has more jobs than these
+        /// two — picking a familiar to feed at a shop, picking who rests at a campsite — and treating
+        /// "not team composition" as "fight" called familiars into both. Their numbers are not
+        /// captured yet; every change of mode is logged so that they will be.
+        /// </summary>
+        public const uint FightMode = 2;
+
+        /// <summary>A beast's HP as the row shows it, "2943/2943". Offset 5 carries the first number alone.</summary>
+        public const int HpTextOffset = 4;
+
+        /// <summary>
         /// Right-clicking a row sends <c>[2, row]</c>, both Ints, and the game answers by opening that
         /// row's menu. Recorded from a real right click on row 0.
         /// </summary>

@@ -28,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly EnemyCache enemies;
     private readonly BoardCache boardCache;
     private readonly TeamSelector teamSelector;
+    private readonly HealthSelector healthSelector;
     private readonly ActionButtons actionButtons;
     private readonly CarryContextMenu carryMenu;
     private readonly NextRoomPanel nextRoom;
@@ -72,12 +73,13 @@ public sealed class Plugin : IDalamudPlugin
         enemies = new EnemyCache();
         boardCache = new BoardCache(Configuration);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
+        healthSelector = new HealthSelector(Catalog);
         rankPuller = new RankPuller(rankWatcher);
 
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
                                                 () => kamiToolKitReady.IsCompletedSuccessfully);
-        actionButtons = new ActionButtons(Configuration, teamSelector, fightSelector,
+        actionButtons = new ActionButtons(Configuration, teamSelector, fightSelector, healthSelector,
                                           () => kamiToolKitReady.IsCompletedSuccessfully);
         carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
         nextRoom = new NextRoomPanel(Configuration, boardCache, enemies,
@@ -155,6 +157,7 @@ public sealed class Plugin : IDalamudPlugin
         enemies.Dispose();
         boardCache.Dispose();
         teamSelector.Dispose();
+        healthSelector.Dispose();
         actionButtons.Dispose();
         carryMenu.Dispose();
         nextRoom.Dispose();

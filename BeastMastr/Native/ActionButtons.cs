@@ -57,11 +57,15 @@ public sealed unsafe class ActionButtons : IDisposable
 
         /// <summary>Team list, calling a fight's familiars.</summary>
         CallFromTeamList,
+
+        /// <summary>Team list, picking familiars at a shop or a campsite.</summary>
+        PickHurtFromTeamList,
     }
 
     private readonly Configuration configuration;
     private readonly TeamSelector teamSelector;
     private readonly FightSelector fightSelector;
+    private readonly HealthSelector healthSelector;
     private readonly Func<bool> nativeUiReady;
 
     private readonly Dictionary<Kind, TextButtonNode> buttons = [];
@@ -70,11 +74,12 @@ public sealed unsafe class ActionButtons : IDisposable
     private bool broken;
 
     public ActionButtons(Configuration configuration, TeamSelector teamSelector, FightSelector fightSelector,
-                         Func<bool> nativeUiReady)
+                         HealthSelector healthSelector, Func<bool> nativeUiReady)
     {
         this.configuration = configuration;
         this.teamSelector = teamSelector;
         this.fightSelector = fightSelector;
+        this.healthSelector = healthSelector;
         this.nativeUiReady = nativeUiReady;
 
         Services.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, XbmColumns.MonsterNotebook.Addon, OnFinalize);
@@ -99,13 +104,17 @@ public sealed unsafe class ActionButtons : IDisposable
                 return;
             }
 
-            // The team list is the screen for both jobs; its own mode number says which one it is
-            // doing, and each job gets its own button.
-            var team = PetPartyReader.IsTeamComposition;
+            // The team list is the screen for every job; its own mode number says which one it is
+            // doing, and each job gets its own button. Everything that is neither building a team
+            // nor calling a fight is a shop or a campsite, where what you pick is who to look after.
+            var mode = PetPartyReader.Mode();
+            var team = mode == XbmColumns.PetParty.TeamCompositionMode;
+            var fight = mode == XbmColumns.PetParty.FightMode;
 
             Want(Kind.FillFromTeamList, team);
             Want(Kind.FillFromBestiary, team && BestiaryOpen);
-            Want(Kind.CallFromTeamList, !team);
+            Want(Kind.CallFromTeamList, fight);
+            Want(Kind.PickHurtFromTeamList, mode != null && !team && !fight);
         }
         catch (Exception ex)
         {
@@ -141,6 +150,10 @@ public sealed unsafe class ActionButtons : IDisposable
 
                 case Kind.CallFromTeamList:
                     AboveTheTeamList(kind, "Call last familiars", fightSelector.RequestRepeat);
+                    break;
+
+                case Kind.PickHurtFromTeamList:
+                    AboveTheTeamList(kind, "Pick lowest HP", healthSelector.RequestPick);
                     break;
             }
         }

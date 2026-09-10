@@ -90,8 +90,7 @@ public sealed class SettingsTab : ITab
     }
 
     /// <summary>
-    /// Filling a run's team. Acts only while the bestiary and the roster are both open, which is
-    /// when a team is being put together and at no other time.
+    /// Filling a run's team, on its button in the team list and at no other time.
     /// </summary>
     private void DrawTeamAutomation()
     {
@@ -106,8 +105,7 @@ public sealed class SettingsTab : ITab
             "Adds a \"Fill for levelling\" button to the team list whenever a team is being put " +
             "together, and under the bestiary while that is open too. It empties the team with the " +
             "game's own \"Remove all\", opens the bestiary if it is not already up, then adds the " +
-            "carries and the least advanced beasts. The buttons are the only way the plugin changes " +
-            "anything — it never acts on its own.");
+            "carries and the least advanced beasts. Only on the press — it never fills a team on its own.");
 
         if (teamSelector.Status.Length > 0)
             ImGui.TextDisabled(teamSelector.Status);
@@ -127,9 +125,11 @@ public sealed class SettingsTab : ITab
         }
 
         Widgets.HelpMarker(
-            "Once per fight, as the window opens, and only if nothing is called yet. After that it " +
-            "leaves the window alone, so whatever you change stays changed. The \"Call last " +
-            "familiars\" button on the team list does the same again whenever you press it.");
+            "Once per fight, as the window opens, and only if nothing is called yet — in the fight " +
+            "window only, never at shops or campsites. After that it leaves the window alone, so " +
+            "whatever you change stays changed. The \"Call last familiars\" button on the team " +
+            "list does the same again whenever you press it. At shops and campsites the team list " +
+            "gets a \"Pick lowest HP\" button instead.");
 
         ImGui.TextDisabled(configuration.LastFightBeasts.Count == 0
                                ? "Nothing remembered yet — call familiars by hand once."
