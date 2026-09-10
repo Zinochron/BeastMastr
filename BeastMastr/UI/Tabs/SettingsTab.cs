@@ -119,12 +119,17 @@ public sealed class SettingsTab : ITab
     /// </summary>
     private void DrawFightAutomation()
     {
-        ImGui.TextUnformatted("Calling familiars for a fight");
+        var onOpen = configuration.CallLastFamiliarsOnOpen;
+        if (ImGui.Checkbox("Call the last fight's familiars when the fight window opens", ref onOpen))
+        {
+            configuration.CallLastFamiliarsOnOpen = onOpen;
+            configuration.Save();
+        }
 
         Widgets.HelpMarker(
-            "While the team list asks which familiars to call, it gets a \"Call last familiars\" " +
-            "button. Pressing it calls the ones you took into the last fight, leaves any already " +
-            "called alone, and stops as soon as a pick does not take. Nothing happens without the press.");
+            "Once per fight, as the window opens, and only if nothing is called yet. After that it " +
+            "leaves the window alone, so whatever you change stays changed. The \"Call last " +
+            "familiars\" button on the team list does the same again whenever you press it.");
 
         ImGui.TextDisabled(configuration.LastFightBeasts.Count == 0
                                ? "Nothing remembered yet — call familiars by hand once."

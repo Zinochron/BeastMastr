@@ -15,10 +15,11 @@ namespace BeastMastr.Native;
 /// <summary>
 /// Puts the plugin's actions into the windows they belong to, as buttons the game drew itself.
 ///
-/// **These buttons are the only way the plugin changes anything.** There used to be modes that
-/// filled a team or called familiars on their own the moment a window opened, and they fought every
-/// choice made by hand: change one beast and the team was emptied and refilled under you. Now
-/// nothing happens until a button is pressed, and a press does one thing once.
+/// **Nothing here may fight a choice made by hand.** There used to be modes that filled a team or
+/// called familiars on their own whenever the state did not match a plan, checked every frame, and
+/// they fought every change: swap one beast and the team was emptied and refilled under you. Now a
+/// press does one thing once. The only thing that acts by itself is the familiar call as the fight
+/// window opens, and that fires once per opening, not every frame.
 /// </summary>
 public sealed unsafe class ActionButtons : IDisposable
 {

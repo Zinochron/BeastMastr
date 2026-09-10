@@ -1251,3 +1251,19 @@ and their config entries, so an old saved "on" cannot bring them back.
   is calling, so a failed pick cannot store half a selection as the last fight.
 - The learned fight prompt is gone. It existed only so the automatic mode could recognise the fight
   window, and the button is only offered there to begin with: the team list mode number decides it.
+
+### Automatic, but once: calling the last fight familiars
+
+Taking calling-familiars off automatic was right about the cause and wrong about the cure. The
+automatic version was a problem because it acted **every frame**: whenever nothing was called, it
+called the last fight familiars again, so taking them out by hand put them straight back. The step
+itself is one people want done for them.
+
+So it is automatic again, as an event rather than a condition: it fires **once, as the team list
+turns into the fight window**, ten frames after, and only if nothing is called yet. After that the
+window is left alone until it closes. Taking every familiar out leaves them out; the button puts
+them back if that is what you want.
+
+It says nothing in chat when it works. Once per fight, a line saying that what always happens has
+happened is noise; failures still go to chat. It can be switched off in Settings and is on by default.
+The team fill stays on its button alone.

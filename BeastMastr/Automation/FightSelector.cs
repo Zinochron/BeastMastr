@@ -9,9 +9,13 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 namespace BeastMastr.Automation;
 
 /// <summary>
-/// Calls the same familiars into a fight as last time — when its button is pressed, and at no other
-/// time. The first version did it on its own the moment the window opened, which meant the window
-/// acted before you did and a choice of your own had to be made against it.
+/// Calls the same familiars into a fight as last time: once on its own as the fight window opens,
+/// and again whenever its button is pressed.
+///
+/// The first automatic version checked every frame, and whenever nothing was called it called the
+/// last fight's familiars again — so taking them out by hand put them straight back, and a choice of
+/// your own had to be made against it. This one acts **once per opening of the window** and then
+/// leaves it alone until the window closes. Whatever you change after that stays changed.
 ///
 /// It sends the window the same callback a real click sends — recorded from an actual click rather
 /// than guessed — and nothing is ever judged by a return value: after each pick the window is read
@@ -22,6 +26,12 @@ public sealed unsafe class FightSelector : IDisposable
     /// <summary>Frames between two picks. The window has to be given time to answer one before the next.</summary>
     private const int FramesBetweenPicks = 6;
 
+    /// <summary>
+    /// Frames after the fight window appears before the automatic call. Long enough for the game to
+    /// put in anything it pre-fills itself, which the automatic call then leaves alone.
+    /// </summary>
+    private const int FramesBeforeAutomaticCall = 10;
+
     private readonly Configuration configuration;
     private readonly BeastCatalog catalog;
 
@@ -29,6 +39,15 @@ public sealed unsafe class FightSelector : IDisposable
     private int cooldown;
     private uint waitingFor;
     private bool requested;
+
+    /// <summary>Whether the request came from the window opening rather than the button.</summary>
+    private bool automatic;
+
+    /// <summary>Whether the team list was in fight mode last frame — how an opening is noticed.</summary>
+    private bool wasFightWindow;
+
+    /// <summary>Frames left before the automatic call, or -1 when none is due.</summary>
+    private int automaticCountdown = -1;
 
     public FightSelector(Configuration configuration, BeastCatalog catalog)
     {
@@ -38,14 +57,15 @@ public sealed unsafe class FightSelector : IDisposable
         Services.Framework.Update += OnUpdate;
     }
 
-    /// <summary>What the last press did, for the Settings tab to show. Never a silent failure.</summary>
+    /// <summary>What the last attempt did, for the Settings tab to show. Never a silent failure.</summary>
     public string Status { get; private set; } = string.Empty;
 
-    /// <summary>The button. The only way anything here starts.</summary>
+    /// <summary>The button. Calls whatever of last time is missing, whatever is already called.</summary>
     public void RequestRepeat()
     {
         Reset();
         requested = true;
+        automatic = false;
     }
 
     private bool Busy => pending.Count > 0 || waitingFor != 0;
@@ -55,14 +75,30 @@ public sealed unsafe class FightSelector : IDisposable
         if (!PetPartyReader.IsOpen)
         {
             Reset();
+            wasFightWindow = false;
+            automaticCountdown = -1;
             return;
+        }
+
+        // The team list does two jobs in one window, and its own mode number says which. An opening
+        // is the moment it turns into the fight window — exactly once per fight.
+        var fightWindow = !PetPartyReader.IsTeamComposition;
+        if (fightWindow && !wasFightWindow && configuration.CallLastFamiliarsOnOpen)
+            automaticCountdown = FramesBeforeAutomaticCall;
+
+        wasFightWindow = fightWindow;
+
+        if (automaticCountdown >= 0 && --automaticCountdown < 0 && !requested && !Busy)
+        {
+            requested = true;
+            automatic = true;
         }
 
         var slots = PetPartyReader.Read(catalog);
         if (slots.Count == 0)
             return;
 
-        // While a repeat is running, what is called is what this is doing, not a choice of yours —
+        // While a call is running, what is called is what this is doing, not a choice of yours —
         // remembering it then would store half a selection if a pick fails partway.
         if (!Busy)
             Learn(slots);
@@ -79,8 +115,7 @@ public sealed unsafe class FightSelector : IDisposable
     }
 
     /// <summary>
-    /// Remembers what you call by hand, in call order. Reading only — this is how the button knows
-    /// what "last time" was.
+    /// Remembers what you call, in call order. Reading only — this is how "last time" is known.
     /// </summary>
     private void Learn(IReadOnlyList<PetPartyReader.Slot> slots)
     {
@@ -100,9 +135,17 @@ public sealed unsafe class FightSelector : IDisposable
 
     private void Start(IReadOnlyList<PetPartyReader.Slot> slots)
     {
+        // On its own it only ever fills an empty choice. Anything already called — pre-filled by the
+        // game, or picked in the few frames it waited — is a choice it does not second-guess.
+        if (automatic && slots.Any(slot => slot.IsCalled))
+        {
+            Status = "The fight window opened with familiars already called; left as it was.";
+            return;
+        }
+
         if (configuration.LastFightBeasts.Count == 0)
         {
-            Tell("Nothing remembered yet — call familiars by hand once, and the next press repeats them.");
+            Say("Nothing remembered yet — call familiars by hand once, and the next fight repeats them.");
             return;
         }
 
@@ -114,7 +157,7 @@ public sealed unsafe class FightSelector : IDisposable
 
         if (wanted.Count == 0)
         {
-            Tell("None of the familiars from the last fight are in this team.");
+            Say("None of the familiars from the last fight are in this team.");
             return;
         }
 
@@ -124,7 +167,7 @@ public sealed unsafe class FightSelector : IDisposable
 
         if (missing.Count == 0)
         {
-            Tell("Already calling the same familiars as last time.");
+            Say("Already calling the same familiars as last time.");
             return;
         }
 
@@ -154,7 +197,7 @@ public sealed unsafe class FightSelector : IDisposable
 
         if (pending.Count == 0)
         {
-            Tell($"Called {slots.Count(slot => slot.IsCalled)} familiar(s) as last time.");
+            Say($"Called {slots.Count(slot => slot.IsCalled)} familiar(s) as last time.");
             return;
         }
 
@@ -211,18 +254,27 @@ public sealed unsafe class FightSelector : IDisposable
     private static string Name(IEnumerable<PetPartyReader.Slot> slots, uint beastNumber) =>
         slots.FirstOrDefault(slot => slot.Beast?.Number == beastNumber)?.Name ?? $"beast {beastNumber}";
 
-    /// <summary>In chat as well: the button is in the game's window, so its answer belongs there.</summary>
-    private void Tell(string message)
+    /// <summary>
+    /// An answer to a press goes to chat, where you are looking. The automatic call only records it:
+    /// once per fight, a line in chat saying that what always happens has happened is noise.
+    /// </summary>
+    private void Say(string message)
     {
         Status = message;
         Services.Log.Information(message);
-        Services.Chat.Print($"[BeastMastr] {message}");
+
+        if (!automatic)
+            Services.Chat.Print($"[BeastMastr] {message}");
     }
 
+    /// <summary>Failures are said in chat either way — a call that did not happen is worth knowing about.</summary>
     private void Stop(string why)
     {
         Reset();
-        Tell($"{why} Press the button again to retry.");
+
+        Status = $"{why} Press the button to retry.";
+        Services.Log.Warning(Status);
+        Services.Chat.Print($"[BeastMastr] {Status}");
     }
 
     private void Reset()

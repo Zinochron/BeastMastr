@@ -12,9 +12,16 @@ public class Configuration : IPluginConfiguration
     public int Version { get; set; } = CurrentVersion;
 
     // ---- Automation -------------------------------------------------------
-    // Everything here acts on a button press and at no other time. There were modes that filled a
-    // team or called familiars on their own, and they are gone rather than switched off: they fought
-    // every choice made by hand, and a saved "on" from an old config must not bring them back.
+    // Nothing here may fight a choice made by hand. Filling a team happens on its button and at no
+    // other time; the old modes that did it on their own are gone rather than switched off, so a
+    // saved "on" from an old config cannot bring them back. The one thing that acts by itself is
+    // calling the last fight's familiars, and only once per opening of the fight window.
+
+    /// <summary>
+    /// Call the last fight's familiars as the fight window opens — once, and only when nothing is
+    /// called yet. After that the window is yours until it closes.
+    /// </summary>
+    public bool CallLastFamiliarsOnOpen { get; set; } = true;
 
     /// <summary>
     /// Which board is being played, which decides how many beasts the team holds. Only a fallback:
