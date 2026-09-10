@@ -55,7 +55,12 @@ public static class PetPartyReader
 
         var values = addon.AtkValues.ToList();
 
-        for (var block = 0; ; block++)
+        // Only as many blocks as the window's own counter says are the team. Past that it keeps old
+        // rows with their names still in them, and reading until the first blank name counted those
+        // as members — a team emptied by "Remove all" still read as full.
+        var members = ParseCount(Text(values, XbmColumns.PetParty.TeamCountValue))?.Members ?? int.MaxValue;
+
+        for (var block = 0; block < members; block++)
         {
             var nameIndex = XbmColumns.PetParty.Value(block, XbmColumns.PetParty.NameOffset);
             if (nameIndex >= values.Count)
@@ -87,6 +92,31 @@ public static class PetPartyReader
     {
         var digits = new string(text.Where(char.IsAsciiDigit).ToArray());
         return int.TryParse(digits, out var rank) ? rank : 0;
+    }
+
+    /// <summary>
+    /// How many beasts the team holds and how many it can, from the window's own "0/14". Null when
+    /// the window is not up or does not say.
+    /// </summary>
+    public static (int Members, int Capacity)? Count()
+    {
+        var addon = AddonReader.Find(XbmColumns.PetParty.Addon);
+        if (addon.IsNull)
+            return null;
+
+        var values = addon.AtkValues.ToList();
+        return ParseCount(Text(values, XbmColumns.PetParty.TeamCountValue));
+    }
+
+    /// <summary>"0/14" into its two numbers. Glyphs and spacing around the digits are ignored.</summary>
+    private static (int Members, int Capacity)? ParseCount(string text)
+    {
+        var slash = text.IndexOf('/');
+        if (slash <= 0)
+            return null;
+
+        var capacity = Rank(text[(slash + 1)..]);
+        return capacity > 0 ? (Rank(text[..slash]), capacity) : null;
     }
 
     /// <summary>

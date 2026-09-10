@@ -175,7 +175,9 @@ public sealed unsafe class TeamSelector : IDisposable
             return;
         }
 
-        var size = TeamPlanner.TeamSizeFor(configuration.BoardTier);
+        // The window says how many this board takes. The tier setting is only the fallback for when
+        // it does not — a setting is what someone said, the window is what the board does.
+        var size = PetPartyReader.Count()?.Capacity ?? TeamPlanner.TeamSizeFor(configuration.BoardTier);
 
         // In the order it is to be added: carries first, then the least advanced. If the board takes
         // fewer than the setting says, what is left off is the end of this list, not the carries.
@@ -189,7 +191,7 @@ public sealed unsafe class TeamSelector : IDisposable
             return;
         }
 
-        Status = $"Emptying the team ({current.Count}), then adding {plan.Count} — " +
+        Status = $"Emptying the team ({current.Count}), then adding {plan.Count} of the {size} it takes — " +
                  $"{known.Count} of {catalog.Beasts.Count} ranks known.";
         Services.Log.Information(Status);
 
@@ -621,8 +623,7 @@ public sealed unsafe class TeamSelector : IDisposable
     private void Full(uint refused)
     {
         var count = TeamNow().Count;
-        Tell($"Team full at {count} — it would not take {Name(refused)}. The board takes {count}, " +
-             $"not the {TeamPlanner.TeamSizeFor(configuration.BoardTier)} the board tier setting says.");
+        Tell($"Team full at {count} — it would not take {Name(refused)}.");
         Reset();
     }
 

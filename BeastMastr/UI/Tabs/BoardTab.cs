@@ -317,6 +317,9 @@ public sealed class BoardTab : ITab
         }
 
         ImGui.TextDisabled(PetPartyReader.Prompt());
+        ImGui.TextDisabled(PetPartyReader.Count() is { } count
+                               ? $"Team {count.Members}/{count.Capacity}, as the window counts it"
+                               : "The window shows no team count.");
         ImGui.TextDisabled($"Ranks learned so far: {ranks.KnownCount} of 50");
 
         foreach (var slot in slots)

@@ -403,6 +403,25 @@ public static class XbmColumns
         public const int PromptValue = 1185;
 
         /// <summary>
+        /// How many beasts the team holds out of how many it can, as the window shows it above the
+        /// list: "0/14". **This is the membership count, and the blocks are not.** The window keeps
+        /// every row it ever wrote and only draws the first this-many of them as the team — right
+        /// after a "Remove all" it read "0/14" with fourteen old rows still sitting in the blocks,
+        /// which is how a check that read the blocks saw a full team in an empty one.
+        ///
+        /// Fifteen blocks end at 1161; this and <see cref="TeamCapacityValue"/> follow them. Read in
+        /// three captures: "0/14" and "0/12" in team composition, "10/10" in a fight.
+        /// </summary>
+        public const int TeamCountValue = 1181;
+
+        /// <summary>
+        /// The team's size on this board — 14, 12 or 10 in the captures. The same number as the part
+        /// of <see cref="TeamCountValue"/> after the slash, and what the board actually takes, where
+        /// the board tier setting is only what someone said it takes.
+        /// </summary>
+        public const int TeamCapacityValue = 1162;
+
+        /// <summary>
         /// Which of its two jobs the window is doing, as a number rather than a localised sentence:
         /// <see cref="TeamCompositionMode"/> while a run's team is being put together, 2 while a
         /// fight's familiars are being called. Read off three captures — two of team composition, one

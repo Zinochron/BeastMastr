@@ -1182,6 +1182,24 @@ The recorder now also notes whether a callback closes its window. That flag was 
 so the replay assumes the menu and the confirmation close on being answered, which is what they do on
 screen.
 
+### The team list keeps its old rows, and only its counter says who is in
+
+The first live run of "Remove all" did empty the team, and then reported that it had not: "the team
+list still shows Gigantoad, Ghost, Morbol…". The second press gave it away — the menu's first entry had
+changed from "Remove from Team" to "View the Master's Bestiary", which is what an **empty** row offers.
+
+The roster's blocks are not the team. The window writes a block per beast and never clears them; how
+many of them are the team is a separate counter, the "0/14" it draws above the list, at value 1181.
+`captures/board-20260910-171738.txt`, taken right after a manual "Remove all", has fourteen named
+blocks and "0/14". The reader had been reading until the first blank name, so it counted old rows as
+members.
+
+It now reads only as many blocks as the counter says. That also fixes a quieter bug in filling: a beast
+that happened to sit in an old row read as already in the team and was skipped rather than added.
+
+Value 1162 is the capacity — 14, 12, 10 across the captures, the same number as after the slash. The
+team size now comes from there, with the board tier setting only as the fallback.
+
 ### Team composition is the team list, with or without the bestiary
 
 The button appeared only while the bestiary was open, because "composing a team" was defined as both
