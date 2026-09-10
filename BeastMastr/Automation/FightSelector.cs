@@ -9,12 +9,13 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 namespace BeastMastr.Automation;
 
 /// <summary>
-/// Calls the same familiars into a fight as last time.
+/// Calls the same familiars into a fight as last time — when its button is pressed, and at no other
+/// time. The first version did it on its own the moment the window opened, which meant the window
+/// acted before you did and a choice of your own had to be made against it.
 ///
-/// The only place in this plugin that changes game state. It sends the window the same callback a
-/// real click sends — recorded from an actual click rather than guessed — and nothing is ever
-/// judged by a return value: after each pick the window is read back, and a pick that did not take
-/// stops the run rather than pressing on. That rule is Sortr's, learned there the hard way.
+/// It sends the window the same callback a real click sends — recorded from an actual click rather
+/// than guessed — and nothing is ever judged by a return value: after each pick the window is read
+/// back, and a pick that did not take stops the run rather than pressing on.
 /// </summary>
 public sealed unsafe class FightSelector : IDisposable
 {
@@ -27,13 +28,7 @@ public sealed unsafe class FightSelector : IDisposable
     private readonly Queue<uint> pending = new();
     private int cooldown;
     private uint waitingFor;
-
-    /// <summary>
-    /// Set when a pick did not take, and never cleared while the plugin is loaded. Retrying a
-    /// selection that does not work is not harmless — it moves the highlight under your hands every
-    /// time the window opens — and one failure is enough to know the mechanism is wrong.
-    /// </summary>
-    private bool givenUp;
+    private bool requested;
 
     public FightSelector(Configuration configuration, BeastCatalog catalog)
     {
@@ -43,8 +38,17 @@ public sealed unsafe class FightSelector : IDisposable
         Services.Framework.Update += OnUpdate;
     }
 
-    /// <summary>What the last attempt did, for the Settings tab to show. Never a silent failure.</summary>
+    /// <summary>What the last press did, for the Settings tab to show. Never a silent failure.</summary>
     public string Status { get; private set; } = string.Empty;
+
+    /// <summary>The button. The only way anything here starts.</summary>
+    public void RequestRepeat()
+    {
+        Reset();
+        requested = true;
+    }
+
+    private bool Busy => pending.Count > 0 || waitingFor != 0;
 
     private void OnUpdate(IFramework framework)
     {
@@ -58,43 +62,34 @@ public sealed unsafe class FightSelector : IDisposable
         if (slots.Count == 0)
             return;
 
-        Learn(slots);
+        // While a repeat is running, what is called is what this is doing, not a choice of yours —
+        // remembering it then would store half a selection if a pick fails partway.
+        if (!Busy)
+            Learn(slots);
 
-        if (pending.Count > 0)
+        if (requested)
         {
-            Continue(slots);
+            requested = false;
+            Start(slots);
             return;
         }
 
-        Start(slots);
+        if (Busy)
+            Continue(slots);
     }
 
     /// <summary>
-    /// Which window is which, learned rather than matched. The prompt differs between choosing a
-    /// run's team and choosing a fight's familiars, but it is localised, so hardcoding either
-    /// sentence would work in one client and quietly misfire in every other. Instead: the first
-    /// time familiars are actually called, whatever the window said at that moment *is* the fight
-    /// prompt. Sortr learns its retainer menu entries the same way and for the same reason.
+    /// Remembers what you call by hand, in call order. Reading only — this is how the button knows
+    /// what "last time" was.
     /// </summary>
     private void Learn(IReadOnlyList<PetPartyReader.Slot> slots)
     {
-        var called = slots.Where(slot => slot.IsCalled).OrderBy(slot => slot.CallSlot).ToList();
-        if (called.Count == 0)
-            return;
-
-        var prompt = PetPartyReader.Prompt();
-        if (prompt.Length > 0 && configuration.FightPrompt != prompt)
-        {
-            configuration.FightPrompt = prompt;
-            configuration.Save();
-            Services.Log.Information($"Learned the fight prompt: \"{prompt}\"");
-        }
-
-        // Remember in call order. Replacing one familiar reuses the freed slot rather than shifting
-        // the others up, so the slot number is the order and the list order is not.
-        var chosen = called.Where(slot => slot.Beast != null)
-                           .Select(slot => slot.Beast!.Number)
-                           .ToList();
+        // Replacing one familiar reuses the freed slot rather than shifting the others up, so the
+        // slot number is the order and the list order is not.
+        var chosen = slots.Where(slot => slot.IsCalled && slot.Beast != null)
+                          .OrderBy(slot => slot.CallSlot)
+                          .Select(slot => slot.Beast!.Number)
+                          .ToList();
 
         if (chosen.Count == 0 || configuration.LastFightBeasts.SequenceEqual(chosen))
             return;
@@ -105,16 +100,11 @@ public sealed unsafe class FightSelector : IDisposable
 
     private void Start(IReadOnlyList<PetPartyReader.Slot> slots)
     {
-        if (givenUp || configuration.FightSelection != FightMode.RepeatLast)
+        if (configuration.LastFightBeasts.Count == 0)
+        {
+            Tell("Nothing remembered yet — call familiars by hand once, and the next press repeats them.");
             return;
-
-        // Only ever on the window that asks for a fight's familiars, and only one it recognises.
-        if (configuration.FightPrompt.Length == 0 || PetPartyReader.Prompt() != configuration.FightPrompt)
-            return;
-
-        // Somebody is already called — either the game pre-filled it or you are mid-choice. Leave it.
-        if (slots.Any(slot => slot.IsCalled))
-            return;
+        }
 
         var wanted = TeamPlanner.RepeatLast(
             slots.Where(slot => slot.Beast != null)
@@ -123,12 +113,25 @@ public sealed unsafe class FightSelector : IDisposable
             configuration.LastFightBeasts.Count);
 
         if (wanted.Count == 0)
+        {
+            Tell("None of the familiars from the last fight are in this team.");
             return;
+        }
 
-        foreach (var beast in wanted)
+        // The callback toggles, so one already called is left alone rather than sent again.
+        var missing = wanted.Where(beast => !slots.Any(slot => slot.Beast?.Number == beast && slot.IsCalled))
+                            .ToList();
+
+        if (missing.Count == 0)
+        {
+            Tell("Already calling the same familiars as last time.");
+            return;
+        }
+
+        foreach (var beast in missing)
             pending.Enqueue(beast);
 
-        Status = $"Calling {wanted.Count} familiar(s) as last time.";
+        Status = $"Calling {missing.Count} familiar(s) as last time.";
         Services.Log.Information(Status);
     }
 
@@ -151,7 +154,7 @@ public sealed unsafe class FightSelector : IDisposable
 
         if (pending.Count == 0)
         {
-            Status = "Done.";
+            Tell($"Called {slots.Count(slot => slot.IsCalled)} familiar(s) as last time.");
             return;
         }
 
@@ -160,11 +163,10 @@ public sealed unsafe class FightSelector : IDisposable
 
         if (slot == null)
         {
-            Stop("A familiar left the roster mid-selection; stopping.");
+            Stop("A familiar left the team mid-selection; stopping.");
             return;
         }
 
-        // The callback toggles, so sending it for one already called would take it back out.
         if (slot.IsCalled)
         {
             cooldown = 1;
@@ -173,7 +175,7 @@ public sealed unsafe class FightSelector : IDisposable
 
         if (!Select(slot.Index))
         {
-            Stop("The roster window went away mid-selection; stopping.");
+            Stop("The team list went away mid-selection; stopping.");
             return;
         }
 
@@ -209,12 +211,18 @@ public sealed unsafe class FightSelector : IDisposable
     private static string Name(IEnumerable<PetPartyReader.Slot> slots, uint beastNumber) =>
         slots.FirstOrDefault(slot => slot.Beast?.Number == beastNumber)?.Name ?? $"beast {beastNumber}";
 
+    /// <summary>In chat as well: the button is in the game's window, so its answer belongs there.</summary>
+    private void Tell(string message)
+    {
+        Status = message;
+        Services.Log.Information(message);
+        Services.Chat.Print($"[BeastMastr] {message}");
+    }
+
     private void Stop(string why)
     {
         Reset();
-        givenUp = true;
-        Status = $"{why} Not trying again until the plugin reloads.";
-        Services.Log.Warning(Status);
+        Tell($"{why} Press the button again to retry.");
     }
 
     private void Reset()
@@ -222,6 +230,7 @@ public sealed unsafe class FightSelector : IDisposable
         pending.Clear();
         waitingFor = 0;
         cooldown = 0;
+        requested = false;
     }
 
     public void Dispose() => Services.Framework.Update -= OnUpdate;

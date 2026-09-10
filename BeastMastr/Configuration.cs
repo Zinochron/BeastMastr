@@ -12,17 +12,15 @@ public class Configuration : IPluginConfiguration
     public int Version { get; set; } = CurrentVersion;
 
     // ---- Automation -------------------------------------------------------
-    // Not yet acting on anything: the modes are recorded here so the shape is settled, and the
-    // Settings tab deliberately does not offer them until they do something.
+    // Everything here acts on a button press and at no other time. There were modes that filled a
+    // team or called familiars on their own, and they are gone rather than switched off: they fought
+    // every choice made by hand, and a saved "on" from an old config must not bring them back.
 
-    /// <summary>How a team is filled before a run.</summary>
-    public TeamMode TeamSelection { get; set; } = TeamMode.Off;
-
-    /// <summary>Which board is being played, which decides how many beasts the team holds.</summary>
+    /// <summary>
+    /// Which board is being played, which decides how many beasts the team holds. Only a fallback:
+    /// the team list states its own size, and that is used whenever it does.
+    /// </summary>
     public int BoardTier { get; set; }
-
-    /// <summary>How beasts are picked for an individual fight.</summary>
-    public FightMode FightSelection { get; set; } = FightMode.Off;
 
     /// <summary>
     /// Progression rank per beast, learned by watching the bestiary rather than asked for. There is
@@ -52,13 +50,6 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>What was taken into the last fight, so it can be taken into the next one.</summary>
     public List<uint> LastFightBeasts { get; set; } = [];
-
-    /// <summary>
-    /// What the window says when it is asking for a fight's familiars rather than a run's team.
-    /// Learned the first time familiars are actually called, never hardcoded — the sentence is
-    /// localised, so a hardcoded one would work in a single client and misfire in every other.
-    /// </summary>
-    public string FightPrompt { get; set; } = string.Empty;
 
     // ---- Data explorer ----------------------------------------------------
     // Phase 0 tooling. The Beastmaster sheets are almost entirely unnamed upstream, so the
@@ -136,29 +127,4 @@ public class SavedRoom
     public int Kind { get; set; }
     public string Label { get; set; } = string.Empty;
     public string Detail { get; set; } = string.Empty;
-}
-
-/// <summary>How the roster is filled before a run starts.</summary>
-public enum TeamMode
-{
-    /// <summary>Pick your own.</summary>
-    Off,
-
-    /// <summary>Fill with the least advanced beasts, so the ones that need the experience get it.</summary>
-    Leveling,
-
-    /// <summary>Fill with what suits the board. Needs the enemy data that only exists on hover.</summary>
-    Recommended,
-}
-
-/// <summary>How beasts are picked when a fight asks for them.</summary>
-public enum FightMode
-{
-    Off,
-
-    /// <summary>Whatever went into the last fight. Most fights in a row want the same answer.</summary>
-    RepeatLast,
-
-    /// <summary>What beats this particular enemy. Needs the enemy data that only exists on hover.</summary>
-    Recommended,
 }

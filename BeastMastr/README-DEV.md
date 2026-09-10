@@ -1230,3 +1230,24 @@ same-units reason as the bestiary's. If the list sits flush with the top it goes
 the first row it would take that row's clicks. The same capture has the roster's node tree and shows the spot is free:
 at the window's scale of 1.2, the header's separator line ends 57 units down and the list starts at
 90. A 24-high button at 62 sits in that gap.
+
+## Nothing happens without a button press
+
+The first working fill was followed straight away by the complaint that mattered more: the plugin
+was blocking manual input. The config showed why. Both automatic modes were on, filling the team
+and calling the last fight familiars, and the team one started over whenever the team did not match
+its plan. Change a single beast by hand and it emptied and refilled the team underneath you. Once
+the team did match, it would have printed "Team already matches" to chat on every frame.
+
+The rule now, for everything in this plugin that changes game state: **it acts on a button press,
+once, and at no other time.** The modes are removed, not switched off, together with their settings
+and their config entries, so an old saved "on" cannot bring them back.
+
+- The team list in team mode carries "Fill for levelling", and so does the bestiary while it is open.
+- The team list in fight mode carries "Call last familiars". It calls the ones from the last fight,
+  leaves any already called alone, and stops at the first pick that does not take. Nothing is
+  permanently given up on any more; pressing again is how to retry.
+- Remembering the last fight is still automatic, because it only reads. It pauses while the button
+  is calling, so a failed pick cannot store half a selection as the last fight.
+- The learned fight prompt is gone. It existed only so the automatic mode could recognise the fight
+  window, and the button is only offered there to begin with: the team list mode number decides it.

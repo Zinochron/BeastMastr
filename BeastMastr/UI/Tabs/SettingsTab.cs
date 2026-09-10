@@ -106,18 +106,8 @@ public sealed class SettingsTab : ITab
             "Adds a \"Fill for levelling\" button to the team list whenever a team is being put " +
             "together, and under the bestiary while that is open too. It empties the team with the " +
             "game's own \"Remove all\", opens the bestiary if it is not already up, then adds the " +
-            "carries and the least advanced beasts.");
-
-        var leveling = configuration.TeamSelection == TeamMode.Leveling;
-        if (ImGui.Checkbox("Fill the team for levelling", ref leveling))
-        {
-            configuration.TeamSelection = leveling ? TeamMode.Leveling : TeamMode.Off;
-            configuration.Save();
-        }
-
-        Widgets.HelpMarker(
-            "Does the same as the button, but on its own as soon as a team is being put together. " +
-            "Leave it off if you would rather ask for it — the button is there either way.");
+            "carries and the least advanced beasts. The buttons are the only way the plugin changes " +
+            "anything — it never acts on its own.");
 
         if (teamSelector.Status.Length > 0)
             ImGui.TextDisabled(teamSelector.Status);
@@ -129,30 +119,16 @@ public sealed class SettingsTab : ITab
     /// </summary>
     private void DrawFightAutomation()
     {
-        var repeat = configuration.FightSelection == FightMode.RepeatLast;
-        if (ImGui.Checkbox("Call the same familiars as the last fight", ref repeat))
-        {
-            configuration.FightSelection = repeat ? FightMode.RepeatLast : FightMode.Off;
-            configuration.Save();
-        }
+        ImGui.TextUnformatted("Calling familiars for a fight");
 
         Widgets.HelpMarker(
-            "When the window asks which familiars to call, picks the ones you took last time. It " +
-            "only acts when nothing is chosen yet, so it never overrides a choice you started, and " +
-            "it stops as soon as a pick does not take.");
+            "While the team list asks which familiars to call, it gets a \"Call last familiars\" " +
+            "button. Pressing it calls the ones you took into the last fight, leaves any already " +
+            "called alone, and stops as soon as a pick does not take. Nothing happens without the press.");
 
-        if (configuration.FightPrompt.Length == 0)
-        {
-            ImGui.TextDisabled("Waiting to see a fight selection — call familiars once by hand first.");
-        }
-        else if (configuration.LastFightBeasts.Count == 0)
-        {
-            ImGui.TextDisabled("Nothing remembered yet.");
-        }
-        else
-        {
-            ImGui.TextDisabled($"Remembered: {configuration.LastFightBeasts.Count} familiar(s).");
-        }
+        ImGui.TextDisabled(configuration.LastFightBeasts.Count == 0
+                               ? "Nothing remembered yet — call familiars by hand once."
+                               : $"Remembered: {configuration.LastFightBeasts.Count} familiar(s).");
 
         if (fightSelector.Status.Length > 0)
             ImGui.TextDisabled(fightSelector.Status);

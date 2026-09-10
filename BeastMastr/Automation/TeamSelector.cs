@@ -123,7 +123,10 @@ public sealed unsafe class TeamSelector : IDisposable
         if (givenUp)
             return;
 
-        if (phase == Phase.Idle && !requested && configuration.TeamSelection != TeamMode.Leveling)
+        // Only ever on the button. There was an automatic mode that started on its own whenever the
+        // team did not match the plan, and it emptied and refilled the team under every change made
+        // by hand.
+        if (phase == Phase.Idle && !requested)
             return;
 
         // The team list is the screen. Closing it, or the window switching to calling a fight's
@@ -144,10 +147,7 @@ public sealed unsafe class TeamSelector : IDisposable
         switch (phase)
         {
             case Phase.Idle:
-                // The automatic mode waits for the bestiary as well: emptying a team the moment the
-                // screen opens, before anyone has asked, is not something to spring on a player.
-                if (requested || BestiaryOpen)
-                    Start();
+                Start();
                 break;
 
             case Phase.Emptying:

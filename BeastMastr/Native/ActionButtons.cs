@@ -15,9 +15,10 @@ namespace BeastMastr.Native;
 /// <summary>
 /// Puts the plugin's actions into the windows they belong to, as buttons the game drew itself.
 ///
-/// A button is a better home for these than a mode that fires the moment a window opens: you press
-/// it when you mean it, pressing it again is how you retry, and nothing happens while you are just
-/// looking. The mode switches stay for anyone who wants it to happen on its own.
+/// **These buttons are the only way the plugin changes anything.** There used to be modes that
+/// filled a team or called familiars on their own the moment a window opened, and they fought every
+/// choice made by hand: change one beast and the team was emptied and refilled under you. Now
+/// nothing happens until a button is pressed, and a press does one thing once.
 /// </summary>
 public sealed unsafe class ActionButtons : IDisposable
 {
@@ -44,33 +45,41 @@ public sealed unsafe class ActionButtons : IDisposable
 
     private const float ButtonWidth = 140f;
 
+    /// <summary>One per job. The team list carries a different button for each of its two modes.</summary>
+    private enum Kind
+    {
+        /// <summary>Team list, building a run's team.</summary>
+        FillFromTeamList,
+
+        /// <summary>Under the bestiary's tiles, while it is open beside the team list.</summary>
+        FillFromBestiary,
+
+        /// <summary>Team list, calling a fight's familiars.</summary>
+        CallFromTeamList,
+    }
+
     private readonly Configuration configuration;
     private readonly TeamSelector teamSelector;
+    private readonly FightSelector fightSelector;
     private readonly Func<bool> nativeUiReady;
 
-    /// <summary>Keyed by the window each one is attached to.</summary>
-    private readonly Dictionary<string, TextButtonNode> buttons = [];
+    private readonly Dictionary<Kind, TextButtonNode> buttons = [];
 
     private int ticksUntilRecheck;
     private bool broken;
 
-    public ActionButtons(Configuration configuration, TeamSelector teamSelector, Func<bool> nativeUiReady)
+    public ActionButtons(Configuration configuration, TeamSelector teamSelector, FightSelector fightSelector,
+                         Func<bool> nativeUiReady)
     {
         this.configuration = configuration;
         this.teamSelector = teamSelector;
+        this.fightSelector = fightSelector;
         this.nativeUiReady = nativeUiReady;
 
         Services.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, XbmColumns.MonsterNotebook.Addon, OnFinalize);
         Services.AddonLifecycle.RegisterListener(AddonEvent.PreFinalize, XbmColumns.PetParty.Addon, OnFinalize);
         Services.Framework.Update += OnUpdate;
     }
-
-    /// <summary>
-    /// Team composition is the roster window in its team mode — with or without the bestiary. The
-    /// first version wanted both, so the button only appeared once the bestiary was opened, which is
-    /// the wrong way round: the team list is the screen, and the bestiary is something opened from it.
-    /// </summary>
-    private static bool ComposingTeam => PetPartyReader.IsTeamComposition;
 
     private static bool BestiaryOpen => AddonReader.IsOpen(XbmColumns.MonsterNotebook.Addon);
 
@@ -83,17 +92,19 @@ public sealed unsafe class ActionButtons : IDisposable
 
         try
         {
-            if (!configuration.ShowActionButtons || !nativeUiReady() || !ComposingTeam)
+            if (!configuration.ShowActionButtons || !nativeUiReady() || !PetPartyReader.IsOpen)
             {
                 Detach();
                 return;
             }
 
-            if (BestiaryOpen && !buttons.ContainsKey(XbmColumns.MonsterNotebook.Addon))
-                AttachUnderTheTiles();
+            // The team list is the screen for both jobs; its own mode number says which one it is
+            // doing, and each job gets its own button.
+            var team = PetPartyReader.IsTeamComposition;
 
-            if (!buttons.ContainsKey(XbmColumns.PetParty.Addon))
-                AttachAboveTheRoster();
+            Want(Kind.FillFromTeamList, team);
+            Want(Kind.FillFromBestiary, team && BestiaryOpen);
+            Want(Kind.CallFromTeamList, !team);
         }
         catch (Exception ex)
         {
@@ -111,15 +122,42 @@ public sealed unsafe class ActionButtons : IDisposable
         }
     }
 
+    private void Want(Kind kind, bool wanted)
+    {
+        var have = buttons.ContainsKey(kind);
+
+        if (wanted && !have)
+        {
+            switch (kind)
+            {
+                case Kind.FillFromTeamList:
+                    AboveTheTeamList(kind, "Fill for levelling", teamSelector.RequestFill);
+                    break;
+
+                case Kind.FillFromBestiary:
+                    UnderTheTiles(kind, "Fill for levelling", teamSelector.RequestFill);
+                    break;
+
+                case Kind.CallFromTeamList:
+                    AboveTheTeamList(kind, "Call last familiars", fightSelector.RequestRepeat);
+                    break;
+            }
+        }
+        else if (!wanted && have)
+        {
+            Remove(kind);
+        }
+    }
+
     /// <summary>
     /// A button left attached to a window being torn down is the kind of leak that corrupts it, so
-    /// either window closing takes both off. The roster's comes straight back on the next check when
-    /// it was only the bestiary that closed.
+    /// either window closing takes every button off. The ones still wanted come straight back on the
+    /// next check.
     /// </summary>
     private void OnFinalize(AddonEvent type, AddonArgs args) => Detach();
 
     /// <summary>In the bestiary's gap between its last row of tiles and its footer.</summary>
-    private void AttachUnderTheTiles()
+    private void UnderTheTiles(Kind kind, string label, Action onClick)
     {
         if (!AddonReader.TryGet(XbmColumns.MonsterNotebook.Addon, out var addon))
             return;
@@ -131,19 +169,19 @@ public sealed unsafe class ActionButtons : IDisposable
         if (grid == null)
             return;
 
-        Attach(XbmColumns.MonsterNotebook.Addon, grid, ButtonNodeIdBase,
-               new Vector2(0f, lastTile->Y + lastTile->Height + 1f));
+        Attach(kind, grid, new Vector2(0f, lastTile->Y + lastTile->Height + 1f), label, onClick);
     }
 
     /// <summary>
-    /// Above the team list in the roster window, where the team being filled is the thing in front
-    /// of you. Placed against the list component itself and hung off the same parent, for the same
-    /// reason as the bestiary's: then the two positions are in the same units and nothing converts.
+    /// Above the list in the team list window. Placed against the list component itself and hung off
+    /// the same parent, for the same reason as the bestiary's: then the two positions are in the same
+    /// units and nothing converts. The capture shows the room for it — the header's separator ends 57
+    /// units down and the list starts at 90.
     ///
     /// Where the list sits flush with the top and leaves no room above it, the button goes below it
     /// instead — a button over the list's first row would take the clicks meant for that row.
     /// </summary>
-    private void AttachAboveTheRoster()
+    private void AboveTheTeamList(Kind kind, string label, Action onClick)
     {
         if (!AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
             return;
@@ -158,25 +196,23 @@ public sealed unsafe class ActionButtons : IDisposable
                            ? new Vector2(list->X, above)
                            : new Vector2(list->X, list->Y + list->Height + 4f);
 
-        Attach(XbmColumns.PetParty.Addon, parent, ButtonNodeIdBase + 1, position);
-        Services.Log.Debug($"Roster button placed at {position.X:0}/{position.Y:0} against a list at " +
-                           $"{list->X:0}/{list->Y:0} {list->Width}x{list->Height}.");
+        Attach(kind, parent, position, label, onClick);
     }
 
-    private void Attach(string addonName, AtkResNode* parent, int nodeId, Vector2 position)
+    private void Attach(Kind kind, AtkResNode* parent, Vector2 position, string label, Action onClick)
     {
         var button = new TextButtonNode
         {
-            NodeId = (uint)nodeId,
+            NodeId = (uint)(ButtonNodeIdBase + (int)kind),
             Size = new Vector2(ButtonWidth, ButtonHeight),
             Position = position,
-            String = "Fill for levelling",
+            String = label,
             IsVisible = true,
-            OnClick = teamSelector.RequestFill,
+            OnClick = onClick,
         };
 
         button.AttachNode(parent, NodePosition.AsLastChild);
-        buttons[addonName] = button;
+        buttons[kind] = button;
     }
 
     /// <summary>The window's list component node, found by what it is rather than by an id nobody has captured.</summary>
@@ -194,6 +230,15 @@ public sealed unsafe class ActionButtons : IDisposable
         }
 
         return null;
+    }
+
+    private void Remove(Kind kind)
+    {
+        if (!buttons.Remove(kind, out var button))
+            return;
+
+        button.DetachNode();
+        button.Dispose();
     }
 
     private void Detach()

@@ -77,7 +77,7 @@ public sealed class Plugin : IDalamudPlugin
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
                                                 () => kamiToolKitReady.IsCompletedSuccessfully);
-        actionButtons = new ActionButtons(Configuration, teamSelector,
+        actionButtons = new ActionButtons(Configuration, teamSelector, fightSelector,
                                           () => kamiToolKitReady.IsCompletedSuccessfully);
         carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
         nextRoom = new NextRoomPanel(Configuration, boardCache, enemies,
