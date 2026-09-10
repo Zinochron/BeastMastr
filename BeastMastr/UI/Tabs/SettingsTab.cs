@@ -39,6 +39,19 @@ public sealed class SettingsTab : ITab
             "in the Beasts tab excludes. Turning this off hands the window back exactly as the game " +
             "draws it, the next time it opens.");
 
+        var nextRoom = configuration.ShowNextRoom;
+        if (ImGui.Checkbox("Brief the next room during a run", ref nextRoom))
+        {
+            configuration.ShowNextRoom = nextRoom;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "A window of the game's own showing what the room you are about to enter holds, and " +
+            "nothing about the other eleven. Drag it where you want it; it stays there. The arrows " +
+            "look further ahead. What it knows about enemies comes from the board — click through " +
+            "the rooms once and it fills in.");
+
         var overlay = configuration.ShowBoardOverlay;
         if (ImGui.Checkbox("Show room cards on the Crucible board", ref overlay))
         {

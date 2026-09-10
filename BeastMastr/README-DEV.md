@@ -988,22 +988,39 @@ commands it uses were recorded from real clicks, so none of it is a guess.
 It is a button, not a background job: fifty tiles' worth of the detail page flickering past is
 something to ask for, not something to spring on someone.
 
-### Where the buttons sit, in two wrong attempts
+### Where the buttons sit, in three attempts
 
-Both were coordinate-space mistakes, and the second one is the more interesting.
+All three were the same mistake: comparing a position against something measured in different units.
 
 The first offset from `GetScaledHeight`, which is screen pixels while a child node's position is
-local — with the UI scaled up those disagree by exactly the scale factor, and the button landed that
+local. With the UI scaled up those disagree by exactly the scale factor, and the button landed that
 far *below* the window.
 
 The second measured from the last tile, which is the right idea and still wrong: **the tiles do not
-hang off the window.** They sit in a container that has its own offset, so a tile's `Y` is measured
-from the container and the button's from the window, and adding one to the other put the button a
-whole row too *high*.
+hang off the window.** They sit in a container with its own offset, so a tile's `Y` is measured from
+the container and the button's from the window. Adding one to the other put it a whole row too
+*high*.
 
-`DistanceFromTop` sums `Y` up the parent chain, which is what makes the two comparable. Anchoring to
-a sibling is still the right instinct — it just has to be a sibling in the same space, or made into
-one.
+The third summed `Y` up the parent chain to convert between them, and landed too low again.
+
+The fix is not better arithmetic, it is not needing any. The button is **attached to the same
+container as the tiles**, `lastTile->ParentNode`, so its position and theirs are already in the same
+units and the placement is a subtraction the game does not have to be asked about:
+
+```csharp
+Position = new Vector2(0f, lastTile->Y + lastTile->Height + 1f);
+fill.AttachNode(lastTile->ParentNode, NodePosition.AsLastChild);
+```
+
+The numbers come from a capture rather than from the eye. In
+`captures/XBMMonsterNotebook-nodes-20260909-145336.txt` the grid container sits at screen y 227, the
+bottom tile row at 795 and "Beasts Captured" at 973, with the UI at scale 2 — so in the container's
+own units the tiles end at 348 and the caption starts at 373. A 24-high button one unit under the
+tiles fills that gap exactly.
+
+Worth keeping in mind for the next node: **a captured screen position divided by the UI scale is a
+local one**, and that is how any of these could have been checked without a round trip through the
+client.
 
 ### The rank sweep is shelved
 
@@ -1024,3 +1041,69 @@ whether or not anything is being recorded, and the icon in that slot names the b
 
 Past three carries the entry is not offered at all rather than shown and refused: an entry that
 cannot do anything reads as a bug, while a missing one reads as a limit.
+
+## Phase 4: the next room, and only the next room
+
+`Native/NextRoomPanel.cs` shows one room — the one you are about to enter — in a `NativeAddon`,
+which is a real game window: the game's own frame, draggable, and it remembers where it was left.
+That last part is the reason it is a window rather than something anchored to the HUD. Three
+attempts went into placing a single button inside a window whose layout is fixed and captured; a
+panel that the player positions once needs none of that.
+
+The board shows twelve rooms at once and each is a click away from what it holds. Only one of them
+is a decision about to be made. The arrows look further ahead, which is a different question from
+what belongs in front of you, and they reset the moment a room is entered.
+
+### The room list is guaranteed to pass through, so nothing has to be fetched on demand
+
+`Data/BoardCache.cs` keeps the board. Both board windows are closed out in the run, so a panel that
+read live would have nothing to say exactly when it is wanted — but the room list has to be opened
+before a run starts, so the data is certain to pass through at least once. Reading it whenever the
+window is up and keeping it is enough.
+
+A board is also fixed: the same place lays out the same rooms every time. So it is saved per
+territory in the config and survives a session. It is rewritten every time the list is open, which
+makes a wrong entry self-correcting — the worst a stale board can do is be shown until the real one
+is next looked at.
+
+Two rooms is the minimum for a reading to count as a board. The window stays loaded after it closes
+and keeps whatever it last held: `captures/board-20260909-224042.txt` is a single leftover room read
+in Central Shroud, outside the Crucible entirely, with both board windows reporting themselves
+visible. That is what stale looks like, and a real board always has at least a first room and a boss.
+
+### Which move the run is on, read off the board's rows
+
+The board is a ladder drawn bottom to top, and the lines connecting two rooms are entries of the
+same component with positions of their own — so its rows alternate, room row, link row, room row.
+Every second row from the bottom is a room row: the first is where the run starts, and after that
+there is exactly one row per move. `AtkComponentXBMContentStageEventMap` marks the current entry, so
+the row holding it is the move.
+
+**The tile index is not the room-list index**, which is the trap here: a twelve-room board handed out
+indices 0 to 28, because the connectors are entries too. Pairing on that index points past the end of
+the list and the Board tab has always said so.
+
+The row mapping is checked rather than trusted. `StageMapReader.MoveOf` is given the room list's own
+per-move counts and refuses to answer unless the rows match them one for one. On the twelve-room
+board of `captures/board-20260909-185350.txt` the room rows hold 1, 1, 2, 2, 1, 1, 1, 2, 1, 1 tiles,
+which is the start plus the list's counts branch for branch — moves 2, 3 and 7 fork and so do rows 2,
+3 and 7. A move read off a mapping that does not hold would brief the wrong room with nothing to say
+it had, so it gives up instead.
+
+### What a room asks you to bring
+
+`Rules/RoomBriefing.cs` is pure and covered by the harness. Two needs are derivable today:
+
+- **Interrupt**, which the enemy panel states per action. It words it rather than flagging it, and
+  the only value seen is "Ineffective" — so anything else counts as interruptible. That errs towards
+  offering: a room briefed as needing an interrupt it does not need costs a team slot, one that hides
+  a needed interrupt costs the run.
+- **Cleanse**, which follows from a status an enemy applies that the team does not already nullify.
+  The panel has its own hidden "Nullification" note for exactly that, so this is the game's answer
+  rather than ours.
+
+**Dispel is not claimed.** No window found so far marks it, and a need invented in the rules layer
+would be indistinguishable from one read out of the game.
+
+Every name — enemy, status, weakness — is passed through in whatever language the client is in.
+Writing our own words for them would mean a table per client to maintain.

@@ -407,6 +407,16 @@ public static class XbmColumns
     }
 
     /// <summary>
+    /// The run's own HUD, <c>XBMContentsMainHUD</c> — the score and progress readout that is up for
+    /// the whole of a run and at no other time. Nothing is read from it; it is used as the answer to
+    /// "is a run under way", which is what decides whether the next room is worth briefing.
+    /// </summary>
+    public static class ContentsMainHUD
+    {
+        public const string Addon = "XBMContentsMainHUD";
+    }
+
+    /// <summary>
     /// The board, <c>XBMStageMap</c>. Its own AtkValues hold almost nothing — the room content
     /// comes from <see cref="StageDetailList"/> — but its node tree is where the rooms sit on
     /// screen, which is what an overlay has to anchor to.

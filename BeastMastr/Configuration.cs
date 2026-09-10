@@ -94,10 +94,45 @@ public class Configuration : IPluginConfiguration
 
     public bool ShowBoardOverlay { get; set; } = false;
 
+    /// <summary>
+    /// Show the next room's briefing in a window of the game's own, during a run.
+    /// </summary>
+    public bool ShowNextRoom { get; set; } = true;
+
+    /// <summary>
+    /// Boards already read, keyed by the territory they were read in.
+    ///
+    /// A board is fixed — the same territory lays out the same rooms every time — and the room list
+    /// has to be opened before a run anyway, so reading it once is enough and it is worth keeping
+    /// across sessions. It is rewritten whenever the list is open, so a board that ever does differ
+    /// corrects itself the moment it is looked at rather than staying wrong.
+    /// </summary>
+    public Dictionary<uint, SavedBoard> KnownBoards { get; set; } = [];
+
     /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>
     public bool ShowDataTab { get; set; } = true;
 
     public void Save() => Services.PluginInterface.SavePluginConfig(this);
+}
+
+/// <summary>
+/// A board as the room list described it. Plain properties rather than a record: this is written to
+/// disk, and a shape that deserialises without a constructor is one less thing to get wrong.
+/// </summary>
+[Serializable]
+public class SavedBoard
+{
+    public List<SavedRoom> Rooms { get; set; } = [];
+}
+
+[Serializable]
+public class SavedRoom
+{
+    public int Index { get; set; }
+    public int Move { get; set; }
+    public int Kind { get; set; }
+    public string Label { get; set; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
 }
 
 /// <summary>How the roster is filled before a run starts.</summary>

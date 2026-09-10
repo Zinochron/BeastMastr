@@ -26,9 +26,11 @@ public sealed class Plugin : IDalamudPlugin
     private readonly FightSelector fightSelector;
     private readonly RankWatcher rankWatcher;
     private readonly EnemyCache enemies;
+    private readonly BoardCache boardCache;
     private readonly TeamSelector teamSelector;
     private readonly ActionButtons actionButtons;
     private readonly CarryContextMenu carryMenu;
+    private readonly NextRoomPanel nextRoom;
     private readonly RankPuller rankPuller;
 
     /// <summary>
@@ -68,6 +70,7 @@ public sealed class Plugin : IDalamudPlugin
         fightSelector = new FightSelector(Configuration, Catalog);
         rankWatcher = new RankWatcher(Configuration);
         enemies = new EnemyCache();
+        boardCache = new BoardCache(Configuration);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         rankPuller = new RankPuller(rankWatcher);
 
@@ -77,13 +80,15 @@ public sealed class Plugin : IDalamudPlugin
         actionButtons = new ActionButtons(Configuration, teamSelector,
                                           () => kamiToolKitReady.IsCompletedSuccessfully);
         carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
+        nextRoom = new NextRoomPanel(Configuration, boardCache, enemies,
+                                     () => kamiToolKitReady.IsCompletedSuccessfully);
 
         var tabs = new List<ITab> { new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller) };
         if (Configuration.ShowDataTab)
         {
             tabs.Add(new SheetsTab(Configuration));
             tabs.Add(new AddonsTab(Configuration, delayedSweep));
-            tabs.Add(new BoardTab(Catalog, recorder, rankWatcher, enemies));
+            tabs.Add(new BoardTab(Catalog, recorder, rankWatcher, enemies, boardCache));
         }
 
         tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector));
@@ -143,9 +148,11 @@ public sealed class Plugin : IDalamudPlugin
         fightSelector.Dispose();
         rankWatcher.Dispose();
         enemies.Dispose();
+        boardCache.Dispose();
         teamSelector.Dispose();
         actionButtons.Dispose();
         carryMenu.Dispose();
+        nextRoom.Dispose();
         rankPuller.Dispose();
         KamiToolKitLibrary.Dispose();
 

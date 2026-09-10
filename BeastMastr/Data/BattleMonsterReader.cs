@@ -50,21 +50,12 @@ public static unsafe class BattleMonsterReader
 
                 parts.AddRange(statuses);
 
-                if (Actions.Any(action => Interruptible(action.Interruption)))
+                if (Actions.Any(action => Rules.RoomBriefing.Interruptible(action.Interruption)))
                     parts.Add("interruptible");
 
                 return string.Join(" · ", parts);
             }
         }
-
-        /// <summary>
-        /// The window words this rather than flagging it, and the only value seen so far is
-        /// "Ineffective". Anything else is treated as an interrupt being worth bringing, which errs
-        /// toward showing the option rather than hiding it.
-        /// </summary>
-        private static bool Interruptible(string interruption) =>
-            interruption.Length > 0
-            && !interruption.Contains("ineffective", StringComparison.OrdinalIgnoreCase);
     }
 
     public static bool IsOpen => AddonReader.IsOpen(XbmColumns.BattleMonsterDetail.Addon);

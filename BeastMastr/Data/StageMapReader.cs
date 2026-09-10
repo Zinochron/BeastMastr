@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
@@ -89,6 +91,62 @@ public static unsafe class StageMapReader
         }
 
         return rooms;
+    }
+
+    /// <summary>
+    /// The board's tiles grouped into rows, bottom first, with the connector graphics dropped.
+    ///
+    /// The board is a ladder drawn bottom to top, and the connecting lines between two rooms are
+    /// entries of the same component with positions of their own — so the rows alternate, room row,
+    /// link row, room row. Taking every second row from the bottom leaves the rooms: the first is
+    /// where the run starts, and after that there is exactly one row per move.
+    ///
+    /// That is checked rather than trusted. On a real board of twelve rooms across nine moves this
+    /// produced ten rows holding 1, 1, 2, 2, 1, 1, 1, 2, 1, 1 tiles, which is the start plus the
+    /// room list's own per-move counts, branch for branch. <see cref="MoveOf"/> repeats that check
+    /// every time and gives up rather than answering from a board it does not recognise.
+    /// </summary>
+    public static List<List<BoardRoom>> Rows()
+    {
+        return Read()
+               .GroupBy(room => MathF.Round(room.ScreenPosition.Y))
+               .OrderByDescending(row => row.Key)
+               .Where((_, index) => index % 2 == 0)
+               .Select(row => row.OrderBy(room => room.ScreenPosition.X).ToList())
+               .ToList();
+    }
+
+    /// <summary>
+    /// Which move the run is standing on: 0 at the start, 1 once the first room is done. Returns -1
+    /// when the board is not open, when it does not mark a current room, or when its rows do not
+    /// match <paramref name="roomsPerMove"/> — the counts the room list gives for the same board.
+    ///
+    /// Disagreeing counts mean the row-to-move mapping does not hold here, and a move read off a
+    /// mapping that does not hold is worse than no move at all: it would brief the wrong room with
+    /// nothing to say it had.
+    /// </summary>
+    /// <param name="roomsPerMove">How many rooms each move offers, move 1 first.</param>
+    public static int MoveOf(IReadOnlyList<int> roomsPerMove)
+    {
+        var rows = Rows();
+
+        // One row per move, plus the row the run starts on.
+        if (rows.Count != roomsPerMove.Count + 1)
+            return -1;
+
+        for (var move = 0; move < roomsPerMove.Count; move++)
+        {
+            if (rows[move + 1].Count != roomsPerMove[move])
+                return -1;
+        }
+
+        for (var move = 0; move < rows.Count; move++)
+        {
+            if (rows[move].Any(room => room.IsCurrent))
+                return move;
+        }
+
+        return -1;
     }
 
     /// <summary>

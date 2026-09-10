@@ -26,6 +26,24 @@ public sealed unsafe class ActionButtons : IDisposable
 
     private const int RecheckInterval = 30;
 
+    /// <summary>
+    /// Sized to the gap the window already leaves. Measured off a capture rather than judged by
+    /// eye: the bottom row of tiles ends twenty-five units above the "Beasts Captured" caption, so
+    /// a twenty-four high button starting one unit under the tiles fills that gap exactly.
+    ///
+    /// Two earlier attempts missed for the same underlying reason — a position compared against
+    /// something measured in different units. First against the window height as
+    /// <c>GetScaledHeight</c> reports it, which is screen pixels while a child's position is local,
+    /// so the button landed a whole UI scale factor too low. Then against a tile's own <c>Y</c>,
+    /// which is measured from the container the tiles sit in rather than from the window.
+    ///
+    /// The fix is not better arithmetic, it is not needing any: the button hangs off the same
+    /// container as the tiles, so their positions are already in the same units.
+    /// </summary>
+    private const float ButtonHeight = 24f;
+
+    private const float ButtonWidth = 140f;
+
     private readonly Configuration configuration;
     private readonly TeamSelector teamSelector;
     private readonly Func<bool> nativeUiReady;
@@ -95,61 +113,29 @@ public sealed unsafe class ActionButtons : IDisposable
         if (!AddonReader.TryGet(XbmColumns.MonsterNotebook.Addon, out var addon))
             return;
 
+        // The grid is the button's parent, not the window: a position under a tile then needs no
+        // conversion, because it is written in the same units the tile's own position is in.
+        var lastTile = addon->GetNodeById(
+            (uint)XbmColumns.MonsterNotebook.TileNodeId(XbmColumns.MonsterNotebook.TileCount - 1));
+
+        var grid = lastTile == null ? null : lastTile->ParentNode;
+        if (grid == null)
+            return;
+
         var fill = new TextButtonNode
         {
             NodeId = ButtonNodeIdBase,
-            Size = new Vector2(150f, 28f),
-            // In the gap the window already leaves between the last row of tiles and its footer.
-            // Measured from the bottom tile rather than from the window edge: the tile is a child in
-            // the same coordinate space, so it stays right whatever the UI scale is doing.
-            Position = new Vector2(20f, BelowTheTiles(addon)),
+            Size = new Vector2(ButtonWidth, ButtonHeight),
+            Position = new Vector2(0f, lastTile->Y + lastTile->Height + 1f),
             String = "Fill for levelling",
             IsVisible = true,
             OnClick = teamSelector.RequestFill,
         };
 
-        fill.AttachNode(addon, NodePosition.AsLastChild);
+        fill.AttachNode(grid, NodePosition.AsLastChild);
         buttons["fill"] = fill;
 
         Services.Log.Debug("Team composition button attached.");
-    }
-
-    /// <summary>
-    /// Just under the last row of tiles, in the window's own coordinates.
-    ///
-    /// The first attempt offset from the window's height as <c>GetScaledHeight</c> reported it,
-    /// which is screen pixels while a child node's position is local — with the UI scaled up the two
-    /// disagree by exactly the scale factor, and the button landed that far below. A sibling node's
-    /// position needs no conversion at all, so the bottom tile is what it measures from now.
-    /// </summary>
-    private static float BelowTheTiles(AtkUnitBase* addon)
-    {
-        var lastTile = addon->GetNodeById(
-            (uint)XbmColumns.MonsterNotebook.TileNodeId(XbmColumns.MonsterNotebook.TileCount - 1));
-
-        if (lastTile != null)
-            return DistanceFromTop(lastTile) + lastTile->Height + 6f;
-
-        var root = addon->RootNode;
-        return (root != null && root->Height > 0 ? root->Height : 520f) - 60f;
-    }
-
-    /// <summary>
-    /// A node's offset from the top of its window, summed up the parents.
-    ///
-    /// The tiles do not hang off the window directly — they sit in a container that has its own
-    /// offset — so a tile's <c>Y</c> alone is measured from the container and the button's from the
-    /// window. Adding one to the other put the button a whole row high. Walking the chain is what
-    /// makes the two comparable.
-    /// </summary>
-    private static float DistanceFromTop(AtkResNode* node)
-    {
-        var total = 0f;
-
-        for (var current = node; current != null; current = current->ParentNode)
-            total += current->Y;
-
-        return total;
     }
 
     private void Detach()

@@ -23,16 +23,19 @@ public sealed class BoardTab : ITab
     private readonly EventRecorder recorder;
     private readonly RankWatcher ranks;
     private readonly EnemyCache enemies;
+    private readonly BoardCache board;
 
     private string lastPath = string.Empty;
     private float radius = 60f;
 
-    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RankWatcher ranks, EnemyCache enemies)
+    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RankWatcher ranks, EnemyCache enemies,
+                    BoardCache board)
     {
         this.catalog = catalog;
         this.recorder = recorder;
         this.ranks = ranks;
         this.enemies = enemies;
+        this.board = board;
     }
 
     public string Title => "Board";
@@ -50,6 +53,8 @@ public sealed class BoardTab : ITab
         }
 
         ImGuiHelpers.ScaledDummy(4f);
+        DrawBoardCache();
+        ImGuiHelpers.ScaledDummy(4f);
         DrawOpenAddons();
         ImGuiHelpers.ScaledDummy(4f);
         DrawReaders();
@@ -63,6 +68,52 @@ public sealed class BoardTab : ITab
         DrawMarkers();
         ImGuiHelpers.ScaledDummy(4f);
         DrawObjects();
+    }
+
+    /// <summary>
+    /// What the next-room panel is working from, spelled out.
+    ///
+    /// The move it thinks the run is on is derived — the board marks a current room and the rows are
+    /// counted off against the room list — so it is shown rather than left implicit. A panel briefing
+    /// the wrong room and a panel briefing the right one look identical until you can see which move
+    /// it settled on.
+    /// </summary>
+    private void DrawBoardCache()
+    {
+        if (!ImGui.CollapsingHeader("The board being played", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        ImGui.TextDisabled(board.Source);
+
+        if (board.Rooms.Count == 0)
+        {
+            ImGui.TextDisabled("Open the board once and it will be kept, here and between sessions.");
+            return;
+        }
+
+        ImGui.SameLine();
+        if (ImGui.SmallButton("Forget this board"))
+            board.Forget();
+
+        var rows = StageMapReader.Rows();
+        ImGui.TextUnformatted(
+            $"Moves: {string.Join(", ", board.Moves)}   " +
+            $"Standing on: {(board.CurrentMove < 0 ? "not said" : board.CurrentMove.ToString())}   " +
+            $"Next: {(board.NextMove < 0 ? "end of the board" : board.NextMove.ToString())}");
+
+        // The row check is the whole basis for reading a move off the board, so what it saw is
+        // printed next to what it wanted: one row per move, plus the row the run starts on.
+        ImGui.TextDisabled(
+            $"Board rows now: {rows.Count} holding {string.Join("/", rows.Select(row => row.Count))} — " +
+            $"expected {board.Moves.Count + 1} holding 1/" +
+            string.Join("/", board.Moves.Select(move => board.OnMove(move).Count)));
+
+        foreach (var move in board.Moves)
+        {
+            var here = move == board.NextMove ? " <- next" : string.Empty;
+            foreach (var room in board.OnMove(move))
+                ImGui.TextUnformatted($"  move {room.Move,2}  {room.Kind,-22} {room.Label}{here}");
+        }
     }
 
     /// <summary>
@@ -343,6 +394,24 @@ public sealed class BoardTab : ITab
         foreach (var room in StageMapReader.Read())
             text.AppendLine($"tile idx={room.DetailIndex} current={room.IsCurrent} " +
                             $"pos={room.ScreenPosition.X:0}/{room.ScreenPosition.Y:0} size={room.Size.X:0}x{room.Size.Y:0}");
+
+        // The rows are what a move is read off, so they go in whole: every second row from the
+        // bottom should be a room row, and its tile count should match what the room list says that
+        // move offers. A capture where those disagree is the one that disproves the mapping.
+        text.AppendLine();
+        foreach (var (row, index) in StageMapReader.Rows().Select((row, index) => (row, index)))
+        {
+            text.AppendLine($"row {index} ({row.Count} tiles) " +
+                            string.Join("  ", row.Select(tile => $"idx={tile.DetailIndex}" +
+                                                                 $"{(tile.IsCurrent ? "*" : string.Empty)}" +
+                                                                 $"@{tile.ScreenPosition.X:0}/{tile.ScreenPosition.Y:0}")));
+        }
+
+        text.AppendLine();
+        text.AppendLine($"# Board cache: {board.Source}");
+        text.AppendLine($"standing on move {board.CurrentMove}, briefing move {board.NextMove}");
+        foreach (var room in board.Rooms)
+            text.AppendLine($"cached [{room.Index}] move={room.Move} kind={room.Kind} \"{room.Label}\"");
 
         text.AppendLine();
         foreach (var room in StageDetailReader.Read())

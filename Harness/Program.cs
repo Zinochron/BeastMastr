@@ -182,6 +182,50 @@ Check("the same inputs give the same team twice",
       TeamPlanner.ForLeveling(ranked, 3, new uint[] { 1 }, onTeam).Select(c => c.BeastNumber)
                  .SequenceEqual(levelled));
 
+// What a room asks you to bring. The strings are the game's own words in the player's language, so
+// the rules turn on shape and on the one word the game uses for "you cannot interrupt this".
+var room = new[]
+{
+    new BriefEnemy("Diremite", "Wind",
+    [
+        new BriefAction("Venom Spray", "Poison", "Effective", false),
+        new BriefAction("Skitter", "", "Ineffective", false),
+    ]),
+    new BriefEnemy("Goobbue", "Ice",
+    [
+        new BriefAction("Moldy Sneeze", "Paralysis", "Ineffective", true),
+    ]),
+};
+
+var needs = RoomBriefing.Needs(room);
+Check("an interruptible action asks for an interrupt", needs.Contains("Interrupt"), string.Join(" | ", needs));
+Check("an uncovered status asks for a cleanse, and names it",
+      needs.Any(n => n.StartsWith("Cleanse") && n.Contains("Poison")), string.Join(" | ", needs));
+Check("a status the team already nullifies is not asked for",
+      !needs.Any(n => n.Contains("Paralysis")), string.Join(" | ", needs));
+
+Check("both weaknesses are listed once each",
+      RoomBriefing.Weaknesses(room).SequenceEqual(new[] { "Wind", "Ice" }));
+
+Check("every status shows up when covered ones are wanted too",
+      RoomBriefing.Statuses(room).OrderBy(s => s).SequenceEqual(new[] { "Paralysis", "Poison" }));
+
+var lines = RoomBriefing.Lines(room);
+Check("an action that does nothing worth preparing for is left out",
+      !lines.Any(l => l.Contains("Skitter")), string.Join(" / ", lines));
+Check("a covered status is still shown, marked as covered",
+      lines.Any(l => l.Contains("Paralysis") && l.Contains("covered")), string.Join(" / ", lines));
+
+// "Ineffective" is the only value the enemy panel has ever been seen to use, so anything else has
+// to count as interruptible: hiding an interrupt that is needed costs the run.
+Check("an unrecognised interruption still offers the interrupt",
+      RoomBriefing.Interruptible("Highly effective"));
+Check("nothing said about interrupting is not an offer to interrupt",
+      !RoomBriefing.Interruptible(""));
+
+var quiet = new[] { new BriefEnemy("Sheep", "Fire", []) };
+Check("a room with nothing to prepare for asks for nothing", RoomBriefing.Needs(quiet).Count == 0);
+
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");
 foreach (var b in beasts.Where(b => b.Inflicts(BeastStatus.Interruption)))

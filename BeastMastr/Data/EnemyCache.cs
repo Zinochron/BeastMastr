@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using BeastMastr.Rules;
 using Dalamud.Plugin.Services;
 
 namespace BeastMastr.Data;
@@ -59,6 +61,25 @@ public sealed class EnemyCache : IDisposable
 
         return summary.Length > 0 ? $"{enemy.Name} — {summary}" : enemy.Name;
     }
+
+    /// <summary>
+    /// A room's enemies in the shape the briefing rules want: the weakness from the room list, the
+    /// actions from the hover panel, joined by name.
+    ///
+    /// An enemy that has never been hovered still gets a line — its weakness alone is worth having —
+    /// but with no actions, so the briefing simply says less about it rather than claiming it does
+    /// nothing.
+    /// </summary>
+    public IReadOnlyList<BriefEnemy> Brief(int roomIndex) =>
+        InRoom(roomIndex)
+            .Select(enemy => new BriefEnemy(
+                        enemy.Name,
+                        enemy.Weakness,
+                        (Details(enemy.Name)?.Actions ?? [])
+                            .Select(action => new BriefAction(action.Name, action.Status,
+                                                              action.Interruption, action.Nullified))
+                            .ToList()))
+            .ToList();
 
     public void Clear()
     {
