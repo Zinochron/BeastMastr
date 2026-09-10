@@ -1170,8 +1170,13 @@ you sure". No confirmation within a second means stop, and the message lists wha
 What the menu offered and what the confirmation asked also go to the log every time.
 
 Emptying needs only the team list, so it works without the bestiary. Adding needs the bestiary's
-tiles; with the bestiary closed, the fill waits and says so in chat instead of giving up, and carries
-on the moment it opens.
+tiles, and the team list has its own button to open it — `captures/board-20260910-173503.txt`:
+`XBMPetParty [0] Int=5`, sent **with the window closing**, after which the bestiary reports a child
+window attached. So the team list closes and comes back beside the bestiary, and anything watching it
+sees it gone for a moment. The fill therefore gives the team list two seconds to come back before
+treating its absence as the screen being left; without that it would cancel itself every time it
+opened the bestiary. If the bestiary does not appear, the fill says so in chat and carries on the
+moment it is opened by hand.
 
 The recorder now also notes whether a callback closes its window. That flag was not recorded before,
 so the replay assumes the menu and the confirmation close on being answered, which is what they do on

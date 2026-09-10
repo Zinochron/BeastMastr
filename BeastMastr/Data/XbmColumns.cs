@@ -424,6 +424,13 @@ public static class XbmColumns
         /// </summary>
         public const int RemoveAllMenuEntry = 2;
 
+        /// <summary>
+        /// The button that opens the Master's Bestiary from the team list: <c>[5]</c>, one Int, sent
+        /// with the window closing. The team list goes away and comes back beside the bestiary, so
+        /// anything watching it sees it gone for a moment.
+        /// </summary>
+        public const int OpenBestiaryCommand = 5;
+
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
     }

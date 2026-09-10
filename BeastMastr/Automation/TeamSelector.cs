@@ -19,8 +19,8 @@ namespace BeastMastr.Automation;
 ///
 /// Emptying is the game's own "Remove all", replayed from a recording: right-click the first row,
 /// pick the third entry of its menu, confirm. That needs only the team list. Adding toggles tiles in
-/// the bestiary the way a click does — <c>[7, slot]</c> — so it needs the bestiary open, and waits
-/// for it rather than giving up when it is not.
+/// the bestiary the way a click does — <c>[7, slot]</c> — so it needs the bestiary, which it opens
+/// with the team list's own button when it is not up yet.
 /// </summary>
 public sealed unsafe class TeamSelector : IDisposable
 {
@@ -81,6 +81,12 @@ public sealed unsafe class TeamSelector : IDisposable
     private bool givenUp;
     private bool askedForBestiary;
 
+    /// <summary>Frames waited for the bestiary since asking for it, or -1 before asking.</summary>
+    private int bestiaryWait = -1;
+
+    /// <summary>Frames the team list has been gone while a fill is under way.</summary>
+    private int framesAway;
+
     public TeamSelector(Configuration configuration, BeastCatalog catalog, RankWatcher ranks)
     {
         this.configuration = configuration;
@@ -118,12 +124,19 @@ public sealed unsafe class TeamSelector : IDisposable
             return;
 
         // The team list is the screen. Closing it, or the window switching to calling a fight's
-        // familiars, ends whatever was under way.
+        // familiars, ends whatever was under way — but not at the first blink: opening the bestiary
+        // closes the team list and brings it back beside it, and a fill that ended on that gap would
+        // end every time it opened the bestiary itself.
         if (!PetPartyReader.IsTeamComposition)
         {
+            if (phase != Phase.Idle && ++framesAway < FramesToAppear * 2)
+                return;
+
             Reset();
             return;
         }
+
+        framesAway = 0;
 
         switch (phase)
         {
@@ -297,17 +310,10 @@ public sealed unsafe class TeamSelector : IDisposable
 
     private void Fill()
     {
-        // Adding goes through the bestiary's tiles, so it has to be open. Waiting for it rather than
-        // stopping is the point: the button lives on the team list, and the bestiary is one click
-        // away from there.
+        // Adding goes through the bestiary's tiles, so it has to be open.
         if (!BestiaryOpen)
         {
-            if (!askedForBestiary)
-            {
-                askedForBestiary = true;
-                Tell($"Team emptied. Open the Master's Bestiary and the {plan.Count} beasts go in by themselves.");
-            }
-
+            OpenBestiary();
             return;
         }
 
@@ -347,6 +353,34 @@ public sealed unsafe class TeamSelector : IDisposable
         waiting = next;
         framesWaited = 0;
         cooldown = FramesBetweenToggles;
+    }
+
+    /// <summary>
+    /// Presses the team list's own "open the bestiary" button, recorded as <c>[5]</c> with the window
+    /// closing, and waits for the bestiary to appear. If it does not, the fill does not give up: it
+    /// says so and carries on the moment the bestiary is opened by hand.
+    /// </summary>
+    private void OpenBestiary()
+    {
+        if (bestiaryWait < 0)
+        {
+            if (Fire(XbmColumns.PetParty.Addon, true, (AtkValueType.Int, XbmColumns.PetParty.OpenBestiaryCommand)))
+            {
+                bestiaryWait = 0;
+                Status = "Team empty. Opening the bestiary…";
+                return;
+            }
+        }
+        else if (++bestiaryWait < FramesToAppear * 2)
+        {
+            return;
+        }
+
+        if (!askedForBestiary)
+        {
+            askedForBestiary = true;
+            Tell($"Team emptied, but the bestiary did not open. Open it and the {plan.Count} beasts go in by themselves.");
+        }
     }
 
     /// <summary>
@@ -608,6 +642,8 @@ public sealed unsafe class TeamSelector : IDisposable
         framesWaited = 0;
         cooldown = 0;
         askedForBestiary = false;
+        bestiaryWait = -1;
+        framesAway = 0;
         requested = false;
     }
 
