@@ -91,7 +91,7 @@ public sealed class Plugin : IDalamudPlugin
             tabs.Add(new BoardTab(Catalog, recorder, rankWatcher, enemies, boardCache));
         }
 
-        tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector));
+        tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector, nextRoom));
 
         mainWindow = new MainWindow(tabs);
         windowSystem.AddWindow(mainWindow);
@@ -101,7 +101,8 @@ public sealed class Plugin : IDalamudPlugin
 
         Services.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings.",
+            HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings, " +
+                          "/beastmastr room (open or close the next-room window).",
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -120,6 +121,10 @@ public sealed class Plugin : IDalamudPlugin
 
             case "beasts":
                 mainWindow.OpenAt("beasts");
+                break;
+
+            case "room":
+                nextRoom.Toggle();
                 break;
 
             default:

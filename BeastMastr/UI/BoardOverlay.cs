@@ -96,7 +96,7 @@ public sealed class BoardOverlay : Window
 
             // What is actually in there, once it has been hovered once — the weakness, the statuses
             // and whether it can be interrupted. Falls back to the game's own sentence until then.
-            var known = info == null ? [] : enemies.InRoom(info.Index);
+            var known = info == null ? [] : enemies.InRoom(info.Label);
             var lines = known.Count > 0
                             ? known.Select(enemies.Describe).ToList()
                             : info != null && info.Detail.Length > 0 ? [info.Detail] : new List<string>();

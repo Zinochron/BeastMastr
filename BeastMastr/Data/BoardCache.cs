@@ -6,42 +6,44 @@ using Dalamud.Plugin.Services;
 namespace BeastMastr.Data;
 
 /// <summary>
-/// The board being played, kept so that it can be read where the board window is not.
+/// The board being played, kept so it can be read where the board window is not.
 ///
-/// The room list has to be opened before a run starts, which is the whole reason this works: the
-/// data is guaranteed to pass through at least once, so nothing has to be fetched at the moment it
-/// is wanted. And a board is fixed — the same place lays out the same rooms every time — so what
-/// was read is worth keeping between sessions rather than only for the run.
+/// The room list shows two different things depending on where you open it, and telling them apart
+/// is the whole job here:
 ///
-/// It is rewritten every time the list is open. That makes a wrong entry self-correcting: the worst
-/// a stale board can do is be shown until you next look at the real one.
+/// - **At the entrance, before a run**, it lists the whole board — twelve rooms across nine moves.
+///   That is kept, and saved: a board is fixed, so it is worth having in the next session too.
+/// - **Inside a run**, it lists only the room at your position, and the board marks that room as
+///   current. Every capture taken in a run shows exactly that: one room, on the same move as the
+///   marked tile. That is where the run is, and it is the room about to be entered — at the very
+///   start of a run it is move 1, with nothing done yet.
+///
+/// So a reading whose rooms span several moves is a board, and one whose rooms all share a move is
+/// a position. A branching move offers two rooms on the same move, which is still a position.
 /// </summary>
 public sealed class BoardCache : IDisposable
 {
     /// <summary>Frames between looks. A board changes when a room is entered, not per frame.</summary>
     private const int Interval = 20;
 
-    /// <summary>
-    /// A reading has to describe more than one room to count as a board.
-    ///
-    /// The window stays loaded after it is closed and keeps whatever it last held, and a leftover
-    /// reading of a single room was captured that way — outside the Crucible entirely, in Central
-    /// Shroud. One room is what that looks like; a real board has at least a first room and a boss.
-    /// </summary>
-    private const int LeastRoomsForABoard = 2;
-
     private readonly Configuration configuration;
 
     private List<StageDetailReader.Room> rooms = [];
-    private uint territory;
     private int ticks;
 
     public BoardCache(Configuration configuration)
     {
         this.configuration = configuration;
 
-        territory = Services.ClientState.TerritoryType;
-        Load();
+        rooms = configuration.LastBoard.Rooms
+                             .Select(room => new StageDetailReader.Room(room.Index, room.Move,
+                                                                       (XbmColumns.RoomKind)room.Kind,
+                                                                       room.Label, room.Detail))
+                             .ToList();
+
+        Source = rooms.Count > 0
+                     ? $"remembered from an earlier session — {rooms.Count} rooms"
+                     : "nothing read yet";
 
         Services.Framework.Update += OnUpdate;
     }
@@ -49,13 +51,19 @@ public sealed class BoardCache : IDisposable
     public IReadOnlyList<StageDetailReader.Room> Rooms => rooms;
 
     /// <summary>
-    /// The move the run is standing on: 0 before the first room, 1 once it is done. -1 while the
-    /// board has not said — it only says while one of its windows is open.
+    /// The move of the room you are at: the one the board marks, which is the one about to be
+    /// entered. -1 until a run has been looked at — the board only says while its windows are open.
     /// </summary>
     public int CurrentMove { get; private set; } = -1;
 
+    /// <summary>
+    /// The territory the run was last located in. The run's own HUD is the primary sign of being in
+    /// one, but it has not been seen in a capture yet, so this is the second opinion.
+    /// </summary>
+    public uint RunTerritory { get; private set; }
+
     /// <summary>Where the rooms came from, for the Board tab to show.</summary>
-    public string Source { get; private set; } = "nothing read yet";
+    public string Source { get; private set; }
 
     /// <summary>Every move the board has rooms on, in order.</summary>
     public IReadOnlyList<int> Moves =>
@@ -72,19 +80,13 @@ public sealed class BoardCache : IDisposable
         return later.Count > 0 ? later[0] : -1;
     }
 
-    /// <summary>The previous move with rooms on it, or -1 at the start.</summary>
-    public int Before(int move)
-    {
-        var earlier = Moves.Where(candidate => candidate < move).ToList();
-        return earlier.Count > 0 ? earlier[^1] : -1;
-    }
-
     /// <summary>
-    /// The move to brief. Where the run has been located that is the one after it; where it has not,
-    /// it is the board's first — which is right at the start of a run and wrong nowhere that
-    /// matters, since a briefing for a room already behind you is easy to recognise as such.
+    /// The move to brief: the room you are at, which has not been entered yet. Before any run has
+    /// been located, the board's first move — which is right at the start of one.
     /// </summary>
-    public int NextMove => After(Math.Max(CurrentMove, 0));
+    public int NextMove => CurrentMove >= 0 && Moves.Contains(CurrentMove)
+                               ? CurrentMove
+                               : Moves.Count > 0 ? Moves[0] : -1;
 
     /// <summary>Throw the remembered board away, for when it is showing the wrong one.</summary>
     public void Forget()
@@ -93,8 +95,8 @@ public sealed class BoardCache : IDisposable
         CurrentMove = -1;
         Source = "forgotten";
 
-        if (configuration.KnownBoards.Remove(territory))
-            configuration.Save();
+        configuration.LastBoard = new SavedBoard();
+        configuration.Save();
     }
 
     private void OnUpdate(IFramework framework)
@@ -104,51 +106,39 @@ public sealed class BoardCache : IDisposable
 
         ticks = Interval;
 
-        var here = Services.ClientState.TerritoryType;
-        if (here != territory)
+        if (!StageDetailReader.IsOpen)
+            return;
+
+        var read = StageDetailReader.Read();
+        if (read.Count == 0)
+            return;
+
+        var marked = StageMapReader.Read().Any(tile => tile.IsCurrent);
+
+        if (read.Select(room => room.Move).Distinct().Count() > 1)
         {
-            // A different place is a different board and a run that has not started. Keeping the
-            // old move would brief a room from somewhere else.
-            territory = here;
-            CurrentMove = -1;
-            Load();
+            Remember(read);
+
+            // The whole board with nothing marked is the entrance, before a run: whatever move was
+            // known belongs to a run that is over.
+            if (!marked)
+                CurrentMove = -1;
+
+            return;
         }
 
-        if (StageDetailReader.IsOpen)
-        {
-            var read = StageDetailReader.Read();
-            if (read.Count >= LeastRoomsForABoard)
-                Remember(read);
-        }
+        // Every room on one move: a position. It only counts while the board marks a room as
+        // current, because the window stays loaded after it closes and keeps its last contents —
+        // a single leftover room was captured that way in Central Shroud, nowhere near a run, and
+        // there nothing was marked.
+        if (!marked)
+            return;
 
-        if (rooms.Count > 0 && StageMapReader.IsOpen)
-        {
-            var move = StageMapReader.MoveOf(RoomsPerMove());
-            if (move >= 0)
-                CurrentMove = move;
-        }
-    }
+        if (CurrentMove != read[0].Move)
+            Services.Log.Debug($"Run located on move {read[0].Move}: {read[0].Label}.");
 
-    /// <summary>How many rooms each move offers, move one first — what the board's rows are checked against.</summary>
-    private List<int> RoomsPerMove() =>
-        rooms.GroupBy(room => room.Move)
-             .OrderBy(move => move.Key)
-             .Select(move => move.Count())
-             .ToList();
-
-    private void Load()
-    {
-        rooms = configuration.KnownBoards.TryGetValue(territory, out var saved)
-                    ? saved.Rooms
-                           .Select(room => new StageDetailReader.Room(room.Index, room.Move,
-                                                                     (XbmColumns.RoomKind)room.Kind,
-                                                                     room.Label, room.Detail))
-                           .ToList()
-                    : [];
-
-        Source = rooms.Count > 0
-                     ? $"remembered from an earlier visit — {rooms.Count} rooms"
-                     : "nothing read here yet";
+        CurrentMove = read[0].Move;
+        RunTerritory = Services.ClientState.TerritoryType;
     }
 
     private void Remember(List<StageDetailReader.Room> read)
@@ -159,7 +149,7 @@ public sealed class BoardCache : IDisposable
             return;
 
         rooms = read;
-        configuration.KnownBoards[territory] = new SavedBoard
+        configuration.LastBoard = new SavedBoard
         {
             Rooms = read.Select(room => new SavedRoom
                         {
@@ -173,8 +163,7 @@ public sealed class BoardCache : IDisposable
         };
 
         configuration.Save();
-        Services.Log.Information($"Board in territory {territory} remembered: {read.Count} rooms " +
-                                 $"across {Moves.Count} moves.");
+        Services.Log.Information($"Board remembered: {read.Count} rooms across {Moves.Count} moves.");
     }
 
     public void Dispose() => Services.Framework.Update -= OnUpdate;

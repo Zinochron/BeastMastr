@@ -112,7 +112,7 @@ public sealed unsafe class EventRecorder : IDisposable
             if (addon != null)
                 TrackHover(addon, count, values);
 
-            if (Recording && addon != null && addon->NameString.StartsWith("XBM", StringComparison.Ordinal))
+            if (Recording && addon != null && Worth(addon->NameString))
             {
                 // A window answers a cursor crossing a tile with a callback of its own. Those are
                 // marked rather than dropped: they are noise for finding a click and evidence for
@@ -129,6 +129,15 @@ public sealed unsafe class EventRecorder : IDisposable
 
         return fireCallback!.Original(addon, count, values, close);
     }
+
+    /// <summary>
+    /// The Beastmaster windows, plus the two generic ones a choice can go through. A right-click
+    /// menu is a window of its own called <c>ContextMenu</c>, not part of the window it was opened
+    /// on, so "Remove all" would have been thrown away here as not being an XBM window — and a
+    /// confirmation dialog, if it asks for one, is <c>SelectYesno</c>.
+    /// </summary>
+    private static bool Worth(string addon) =>
+        addon.StartsWith("XBM", StringComparison.Ordinal) || addon is "ContextMenu" or "SelectYesno";
 
     /// <summary>The values as sent, which is exactly what a replay needs to send back.</summary>
     private static string Describe(uint count, AtkValue* values)

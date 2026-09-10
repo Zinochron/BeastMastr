@@ -100,14 +100,17 @@ public class Configuration : IPluginConfiguration
     public bool ShowNextRoom { get; set; } = true;
 
     /// <summary>
-    /// Boards already read, keyed by the territory they were read in.
+    /// The last whole board the room list showed.
     ///
-    /// A board is fixed — the same territory lays out the same rooms every time — and the room list
-    /// has to be opened before a run anyway, so reading it once is enough and it is worth keeping
-    /// across sessions. It is rewritten whenever the list is open, so a board that ever does differ
-    /// corrects itself the moment it is looked at rather than staying wrong.
+    /// One board, not one per place. The first version keyed boards by territory, and the whole
+    /// board is only ever listed at the entrance — while the run itself is a different territory —
+    /// so inside the run it looked up an empty entry and the panel never had anything to show. The
+    /// board you last planned is the board you are playing.
+    ///
+    /// Rewritten whenever the whole board is listed, so a wrong entry corrects itself the moment the
+    /// real board is looked at.
     /// </summary>
-    public Dictionary<uint, SavedBoard> KnownBoards { get; set; } = [];
+    public SavedBoard LastBoard { get; set; } = new();
 
     /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>
     public bool ShowDataTab { get; set; } = true;

@@ -27,8 +27,14 @@ public sealed class EnemyCache : IDisposable
     /// <summary>Frames between samples. The panel changes when the cursor moves, not per frame.</summary>
     private const int Interval = 10;
 
-    /// <summary>Room index to the enemies the board listed for it.</summary>
-    private readonly Dictionary<int, IReadOnlyList<RoomEnemyReader.Enemy>> byRoom = [];
+    /// <summary>
+    /// Room label to the enemies the board listed for it — "Enemy #4", "Boss of the Board".
+    ///
+    /// Not the list index. Inside a run the list holds only the room at your position, so its index
+    /// is always 0, and keyed by index every room read in a run overwrote whatever room 0 was on the
+    /// whole board: the boss. A label is unique on a board and reads the same in both lists.
+    /// </summary>
+    private readonly Dictionary<string, IReadOnlyList<RoomEnemyReader.Enemy>> byRoom = new(StringComparer.Ordinal);
 
     /// <summary>Enemy name to what the hover panel said about it, when it has been hovered.</summary>
     private readonly Dictionary<string, BattleMonsterReader.Enemy> hovered = new(StringComparer.Ordinal);
@@ -43,8 +49,8 @@ public sealed class EnemyCache : IDisposable
     public int RoomsKnown => byRoom.Count;
 
     /// <summary>What the board listed for a room, or empty until that room has been selected once.</summary>
-    public IReadOnlyList<RoomEnemyReader.Enemy> InRoom(int roomIndex) =>
-        byRoom.TryGetValue(roomIndex, out var enemies) ? enemies : [];
+    public IReadOnlyList<RoomEnemyReader.Enemy> InRoom(string roomLabel) =>
+        byRoom.TryGetValue(roomLabel, out var enemies) ? enemies : [];
 
     /// <summary>The hover panel's reading for an enemy, or null if it has never been hovered.</summary>
     public BattleMonsterReader.Enemy? Details(string name) =>
@@ -70,8 +76,8 @@ public sealed class EnemyCache : IDisposable
     /// but with no actions, so the briefing simply says less about it rather than claiming it does
     /// nothing.
     /// </summary>
-    public IReadOnlyList<BriefEnemy> Brief(int roomIndex) =>
-        InRoom(roomIndex)
+    public IReadOnlyList<BriefEnemy> Brief(string roomLabel) =>
+        InRoom(roomLabel)
             .Select(enemy => new BriefEnemy(
                         enemy.Name,
                         enemy.Weakness,
@@ -103,7 +109,11 @@ public sealed class EnemyCache : IDisposable
 
         // A room with enemies listed is a room whose enemies are now known. Rooms that hold no
         // enemies never fill this in, which is correct — there is nothing to say about a shop.
-        byRoom[selection.SelectedRoom] = selection.Enemies;
+        var rooms = StageDetailReader.Read();
+        if (selection.SelectedRoom < 0 || selection.SelectedRoom >= rooms.Count)
+            return;
+
+        byRoom[rooms[selection.SelectedRoom].Label] = selection.Enemies;
     }
 
     public void Dispose() => Services.Framework.Update -= OnUpdate;

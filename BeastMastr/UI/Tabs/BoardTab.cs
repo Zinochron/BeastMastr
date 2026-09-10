@@ -98,8 +98,8 @@ public sealed class BoardTab : ITab
         var rows = StageMapReader.Rows();
         ImGui.TextUnformatted(
             $"Moves: {string.Join(", ", board.Moves)}   " +
-            $"Standing on: {(board.CurrentMove < 0 ? "not said" : board.CurrentMove.ToString())}   " +
-            $"Next: {(board.NextMove < 0 ? "end of the board" : board.NextMove.ToString())}");
+            $"Run located on: {(board.CurrentMove < 0 ? "not yet" : $"move {board.CurrentMove}")}   " +
+            $"Briefing: {(board.NextMove < 0 ? "nothing" : $"move {board.NextMove}")}");
 
         // The row check is the whole basis for reading a move off the board, so what it saw is
         // printed next to what it wanted: one row per move, plus the row the run starts on.
@@ -277,7 +277,7 @@ public sealed class BoardTab : ITab
 
         foreach (var room in StageDetailReader.Read())
         {
-            var known = enemies.InRoom(room.Index);
+            var known = enemies.InRoom(room.Label);
             if (known.Count == 0)
                 continue;
 
@@ -430,7 +430,7 @@ public sealed class BoardTab : ITab
         text.AppendLine("# Enemies per room");
         foreach (var room in StageDetailReader.Read())
         {
-            foreach (var enemy in enemies.InRoom(room.Index))
+            foreach (var enemy in enemies.InRoom(room.Label))
                 text.AppendLine($"move {room.Move}	{room.Label}	{enemy.Name}	weak={enemy.Weakness}	" +
                                 string.Join(" ", enemy.Stats.Select(stat => $"{stat.Label}={stat.Stars}")));
         }
@@ -448,6 +448,12 @@ public sealed class BoardTab : ITab
         text.AppendLine();
         text.AppendLine(AddonReader.ToText(XbmColumns.PetParty.Addon,
                                            AddonReader.Values(XbmColumns.PetParty.Addon)));
+
+        // Its node tree too: the roster's button is placed against the list inside it, and a capture
+        // of where that list sits is what turns a wrong placement into a one-line fix.
+        text.AppendLine();
+        text.AppendLine(AddonReader.ToText(XbmColumns.PetParty.Addon,
+                                           AddonReader.Nodes(XbmColumns.PetParty.Addon)));
 
         text.AppendLine();
         text.AppendLine("# Map markers");

@@ -7,13 +7,15 @@ public sealed class SettingsTab : ITab
     private readonly Configuration configuration;
     private readonly Automation.FightSelector fightSelector;
     private readonly Automation.TeamSelector teamSelector;
+    private readonly Native.NextRoomPanel nextRoom;
 
     public SettingsTab(Configuration configuration, Automation.FightSelector fightSelector,
-                       Automation.TeamSelector teamSelector)
+                       Automation.TeamSelector teamSelector, Native.NextRoomPanel nextRoom)
     {
         this.configuration = configuration;
         this.fightSelector = fightSelector;
         this.teamSelector = teamSelector;
+        this.nextRoom = nextRoom;
     }
 
     public string Title => "Settings";
@@ -39,10 +41,10 @@ public sealed class SettingsTab : ITab
             "in the Beasts tab excludes. Turning this off hands the window back exactly as the game " +
             "draws it, the next time it opens.");
 
-        var nextRoom = configuration.ShowNextRoom;
-        if (ImGui.Checkbox("Brief the next room during a run", ref nextRoom))
+        var briefRoom = configuration.ShowNextRoom;
+        if (ImGui.Checkbox("Brief the next room during a run", ref briefRoom))
         {
-            configuration.ShowNextRoom = nextRoom;
+            configuration.ShowNextRoom = briefRoom;
             configuration.Save();
         }
 
@@ -50,7 +52,9 @@ public sealed class SettingsTab : ITab
             "A window of the game's own showing what the room you are about to enter holds, and " +
             "nothing about the other eleven. Drag it where you want it; it stays there. The arrows " +
             "look further ahead. What it knows about enemies comes from the board — click through " +
-            "the rooms once and it fills in.");
+            "the rooms once and it fills in. /beastmastr room opens it at any time.");
+
+        ImGui.TextDisabled(nextRoom.Status);
 
         var overlay = configuration.ShowBoardOverlay;
         if (ImGui.Checkbox("Show room cards on the Crucible board", ref overlay))
@@ -99,8 +103,9 @@ public sealed class SettingsTab : ITab
         }
 
         Widgets.HelpMarker(
-            "Adds a \"Fill for levelling\" button under the bestiary while a team is being put " +
-            "together. It only appears where it does something.");
+            "Adds a \"Fill for levelling\" button to the team list and under the bestiary while a " +
+            "team is being put together. It empties the team first, then adds the carries and the " +
+            "least advanced beasts. It only appears where it does something.");
 
         var leveling = configuration.TeamSelection == TeamMode.Leveling;
         if (ImGui.Checkbox("Fill the team for levelling", ref leveling))

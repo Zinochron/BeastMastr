@@ -11,6 +11,12 @@ namespace BeastMastr.Automation;
 /// <summary>
 /// Fills a run's team with the beasts that need the experience, plus the ones chosen to carry them.
 ///
+/// In two phases: **empty the team, then fill it**. The first version worked out the difference
+/// between the team as it was and the team it wanted, and toggled only that — which made the result
+/// depend on reading the starting team exactly right, and a misread beast stayed where it was.
+/// Emptying first means the end state depends on nothing but the plan, and "the roster reads empty"
+/// is a check the window can answer before a single beast is added.
+///
 /// Toggles tiles in the bestiary the way a click does — <c>[7, slot]</c>, recorded from a real
 /// click, and deliberately not assumed from the fight window, whose own toggle is <c>[1, row]</c>.
 /// The two windows do not share a command, which is the argument for recording each rather than
@@ -31,14 +37,30 @@ public sealed unsafe class TeamSelector : IDisposable
     /// <summary>Frames to let a page turn settle before looking for a beast on it.</summary>
     private const int FramesAfterPageTurn = 12;
 
+    private enum Phase
+    {
+        Idle,
+
+        /// <summary>Taking every beast out. Ends with a check that the roster really is empty.</summary>
+        Emptying,
+
+        /// <summary>Putting the plan in, carries first, then the least advanced.</summary>
+        Filling,
+    }
+
+    /// <param name="Join">What this toggle is for. Stated, not inferred from the roster at the time —
+    /// inferring it turned "remove" into "add" for a beast that had already gone.</param>
+    private readonly record struct Step(uint Beast, bool Join);
+
     private readonly Configuration configuration;
     private readonly BeastCatalog catalog;
     private readonly RankWatcher ranks;
 
-    private readonly Queue<uint> pending = new();
+    private readonly Queue<Step> pending = new();
+    private Phase phase;
+    private List<uint> plan = [];
     private int cooldown;
-    private uint waitingFor;
-    private bool waitingToJoin;
+    private Step? waiting;
     private int framesWaited;
     private bool givenUp;
 
@@ -77,7 +99,10 @@ public sealed unsafe class TeamSelector : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
-        if (givenUp || (!requested && configuration.TeamSelection != TeamMode.Leveling))
+        if (givenUp)
+            return;
+
+        if (phase == Phase.Idle && !requested && configuration.TeamSelection != TeamMode.Leveling)
             return;
 
         if (!ComposingTeam)
@@ -86,21 +111,20 @@ public sealed unsafe class TeamSelector : IDisposable
             return;
         }
 
-        if (pending.Count > 0)
+        if (phase == Phase.Idle)
         {
-            Continue();
+            Start();
             return;
         }
 
-        Start();
+        Continue();
     }
 
     private void Start()
     {
-        var current = PetPartyReader.Read(catalog)
-                                    .Where(slot => slot.Beast != null)
-                                    .Select(slot => slot.Beast!.Number)
-                                    .ToHashSet();
+        requested = false;
+
+        var current = TeamNow();
 
         var known = catalog.Beasts
                            .Select(beast => (beast, rank: ranks.RankOf(beast.Number)))
@@ -110,40 +134,30 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (known.Count == 0)
         {
-            requested = false;
             Status = "No ranks known yet, so there is nothing to sort on. Browse the bestiary once.";
             return;
         }
 
-        // The board tier is a setting, and a setting can be wrong. The roster window lists one row
-        // per slot the team has, so it knows the real size — and asking for more than that is how a
-        // fill ends with the last few refused and no explanation.
-        var slots = PetPartyReader.Read(catalog).Count;
-        var configured = TeamPlanner.TeamSizeFor(configuration.BoardTier);
-        var size = slots > 0 ? Math.Min(configured, slots) : configured;
+        var size = TeamPlanner.TeamSizeFor(configuration.BoardTier);
 
-        var wanted = TeamPlanner.ForLeveling(known, size, configuration.CarryBeasts, current)
-                                .Select(candidate => candidate.BeastNumber)
-                                .ToHashSet();
+        // In the order it is to be added: carries first, then the least advanced. If the board takes
+        // fewer than the setting says, what is left off is the end of this list, not the carries.
+        plan = TeamPlanner.ForLeveling(known, size, configuration.CarryBeasts, current)
+                          .Select(candidate => candidate.BeastNumber)
+                          .ToList();
 
-        if (wanted.SetEquals(current))
+        if (plan.ToHashSet().SetEquals(current))
         {
-            requested = false;
-            Status = $"Team already matches ({wanted.Count} beasts).";
+            Status = $"Team already matches ({plan.Count} beasts).";
             return;
         }
 
-        // Removals first: a team at its limit refuses additions, so making room has to come before
-        // filling it.
-        foreach (var beast in current.Except(wanted).Concat(wanted.Except(current)))
-            pending.Enqueue(beast);
+        phase = Phase.Emptying;
+        foreach (var beast in current)
+            pending.Enqueue(new Step(beast, Join: false));
 
-        requested = false;
-
-        Status = size < configured
-                     ? $"Adjusting {pending.Count} beast(s) for {size} slots — the board offers {slots}, " +
-                       $"not the {configured} the setting asks for."
-                     : $"Adjusting {pending.Count} beast(s) — {known.Count} of {catalog.Beasts.Count} ranks known.";
+        Status = $"Emptying the team ({current.Count}), then adding {plan.Count} — " +
+                 $"{known.Count} of {catalog.Beasts.Count} ranks known.";
         Services.Log.Information(Status);
     }
 
@@ -152,70 +166,26 @@ public sealed unsafe class TeamSelector : IDisposable
         if (cooldown-- > 0)
             return;
 
-        if (waitingFor != 0)
-        {
-            if (InTeam(waitingFor) != waitingToJoin)
-            {
-                if (++framesWaited < FramesToConfirm)
-                {
-                    cooldown = 1;
-                    return;
-                }
-
-                Stop($"The bestiary did not {(waitingToJoin ? "add" : "remove")} {Name(waitingFor)} " +
-                     $"within {FramesToConfirm} frames.");
-                return;
-            }
-
-            waitingFor = 0;
-            framesWaited = 0;
-        }
+        if (waiting is { } step && !Confirmed(step))
+            return;
 
         if (pending.Count == 0)
         {
-            Status = "Team set.";
+            NextPhase();
             return;
         }
 
         var next = pending.Dequeue();
-        var joining = !InTeam(next);
-        var slot = SlotOf(next);
+
+        // Already the way it is meant to be — taken out by hand meanwhile, or never there.
+        if (InTeam(next.Beast) == next.Join)
+            return;
+
+        var slot = SlotOf(next.Beast);
 
         if (slot < 0)
         {
-            // On another page. Turning it is a recorded click too, so this is not a dead end.
-            var page = XbmColumns.MonsterNotebook.PageOf(next);
-            var showing = CurrentPage();
-
-            if (showing < 0)
-            {
-                Stop($"The bestiary is open but says nothing about which page it is on, " +
-                     $"so {Name(next)} cannot be found.");
-                return;
-            }
-
-            if (page == showing)
-            {
-                Stop($"{Name(next)} should be on page {page + 1}, which the bestiary is already " +
-                     $"showing, but none of its tiles carries icon {IconOf(next)}. " +
-                     $"It is showing: {DescribeSlots()}");
-                return;
-            }
-
-            if (!Send(XbmColumns.MonsterNotebook.TurnPageCommand, page))
-            {
-                Stop($"The bestiary would not turn to page {page + 1} for {Name(next)}.");
-                return;
-            }
-
-            // Put it back at the front: the page has to settle before the tile exists to click.
-            var requeued = new List<uint> { next };
-            requeued.AddRange(pending);
-            pending.Clear();
-            foreach (var beast in requeued)
-                pending.Enqueue(beast);
-
-            cooldown = FramesAfterPageTurn;
+            TurnTo(next);
             return;
         }
 
@@ -225,13 +195,116 @@ public sealed unsafe class TeamSelector : IDisposable
             return;
         }
 
-        waitingFor = next;
-        waitingToJoin = joining;
+        waiting = next;
+        framesWaited = 0;
         cooldown = FramesBetweenToggles;
     }
 
-    private bool InTeam(uint beastNumber) =>
-        PetPartyReader.Read(catalog).Any(slot => slot.Beast?.Number == beastNumber);
+    /// <summary>
+    /// Whether the last toggle has shown up in the roster yet. False while it is still being waited
+    /// for, and also when it has been given up on — <see cref="Stop"/> or <see cref="Full"/> has
+    /// then already said why.
+    /// </summary>
+    private bool Confirmed(Step step)
+    {
+        if (InTeam(step.Beast) == step.Join)
+        {
+            waiting = null;
+            return true;
+        }
+
+        if (++framesWaited < FramesToConfirm)
+        {
+            cooldown = 1;
+            return false;
+        }
+
+        // A refused addition into a team that already holds something is the team being full: the
+        // board takes fewer than the setting says. The plan is ordered, so what made it in is the
+        // right team for that size, and this is a finish rather than a failure.
+        if (step.Join && TeamNow().Count > 0)
+        {
+            Full(step.Beast);
+            return false;
+        }
+
+        Stop($"The bestiary did not {(step.Join ? "add" : "remove")} {Name(step.Beast)} " +
+             $"within {FramesToConfirm} frames.");
+        return false;
+    }
+
+    private void NextPhase()
+    {
+        if (phase == Phase.Emptying)
+        {
+            // The one check that makes emptying worth doing: nothing may be added until the window
+            // itself says the team is empty.
+            var left = TeamNow();
+            if (left.Count > 0)
+            {
+                Stop($"Emptied the team, but the roster still lists {string.Join(", ", left.Select(Name))}.");
+                return;
+            }
+
+            phase = Phase.Filling;
+            foreach (var beast in plan)
+                pending.Enqueue(new Step(beast, Join: true));
+
+            Status = $"Team empty. Adding {plan.Count}…";
+            return;
+        }
+
+        Status = $"Team set: {TeamNow().Count} beasts.";
+        Services.Log.Information(Status);
+        Reset();
+    }
+
+    /// <summary>
+    /// The beast is on the other page. Turning it is a recorded click too, so this is not a dead
+    /// end — the step goes back to the front of the queue and runs once the page has settled.
+    /// </summary>
+    private void TurnTo(Step step)
+    {
+        var page = XbmColumns.MonsterNotebook.PageOf(step.Beast);
+        var showing = CurrentPage();
+
+        if (showing < 0)
+        {
+            Stop($"The bestiary is open but says nothing about which page it is on, " +
+                 $"so {Name(step.Beast)} cannot be found.");
+            return;
+        }
+
+        if (page == showing)
+        {
+            Stop($"{Name(step.Beast)} should be on page {page + 1}, which the bestiary is already " +
+                 $"showing, but none of its tiles carries icon {IconOf(step.Beast)}. " +
+                 $"It is showing: {DescribeSlots()}");
+            return;
+        }
+
+        if (!Send(XbmColumns.MonsterNotebook.TurnPageCommand, page))
+        {
+            Stop($"The bestiary would not turn to page {page + 1} for {Name(step.Beast)}.");
+            return;
+        }
+
+        var requeued = new List<Step> { step };
+        requeued.AddRange(pending);
+        pending.Clear();
+        foreach (var queued in requeued)
+            pending.Enqueue(queued);
+
+        cooldown = FramesAfterPageTurn;
+    }
+
+    private HashSet<uint> TeamNow() =>
+        PetPartyReader.Read(catalog)
+                      .Where(slot => slot.Beast != null)
+                      .Select(slot => slot.Beast!.Number)
+                      .ToHashSet();
+
+    private bool InTeam(uint beastNumber) => TeamNow().Contains(beastNumber);
 
     /// <summary>
     /// Which tile of the twenty-five currently shown holds this beast, or -1 when it is on another
@@ -338,18 +411,28 @@ public sealed unsafe class TeamSelector : IDisposable
     private string Name(uint beastNumber) =>
         catalog.Beasts.FirstOrDefault(beast => beast.Number == beastNumber)?.Name ?? $"beast {beastNumber}";
 
+    private void Full(uint refused)
+    {
+        var count = TeamNow().Count;
+        Status = $"Team full at {count} — it would not take {Name(refused)}. The board takes {count}, " +
+                 $"not the {TeamPlanner.TeamSizeFor(configuration.BoardTier)} the board tier setting says.";
+        Services.Log.Information(Status);
+        Reset();
+    }
+
     private void Stop(string why)
     {
         Reset();
         givenUp = true;
-        Status = $"{why} Not trying again until the plugin reloads.";
+        Status = $"{why} Press the button again to retry.";
         Services.Log.Warning(Status);
     }
 
     private void Reset()
     {
         pending.Clear();
-        waitingFor = 0;
+        phase = Phase.Idle;
+        waiting = null;
         framesWaited = 0;
         cooldown = 0;
     }

@@ -1054,22 +1054,47 @@ The board shows twelve rooms at once and each is a click away from what it holds
 is a decision about to be made. The arrows look further ahead, which is a different question from
 what belongs in front of you, and they reset the moment a room is entered.
 
-### The room list is guaranteed to pass through, so nothing has to be fetched on demand
+### The room list says two different things, depending on where it is opened
 
-`Data/BoardCache.cs` keeps the board. Both board windows are closed out in the run, so a panel that
-read live would have nothing to say exactly when it is wanted — but the room list has to be opened
-before a run starts, so the data is certain to pass through at least once. Reading it whenever the
-window is up and keeping it is enough.
+First version, wrong: boards were saved per territory. The whole board is only ever listed **at the
+entrance** (territory 148, Central Shroud) — the run itself is territory 1339 — so inside the run the
+cache looked up an empty entry and the panel had nothing to show. It was never on screen.
 
-A board is also fixed: the same place lays out the same rooms every time. So it is saved per
-territory in the config and survives a session. It is rewritten every time the list is open, which
-makes a wrong entry self-correcting — the worst a stale board can do is be shown until the real one
-is next looked at.
+What the captures actually say, once sorted by territory:
 
-Two rooms is the minimum for a reading to count as a board. The window stays loaded after it closes
-and keeps whatever it last held: `captures/board-20260909-224042.txt` is a single leftover room read
-in Central Shroud, outside the Crucible entirely, with both board windows reporting themselves
-visible. That is what stale looks like, and a real board always has at least a first room and a boss.
+| Where | Room list | Board marks a room current |
+|---|---|---|
+| Entrance, 148 | the whole board, 12 rooms | no |
+| In a run, 1339 | **one room** | yes, on the same move as that room |
+
+Five run captures, five times the single room sits on the marked tile's move — including two taken at
+the very start of a run, where it is move 1, "Enemy #1". So in a run the list shows the room at your
+position, and that room has **not been entered yet**. That is the room to brief, not the one after
+it; the first version was off by one there too.
+
+`Data/BoardCache.cs` now tells the two apart by shape: rooms spanning several moves are a board, kept
+and saved (one board, the last one planned — that is the one being played); rooms all on one move are
+a position, taken only while the board marks something current. A branching move offers two rooms on
+the same move, which is still a position.
+
+The marked-tile condition is what keeps the leftovers out. The window stays loaded after it closes
+and keeps its contents: `captures/board-20260909-224042.txt` is one stale room read in Central Shroud
+with both board windows reporting themselves visible — and nothing marked.
+
+### Enemies are keyed by room label, not list index
+
+Inside a run the list holds one room, so its index is always 0 — and keyed by index, every room read
+in a run overwrote room 0 of the whole board, which is the boss. Labels ("Enemy #4", "Boss of the
+Board") are unique on a board and read the same in both lists.
+
+### The window can be opened by hand
+
+`/beastmastr room` opens or closes it regardless of the run. The automatic rule is a guess about when
+it is wanted, and "I cannot find it" was the first thing anyone said about it — so there is now a way
+to make it appear, and the Settings tab says in words why it is or is not showing.
+
+"In a run" is the run's HUD being up, *or* being in the territory where the board last marked a
+position. The HUD has not been seen in a capture yet; the territory has.
 
 ### Which move the run is on, read off the board's rows
 
@@ -1107,3 +1132,35 @@ would be indistinguishable from one read out of the game.
 
 Every name — enemy, status, weakness — is passed through in whatever language the client is in.
 Writing our own words for them would mean a table per client to maintain.
+
+## Filling a team: empty it, then fill it
+
+The first version diffed the team it found against the team it wanted and toggled only the
+difference. That made the result depend on reading the starting team exactly right, and a misread
+beast simply stayed. `TeamSelector` now works in two phases: take everyone out, **check that the
+roster reads empty**, then add the plan in order — carries first, then the least advanced. The end
+state depends on nothing but the plan.
+
+Each step says what it is for — join or leave — rather than inferring it from the roster when it
+runs. Inferring it turned a "remove" into an "add" for a beast that had already gone.
+
+If an addition is refused while the team already holds something, the team is full: the board takes
+fewer than the tier setting says. The plan is ordered, so what made it in is the right team for that
+size, and it finishes with a message saying so rather than as a failure. The old clamp to "the
+roster's slot count" is gone — it counted the *filled* rows, since the reader stops at the first blank
+name, so a half-filled team clamped the plan to its own size.
+
+### "Remove all" is not wired yet, and why
+
+The game's right-click menu has "Remove all", which would empty the team in one step. What it sends is
+not in any capture — and could not have been: the recorder only kept callbacks from windows named
+`XBM*`, and a right-click menu is its own window, `ContextMenu`. It now also records `ContextMenu`
+and `SelectYesno`. Until that click is recorded, emptying uses the per-beast toggle that is already
+proven, which is slower but not guessed.
+
+### The roster's button
+
+Hung off the same parent as the roster's list component and placed above it, for the same
+same-units reason as the bestiary's. If the list sits flush with the top it goes below instead — over
+the first row it would take that row's clicks. Nobody has captured the roster's node tree, so the
+board report now includes it: if the button is wrong, one capture has the numbers to fix it.

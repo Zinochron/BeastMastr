@@ -60,10 +60,29 @@ public sealed class NextRoomPanel : IDisposable
     }
 
     /// <summary>
-    /// Only while a run is under way. The run's HUD is up for exactly that long, which beats
-    /// guessing from the territory: the same place is walked through outside a run too.
+    /// Opened by hand with <c>/beastmastr room</c>, whatever the run is doing. The automatic rule is
+    /// a guess about when you want it, and a window you cannot find is worse than one that shows up
+    /// when asked.
     /// </summary>
-    private static bool InARun => AddonReader.IsOpen(XbmColumns.ContentsMainHUD.Addon);
+    private bool forced;
+
+    /// <summary>Why the window is or is not showing, in words. The first version kept that to itself.</summary>
+    public string Status { get; private set; } = "Not checked yet.";
+
+    public void Toggle()
+    {
+        forced = !forced;
+        ticksUntilRecheck = 0;
+    }
+
+    /// <summary>
+    /// Whether a run is under way: the run's own HUD is up, or this is the territory the board last
+    /// marked a position in. Two signs, because the HUD has not been seen in a capture yet and the
+    /// territory has — every capture taken in a run was in the same one.
+    /// </summary>
+    private bool InARun =>
+        AddonReader.IsOpen(XbmColumns.ContentsMainHUD.Addon)
+        || (board.RunTerritory != 0 && Services.ClientState.TerritoryType == board.RunTerritory);
 
     private void OnUpdate(IFramework framework)
     {
@@ -102,15 +121,15 @@ public sealed class NextRoomPanel : IDisposable
             lookAhead = 0;
         }
 
-        if (!configuration.ShowNextRoom || !nativeUiReady() || !InARun || board.Rooms.Count == 0)
-        {
-            Close();
-            return;
-        }
+        var hidden = !nativeUiReady() ? "Waiting for the game's window toolkit to start."
+                     : forced ? null
+                     : !configuration.ShowNextRoom ? "Turned off in the settings."
+                     : !InARun ? "Not in a run — it only opens on its own inside one. /beastmastr room opens it anyway."
+                     : null;
 
-        var move = Shown();
-        if (move < 0)
+        if (hidden != null)
         {
+            Status = hidden;
             Close();
             return;
         }
@@ -120,12 +139,30 @@ public sealed class NextRoomPanel : IDisposable
         if (!window.IsOpen)
             window.Open();
 
+        var move = Shown();
+        if (board.Rooms.Count == 0 || move < 0)
+        {
+            Status = "Open, but no board has been read yet.";
+            Show("No board yet", "Open the Board Layout once — at the entrance, before a run — " +
+                                 "and the board is kept from then on.", -1);
+            return;
+        }
+
+        Status = board.CurrentMove < 0
+                     ? $"Open, briefing move {move}. The run has not been located yet, so this is the first room."
+                     : $"Open, briefing move {move}, the room the board marks as yours.";
+
         var text = Describe(move);
-        if (text == drawn)
+        Show($"Move {move}", text, move);
+    }
+
+    private void Show(string title, string text, int move)
+    {
+        if (window == null || text == drawn)
             return;
 
         drawn = text;
-        window.Show($"Move {move}", text, move > board.NextMove, board.After(move) > 0);
+        window.Show(title, text, move > board.NextMove, move >= 0 && board.After(move) > 0);
     }
 
     private NextRoomAddon Build() =>
@@ -186,7 +223,7 @@ public sealed class NextRoomPanel : IDisposable
             if (room.Detail.Length > 0)
                 text.Add(room.Detail);
 
-            var brief = enemies.Brief(room.Index);
+            var brief = enemies.Brief(room.Label);
             if (brief.Count == 0)
             {
                 // Said plainly rather than left blank. A room with nothing written under it reads as
