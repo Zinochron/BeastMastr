@@ -17,10 +17,10 @@ namespace BeastMastr.Automation;
 /// Emptying first means the end state depends on nothing but the plan, and "the roster reads empty"
 /// is a check the window can answer before a single beast is added.
 ///
-/// Toggles tiles in the bestiary the way a click does — <c>[7, slot]</c>, recorded from a real
-/// click, and deliberately not assumed from the fight window, whose own toggle is <c>[1, row]</c>.
-/// The two windows do not share a command, which is the argument for recording each rather than
-/// generalising from one.
+/// Emptying is the game's own "Remove all", replayed from a recording: right-click the first row,
+/// pick the third entry of its menu, confirm. That needs only the team list. Adding toggles tiles in
+/// the bestiary the way a click does — <c>[7, slot]</c> — so it needs the bestiary open, and waits
+/// for it rather than giving up when it is not.
 /// </summary>
 public sealed unsafe class TeamSelector : IDisposable
 {
@@ -37,15 +37,30 @@ public sealed unsafe class TeamSelector : IDisposable
     /// <summary>Frames to let a page turn settle before looking for a beast on it.</summary>
     private const int FramesAfterPageTurn = 12;
 
+    /// <summary>How long a window the game opens in answer — the menu, the confirmation — may take to appear.</summary>
+    private const int FramesToAppear = 60;
+
+    private const string ContextMenuAddon = "ContextMenu";
+    private const string ConfirmationAddon = "SelectYesno";
+
     private enum Phase
     {
         Idle,
 
-        /// <summary>Taking every beast out. Ends with a check that the roster really is empty.</summary>
+        /// <summary>"Remove all", then a check that the roster really is empty.</summary>
         Emptying,
 
         /// <summary>Putting the plan in, carries first, then the least advanced.</summary>
         Filling,
+    }
+
+    /// <summary>The recorded steps of "Remove all", one per window the game puts up on the way.</summary>
+    private enum EmptyStep
+    {
+        OpenMenu,
+        PickRemoveAll,
+        Confirm,
+        WaitForEmpty,
     }
 
     /// <param name="Join">What this toggle is for. Stated, not inferred from the roster at the time —
@@ -58,11 +73,13 @@ public sealed unsafe class TeamSelector : IDisposable
 
     private readonly Queue<Step> pending = new();
     private Phase phase;
+    private EmptyStep emptyStep;
     private List<uint> plan = [];
     private int cooldown;
     private Step? waiting;
     private int framesWaited;
     private bool givenUp;
+    private bool askedForBestiary;
 
     public TeamSelector(Configuration configuration, BeastCatalog catalog, RankWatcher ranks)
     {
@@ -85,17 +102,12 @@ public sealed unsafe class TeamSelector : IDisposable
     /// </summary>
     public void RequestFill()
     {
+        Reset();
         requested = true;
         givenUp = false;
-        Reset();
     }
 
-    /// <summary>
-    /// Only while the bestiary and the roster are both up. That pairing happens when a team is being
-    /// put together and at no other time, which beats matching a localised prompt.
-    /// </summary>
-    private static bool ComposingTeam =>
-        AddonReader.IsOpen(XbmColumns.MonsterNotebook.Addon) && PetPartyReader.IsOpen;
+    private static bool BestiaryOpen => AddonReader.IsOpen(XbmColumns.MonsterNotebook.Addon);
 
     private void OnUpdate(IFramework framework)
     {
@@ -105,19 +117,31 @@ public sealed unsafe class TeamSelector : IDisposable
         if (phase == Phase.Idle && !requested && configuration.TeamSelection != TeamMode.Leveling)
             return;
 
-        if (!ComposingTeam)
+        // The team list is the screen. Closing it, or the window switching to calling a fight's
+        // familiars, ends whatever was under way.
+        if (!PetPartyReader.IsTeamComposition)
         {
             Reset();
             return;
         }
 
-        if (phase == Phase.Idle)
+        switch (phase)
         {
-            Start();
-            return;
-        }
+            case Phase.Idle:
+                // The automatic mode waits for the bestiary as well: emptying a team the moment the
+                // screen opens, before anyone has asked, is not something to spring on a player.
+                if (requested || BestiaryOpen)
+                    Start();
+                break;
 
-        Continue();
+            case Phase.Emptying:
+                Empty();
+                break;
+
+            case Phase.Filling:
+                Fill();
+                break;
+        }
     }
 
     private void Start()
@@ -134,7 +158,7 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (known.Count == 0)
         {
-            Status = "No ranks known yet, so there is nothing to sort on. Browse the bestiary once.";
+            Tell("No ranks known yet, so there is nothing to sort on. Browse the bestiary once.");
             return;
         }
 
@@ -148,21 +172,145 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (plan.ToHashSet().SetEquals(current))
         {
-            Status = $"Team already matches ({plan.Count} beasts).";
+            Tell($"Team already matches ({plan.Count} beasts).");
             return;
         }
-
-        phase = Phase.Emptying;
-        foreach (var beast in current)
-            pending.Enqueue(new Step(beast, Join: false));
 
         Status = $"Emptying the team ({current.Count}), then adding {plan.Count} — " +
                  $"{known.Count} of {catalog.Beasts.Count} ranks known.";
         Services.Log.Information(Status);
+
+        phase = Phase.Emptying;
+        emptyStep = EmptyStep.OpenMenu;
+        framesWaited = 0;
     }
 
-    private void Continue()
+    // ---- Emptying --------------------------------------------------------
+
+    /// <summary>
+    /// "Remove all", step by step, each one waiting for the window the last one made the game open.
+    ///
+    /// The confirmation is the safety check as much as a step: the menu entry is picked by its
+    /// position, and if the entry at that position were ever something other than "Remove all", the
+    /// odds that it also asks "are you sure" are slim. No confirmation means stop, and say what the
+    /// menu offered.
+    /// </summary>
+    private void Empty()
     {
+        if (cooldown-- > 0)
+            return;
+
+        switch (emptyStep)
+        {
+            case EmptyStep.OpenMenu:
+                if (TeamNow().Count == 0)
+                {
+                    BeginFilling();
+                    return;
+                }
+
+                if (!Fire(XbmColumns.PetParty.Addon, false,
+                          (AtkValueType.Int, XbmColumns.PetParty.OpenMenuCommand), (AtkValueType.Int, 0)))
+                {
+                    Stop("The team list went away before its menu could be opened.");
+                    return;
+                }
+
+                Next(EmptyStep.PickRemoveAll);
+                return;
+
+            case EmptyStep.PickRemoveAll:
+                if (!AddonReader.IsOpen(ContextMenuAddon))
+                {
+                    if (++framesWaited > FramesToAppear)
+                        Stop("Right-clicking the first beast in the team list did not open its menu.");
+
+                    return;
+                }
+
+                offered = Strings(ContextMenuAddon);
+                Services.Log.Information($"Team list menu offers: {string.Join(" | ", offered)}");
+
+                Fire(ContextMenuAddon, true,
+                     (AtkValueType.Int, 0), (AtkValueType.Int, XbmColumns.PetParty.RemoveAllMenuEntry),
+                     (AtkValueType.UInt, 0), (AtkValueType.Undefined, 0), (AtkValueType.Undefined, 0));
+
+                Next(EmptyStep.Confirm);
+                return;
+
+            case EmptyStep.Confirm:
+                if (!AddonReader.IsOpen(ConfirmationAddon))
+                {
+                    if (++framesWaited > FramesToAppear)
+                    {
+                        Stop($"Picked entry {XbmColumns.PetParty.RemoveAllMenuEntry + 1} of the menu but no " +
+                             $"confirmation followed, so it may not have been \"Remove all\". " +
+                             $"The menu offered: {string.Join(" | ", offered)}");
+                    }
+
+                    return;
+                }
+
+                Services.Log.Information($"Confirming: {string.Join(" ", Strings(ConfirmationAddon).Take(1))}");
+                Fire(ConfirmationAddon, true, (AtkValueType.Int, 0));
+
+                Next(EmptyStep.WaitForEmpty);
+                return;
+
+            case EmptyStep.WaitForEmpty:
+                var left = TeamNow();
+                if (left.Count == 0)
+                {
+                    BeginFilling();
+                    return;
+                }
+
+                if (++framesWaited > FramesToConfirm * 2)
+                    Stop($"Confirmed \"Remove all\", but the team list still shows {string.Join(", ", left.Select(Name))}.");
+
+                return;
+        }
+    }
+
+    /// <summary>What the menu said it offered, kept for the message if the pick goes wrong.</summary>
+    private List<string> offered = [];
+
+    private void Next(EmptyStep step)
+    {
+        emptyStep = step;
+        framesWaited = 0;
+        cooldown = 2;
+    }
+
+    private void BeginFilling()
+    {
+        phase = Phase.Filling;
+        pending.Clear();
+
+        foreach (var beast in plan)
+            pending.Enqueue(new Step(beast, Join: true));
+
+        Status = $"Team empty. Adding {plan.Count}…";
+    }
+
+    // ---- Filling ---------------------------------------------------------
+
+    private void Fill()
+    {
+        // Adding goes through the bestiary's tiles, so it has to be open. Waiting for it rather than
+        // stopping is the point: the button lives on the team list, and the bestiary is one click
+        // away from there.
+        if (!BestiaryOpen)
+        {
+            if (!askedForBestiary)
+            {
+                askedForBestiary = true;
+                Tell($"Team emptied. Open the Master's Bestiary and the {plan.Count} beasts go in by themselves.");
+            }
+
+            return;
+        }
+
         if (cooldown-- > 0)
             return;
 
@@ -171,13 +319,14 @@ public sealed unsafe class TeamSelector : IDisposable
 
         if (pending.Count == 0)
         {
-            NextPhase();
+            Tell($"Team set: {TeamNow().Count} beasts.");
+            Reset();
             return;
         }
 
         var next = pending.Dequeue();
 
-        // Already the way it is meant to be — taken out by hand meanwhile, or never there.
+        // Already the way it is meant to be — put in by hand meanwhile.
         if (InTeam(next.Beast) == next.Join)
             return;
 
@@ -233,32 +382,6 @@ public sealed unsafe class TeamSelector : IDisposable
         return false;
     }
 
-    private void NextPhase()
-    {
-        if (phase == Phase.Emptying)
-        {
-            // The one check that makes emptying worth doing: nothing may be added until the window
-            // itself says the team is empty.
-            var left = TeamNow();
-            if (left.Count > 0)
-            {
-                Stop($"Emptied the team, but the roster still lists {string.Join(", ", left.Select(Name))}.");
-                return;
-            }
-
-            phase = Phase.Filling;
-            foreach (var beast in plan)
-                pending.Enqueue(new Step(beast, Join: true));
-
-            Status = $"Team empty. Adding {plan.Count}…";
-            return;
-        }
-
-        Status = $"Team set: {TeamNow().Count} beasts.";
-        Services.Log.Information(Status);
-        Reset();
-    }
-
     /// <summary>
     /// The beast is on the other page. Turning it is a recorded click too, so this is not a dead
     /// end — the step goes back to the front of the queue and runs once the page has settled.
@@ -298,6 +421,8 @@ public sealed unsafe class TeamSelector : IDisposable
         cooldown = FramesAfterPageTurn;
     }
 
+    // ---- Reading ---------------------------------------------------------
+
     private HashSet<uint> TeamNow() =>
         PetPartyReader.Read(catalog)
                       .Where(slot => slot.Beast != null)
@@ -305,6 +430,13 @@ public sealed unsafe class TeamSelector : IDisposable
                       .ToHashSet();
 
     private bool InTeam(uint beastNumber) => TeamNow().Contains(beastNumber);
+
+    /// <summary>Every string a window holds — for a menu, its entries; for a confirmation, its question.</summary>
+    private static List<string> Strings(string addon) =>
+        AddonReader.Values(addon)
+                   .Where(value => value.Type.Contains("String", StringComparison.Ordinal) && value.Text.Length > 0)
+                   .Select(value => value.Text)
+                   .ToList();
 
     /// <summary>
     /// Which tile of the twenty-five currently shown holds this beast, or -1 when it is on another
@@ -354,6 +486,8 @@ public sealed unsafe class TeamSelector : IDisposable
         return XbmColumns.MonsterNotebook.PageOf(number);
     }
 
+    // ---- Sending ---------------------------------------------------------
+
     /// <summary>
     /// Sends one of the bestiary's own two-value commands. Both were recorded from real clicks:
     /// <c>[7, slot]</c> puts a beast in or out of the team, <c>[3, page]</c> turns the page.
@@ -361,18 +495,46 @@ public sealed unsafe class TeamSelector : IDisposable
     /// **The types matter.** The recordings read <c>[0] Int=n [1] UInt=n</c>: the command is an Int
     /// and its argument a UInt. Sending the argument as an Int is silently ignored.
     /// </summary>
-    private static bool Send(int command, int argument)
+    private static bool Send(int command, int argument) =>
+        Fire(XbmColumns.MonsterNotebook.Addon, false,
+             (AtkValueType.Int, command), (AtkValueType.UInt, argument));
+
+    /// <summary>
+    /// A callback with exactly the types a recording showed. Every window here is picky about them —
+    /// the bestiary ignores an Int where it expects a UInt — so they are spelled out per value rather
+    /// than assumed.
+    ///
+    /// <paramref name="close"/> is set for the menu and the confirmation: both go away once answered,
+    /// and a menu left open after its entry was picked would sit over the team list.
+    /// </summary>
+    private static bool Fire(string addonName, bool close, params (AtkValueType Type, int Value)[] arguments)
     {
-        if (!AddonReader.TryGet(XbmColumns.MonsterNotebook.Addon, out var addon))
+        if (!AddonReader.TryGet(addonName, out var addon))
             return false;
 
-        var values = stackalloc AtkValue[2];
-        values[0].SetInt(command);
-        values[1].SetUInt((uint)argument);
+        var values = stackalloc AtkValue[arguments.Length];
 
-        addon->FireCallback(2, values);
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            values[i] = default;
+
+            switch (arguments[i].Type)
+            {
+                case AtkValueType.Int:
+                    values[i].SetInt(arguments[i].Value);
+                    break;
+
+                case AtkValueType.UInt:
+                    values[i].SetUInt((uint)arguments[i].Value);
+                    break;
+            }
+        }
+
+        addon->FireCallback((uint)arguments.Length, values, close);
         return true;
     }
+
+    // ---- Reporting -------------------------------------------------------
 
     /// <summary>
     /// What the bestiary's tiles actually hold. Written into the failure rather than left to be
@@ -411,12 +573,22 @@ public sealed unsafe class TeamSelector : IDisposable
     private string Name(uint beastNumber) =>
         catalog.Beasts.FirstOrDefault(beast => beast.Number == beastNumber)?.Name ?? $"beast {beastNumber}";
 
+    /// <summary>
+    /// Said in chat as well as in the Settings tab. The button is in the game's own window, so the
+    /// answer to pressing it belongs where you are looking, not in a tab you would have to open.
+    /// </summary>
+    private void Tell(string message)
+    {
+        Status = message;
+        Services.Log.Information(message);
+        Services.Chat.Print($"[BeastMastr] {message}");
+    }
+
     private void Full(uint refused)
     {
         var count = TeamNow().Count;
-        Status = $"Team full at {count} — it would not take {Name(refused)}. The board takes {count}, " +
-                 $"not the {TeamPlanner.TeamSizeFor(configuration.BoardTier)} the board tier setting says.";
-        Services.Log.Information(Status);
+        Tell($"Team full at {count} — it would not take {Name(refused)}. The board takes {count}, " +
+             $"not the {TeamPlanner.TeamSizeFor(configuration.BoardTier)} the board tier setting says.");
         Reset();
     }
 
@@ -424,17 +596,19 @@ public sealed unsafe class TeamSelector : IDisposable
     {
         Reset();
         givenUp = true;
-        Status = $"{why} Press the button again to retry.";
-        Services.Log.Warning(Status);
+        Tell($"{why} Press the button again to retry.");
     }
 
     private void Reset()
     {
         pending.Clear();
         phase = Phase.Idle;
+        emptyStep = EmptyStep.OpenMenu;
         waiting = null;
         framesWaited = 0;
         cooldown = 0;
+        askedForBestiary = false;
+        requested = false;
     }
 
     public void Dispose() => Services.Framework.Update -= OnUpdate;

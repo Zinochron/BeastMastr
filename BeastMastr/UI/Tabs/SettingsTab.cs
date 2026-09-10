@@ -103,9 +103,10 @@ public sealed class SettingsTab : ITab
         }
 
         Widgets.HelpMarker(
-            "Adds a \"Fill for levelling\" button to the team list and under the bestiary while a " +
-            "team is being put together. It empties the team first, then adds the carries and the " +
-            "least advanced beasts. It only appears where it does something.");
+            "Adds a \"Fill for levelling\" button to the team list whenever a team is being put " +
+            "together, and under the bestiary while that is open too. It empties the team with the " +
+            "game's own \"Remove all\", then adds the carries and the least advanced beasts — adding " +
+            "needs the bestiary open, so if it is not, the team fills the moment you open it.");
 
         var leveling = configuration.TeamSelection == TeamMode.Leveling;
         if (ImGui.Checkbox("Fill the team for levelling", ref leveling))

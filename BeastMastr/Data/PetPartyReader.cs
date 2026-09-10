@@ -22,6 +22,29 @@ public static class PetPartyReader
 
     public static bool IsOpen => AddonReader.IsOpen(XbmColumns.PetParty.Addon);
 
+    /// <summary>
+    /// The window is up and putting a run's team together, rather than calling a fight's familiars.
+    /// The window's own mode number decides it, not its prompt: the prompt is a localised sentence.
+    /// Read through the pointer because this is asked every frame, and the managed view of the
+    /// window's values copies all twelve hundred of them.
+    /// </summary>
+    public static unsafe bool IsTeamComposition
+    {
+        get
+        {
+            if (!IsOpen || !AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
+                return false;
+
+            if (addon->AtkValuesCount <= XbmColumns.PetParty.ModeValue)
+                return false;
+
+            var mode = addon->AtkValues[XbmColumns.PetParty.ModeValue];
+            return mode.Type is FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.UInt
+                                or FFXIVClientStructs.FFXIV.Component.GUI.AtkValueType.Int
+                   && mode.UInt == XbmColumns.PetParty.TeamCompositionMode;
+        }
+    }
+
     public static List<Slot> Read(BeastCatalog catalog)
     {
         var slots = new List<Slot>();

@@ -402,6 +402,28 @@ public static class XbmColumns
         /// </summary>
         public const int PromptValue = 1185;
 
+        /// <summary>
+        /// Which of its two jobs the window is doing, as a number rather than a localised sentence:
+        /// <see cref="TeamCompositionMode"/> while a run's team is being put together, 2 while a
+        /// fight's familiars are being called. Read off three captures — two of team composition, one
+        /// of a fight — and it was the only header value that split them.
+        /// </summary>
+        public const int ModeValue = 2;
+
+        public const uint TeamCompositionMode = 0;
+
+        /// <summary>
+        /// Right-clicking a row sends <c>[2, row]</c>, both Ints, and the game answers by opening that
+        /// row's menu. Recorded from a real right click on row 0.
+        /// </summary>
+        public const int OpenMenuCommand = 2;
+
+        /// <summary>
+        /// "Remove all" is the third entry of that menu, picked with <c>[0, 2, 0u]</c> on the
+        /// <c>ContextMenu</c> window and confirmed with <c>[0]</c> on <c>SelectYesno</c>.
+        /// </summary>
+        public const int RemoveAllMenuEntry = 2;
+
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
     }

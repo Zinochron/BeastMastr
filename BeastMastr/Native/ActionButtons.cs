@@ -66,11 +66,13 @@ public sealed unsafe class ActionButtons : IDisposable
     }
 
     /// <summary>
-    /// The bestiary is the team composition screen, but only while the roster is open beside it.
-    /// Outside that pairing the button would do nothing useful, so it is not offered.
+    /// Team composition is the roster window in its team mode — with or without the bestiary. The
+    /// first version wanted both, so the button only appeared once the bestiary was opened, which is
+    /// the wrong way round: the team list is the screen, and the bestiary is something opened from it.
     /// </summary>
-    private static bool ComposingTeam =>
-        AddonReader.IsOpen(XbmColumns.MonsterNotebook.Addon) && PetPartyReader.IsOpen;
+    private static bool ComposingTeam => PetPartyReader.IsTeamComposition;
+
+    private static bool BestiaryOpen => AddonReader.IsOpen(XbmColumns.MonsterNotebook.Addon);
 
     private void OnUpdate(IFramework framework)
     {
@@ -87,7 +89,7 @@ public sealed unsafe class ActionButtons : IDisposable
                 return;
             }
 
-            if (!buttons.ContainsKey(XbmColumns.MonsterNotebook.Addon))
+            if (BestiaryOpen && !buttons.ContainsKey(XbmColumns.MonsterNotebook.Addon))
                 AttachUnderTheTiles();
 
             if (!buttons.ContainsKey(XbmColumns.PetParty.Addon))
@@ -110,9 +112,9 @@ public sealed unsafe class ActionButtons : IDisposable
     }
 
     /// <summary>
-    /// Both windows close together, and a button left attached to a window being torn down is the
-    /// kind of leak that corrupts it — so either one closing takes both off. They come back on the
-    /// next check if the other is somehow still up.
+    /// A button left attached to a window being torn down is the kind of leak that corrupts it, so
+    /// either window closing takes both off. The roster's comes straight back on the next check when
+    /// it was only the bestiary that closed.
     /// </summary>
     private void OnFinalize(AddonEvent type, AddonArgs args) => Detach();
 

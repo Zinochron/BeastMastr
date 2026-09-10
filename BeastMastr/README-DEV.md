@@ -1150,17 +1150,48 @@ size, and it finishes with a message saying so rather than as a failure. The old
 roster's slot count" is gone — it counted the *filled* rows, since the reader stops at the first blank
 name, so a half-filled team clamped the plan to its own size.
 
-### "Remove all" is not wired yet, and why
+### "Remove all", recorded and replayed
 
-The game's right-click menu has "Remove all", which would empty the team in one step. What it sends is
-not in any capture — and could not have been: the recorder only kept callbacks from windows named
-`XBM*`, and a right-click menu is its own window, `ContextMenu`. It now also records `ContextMenu`
-and `SelectYesno`. Until that click is recorded, emptying uses the per-beast toggle that is already
-proven, which is slower but not guessed.
+`captures/board-20260910-171738.txt` has it. It lives in the **team list's** right-click menu, not
+the bestiary's, and it takes three windows:
+
+| Step | Window | Values |
+|---|---|---|
+| right-click row 0 | `XBMPetParty` | `[0] Int=2 [1] Int=0` |
+| pick the third entry | `ContextMenu` | `[0] Int=0 [1] Int=2 [2] UInt=0 [3] Undefined [4] Undefined` |
+| confirm | `SelectYesno` | `[0] Int=0` |
+
+The team list takes Ints for both values, unlike the bestiary's `[Int, UInt]`. The types are spelled
+out per value in `TeamSelector.Fire` for exactly that reason.
+
+The entry is picked by position, which is the part worth being careful about. The confirmation is the
+guard: if the third entry were ever something other than "Remove all", it is unlikely to also ask "are
+you sure". No confirmation within a second means stop, and the message lists what the menu offered.
+What the menu offered and what the confirmation asked also go to the log every time.
+
+Emptying needs only the team list, so it works without the bestiary. Adding needs the bestiary's
+tiles; with the bestiary closed, the fill waits and says so in chat instead of giving up, and carries
+on the moment it opens.
+
+The recorder now also notes whether a callback closes its window. That flag was not recorded before,
+so the replay assumes the menu and the confirmation close on being answered, which is what they do on
+screen.
+
+### Team composition is the team list, with or without the bestiary
+
+The button appeared only while the bestiary was open, because "composing a team" was defined as both
+windows being up. That had it the wrong way round: the team list is the screen, and the bestiary is
+opened from it. The team list does both of its jobs in one window, though. Its value 2 tells them
+apart: `0` in both team-composition captures, `2` in the fight capture. That is the only header value
+that split them, and it is used instead of the prompt because the prompt is a localised sentence.
+
+The automatic mode still waits for both windows. Emptying a team the moment the screen opens, before
+anyone asked, is not something to spring on a player; the button is the thing you press.
 
 ### The roster's button
 
 Hung off the same parent as the roster's list component and placed above it, for the same
 same-units reason as the bestiary's. If the list sits flush with the top it goes below instead — over
-the first row it would take that row's clicks. Nobody has captured the roster's node tree, so the
-board report now includes it: if the button is wrong, one capture has the numbers to fix it.
+the first row it would take that row's clicks. The same capture has the roster's node tree and shows the spot is free:
+at the window's scale of 1.2, the header's separator line ends 57 units down and the list starts at
+90. A 24-high button at 62 sits in that gap.

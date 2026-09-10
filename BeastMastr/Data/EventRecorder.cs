@@ -119,7 +119,7 @@ public sealed unsafe class EventRecorder : IDisposable
                 // anything else.
                 var fromHover = (DateTime.Now - lastNoiseAt).TotalMilliseconds < 4;
                 Record(addon->NameString, fromHover ? "FireCallback (hover)" : "FireCallback",
-                       (int)count, Describe(count, values));
+                       (int)count, Describe(count, values) + (close ? "  (closes)" : string.Empty));
             }
         }
         catch (Exception ex)
