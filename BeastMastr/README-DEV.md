@@ -1200,6 +1200,18 @@ that happened to sit in an old row read as already in the team and was skipped r
 Value 1162 is the capacity — 14, 12, 10 across the captures, the same number as after the slash. The
 team size now comes from there, with the board tier setting only as the fallback.
 
+### Open is not ready
+
+The first fill that got past emptying gave up on its very first beast: "the bestiary is open but says
+nothing about which page it is on". The log has the timing — "Remove all" confirmed at 17:52:24.839,
+the failure at .885, three frames later. The bestiary was visible and still refilling its tiles for
+the team that had just changed underneath it, so neither the page number nor any icon could be read.
+
+It was always on page 1, as it always opens there, and that is no help: without the tiles' values
+there is no telling which tile is which beast either. So the fill now waits until the first tile's
+number comes back before touching anything, for up to two seconds, and if that runs out the message
+says what the tiles held at the time.
+
 ### Team composition is the team list, with or without the bestiary
 
 The button appeared only while the bestiary was open, because "composing a team" was defined as both

@@ -87,6 +87,9 @@ public sealed unsafe class TeamSelector : IDisposable
     /// <summary>Frames the team list has been gone while a fill is under way.</summary>
     private int framesAway;
 
+    /// <summary>Frames the bestiary has been open without yet saying which page it shows.</summary>
+    private int framesUnready;
+
     public TeamSelector(Configuration configuration, BeastCatalog catalog, RankWatcher ranks)
     {
         this.configuration = configuration;
@@ -318,6 +321,23 @@ public sealed unsafe class TeamSelector : IDisposable
             OpenBestiary();
             return;
         }
+
+        // Open is not ready. The first fill acted 46 ms after "Remove all" was confirmed: the bestiary
+        // was visible but still refilling its tiles for the changed team, so it named no page and no
+        // beast, and the fill gave up on its very first step. Its first tile's number coming back is
+        // the sign the tiles are there to be read.
+        if (CurrentPage() < 0)
+        {
+            if (++framesUnready > FramesToAppear * 2)
+            {
+                Stop($"The bestiary has been open for {FramesToAppear * 2} frames without saying which " +
+                     $"page it shows. Its tiles hold: {DescribeSlots()}");
+            }
+
+            return;
+        }
+
+        framesUnready = 0;
 
         if (cooldown-- > 0)
             return;
@@ -645,6 +665,7 @@ public sealed unsafe class TeamSelector : IDisposable
         askedForBestiary = false;
         bestiaryWait = -1;
         framesAway = 0;
+        framesUnready = 0;
         requested = false;
     }
 

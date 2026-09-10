@@ -117,8 +117,14 @@ public sealed class RankWatcher : IDisposable
         if (!PetPartyReader.IsOpen)
             return;
 
+        // One save for the lot. After a run a whole team's ranks change at once, and saving the
+        // config once per beast stalled a frame for 75 ms — Dalamud flagged it as a hitch.
+        var changed = false;
         foreach (var slot in PetPartyReader.ReadRanks())
-            Remember(slot.Number, slot.Rank);
+            changed |= Store(slot.Number, slot.Rank);
+
+        if (changed)
+            configuration.Save();
     }
 
     /// <summary>
@@ -140,11 +146,18 @@ public sealed class RankWatcher : IDisposable
 
     private void Remember(uint beastNumber, int rank)
     {
+        if (Store(beastNumber, rank))
+            configuration.Save();
+    }
+
+    /// <summary>Records a rank without saving, for callers that learn several at once and save once.</summary>
+    private bool Store(uint beastNumber, int rank)
+    {
         if (rank <= 0 || configuration.KnownRanks.TryGetValue(beastNumber, out var known) && known == rank)
-            return;
+            return false;
 
         configuration.KnownRanks[beastNumber] = rank;
-        configuration.Save();
+        return true;
     }
 
     /// <summary>
