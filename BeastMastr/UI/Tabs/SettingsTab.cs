@@ -56,18 +56,6 @@ public sealed class SettingsTab : ITab
 
         ImGui.TextDisabled(nextRoom.Status);
 
-        var overlay = configuration.ShowBoardOverlay;
-        if (ImGui.Checkbox("Show room cards on the Crucible board", ref overlay))
-        {
-            configuration.ShowBoardOverlay = overlay;
-            configuration.Save();
-        }
-
-        Widgets.HelpMarker(
-            "Hangs a card under each room icon out in the world. Off by default: the placement is " +
-            "right but a card under every floating icon across a whole board is not yet a good way " +
-            "to read one. The reading behind it happens either way — the Board tab shows it.");
-
         ImGui.Separator();
 
         var showData = configuration.ShowDataTab;

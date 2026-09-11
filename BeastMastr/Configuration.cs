@@ -80,17 +80,10 @@ public class Configuration : IPluginConfiguration
     public bool DecorateNotebook { get; set; } = true;
 
     /// <summary>
-    /// Draw the room cards over the world markers. Off by default: the placement works, but cards
-    /// hanging under floating icons across a whole board is not yet a good way to read one. The
-    /// readers behind it stay, so a better presentation costs nothing but the presentation.
-    /// </summary>
-    /// <summary>
     /// Put the plugin's actions into the game's own windows as buttons. On by default: a
     /// button that is only offered where it does something is not in the way.
     /// </summary>
     public bool ShowActionButtons { get; set; } = true;
-
-    public bool ShowBoardOverlay { get; set; } = false;
 
     /// <summary>
     /// Show the next room's briefing in a window of the game's own, during a run.

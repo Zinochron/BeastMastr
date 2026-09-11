@@ -1313,3 +1313,18 @@ holds in every mode of the window, and it is measured from the window's own widt
 
 The lesson for the next one is the one the bestiary taught, one level deeper: **read the whole tree
 before calling a spot empty.**
+
+## The world cards are gone
+
+`UI/BoardOverlay.cs` is deleted, and with it the setting that turned it on. Switching it off by
+default was not enough: the flag was already saved as on from before that change, so the cards were
+still hanging under every room icon out in the world and in the way.
+
+Nothing is lost by removing it. The card under an icon was a first attempt at "what does this room
+hold", and the next-room window answers that better — one room, the one you are about to enter,
+readable without hunting for an icon. What made the overlay possible stays: `MapMarkerReader` and the
+world transform still work and are still shown in the Board tab, so a better presentation costs
+nothing but the presentation.
+
+A setting that no longer exists cannot be saved as on, which is the point of removing the property
+rather than only the drawing. An old config carrying `ShowBoardOverlay` is simply ignored.
