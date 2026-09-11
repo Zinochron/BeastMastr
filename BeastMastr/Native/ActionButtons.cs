@@ -46,7 +46,17 @@ public sealed unsafe class ActionButtons : IDisposable
 
     private const float ButtonWidth = 140f;
 
-    /// <summary>One per job. The team list carries a different button for each of its two modes.</summary>
+    /// <summary>
+    /// Where the team list's header has room, in the window's own units, from
+    /// <c>captures/board-20260910-171738.txt</c> at a window scale of 1.2: the header's gold line
+    /// is 53 down, so a 24-high button starting at 27 ends two above it; two hidden header buttons
+    /// start 54 in from the right edge, so the button ends six short of them.
+    /// </summary>
+    private const float HeaderTop = 27f;
+
+    private const float HeaderRightMargin = 60f;
+
+    /// <summary>One per job. The team list carries a different button for each of its modes.</summary>
     private enum Kind
     {
         /// <summary>Team list, building a run's team.</summary>
@@ -141,7 +151,7 @@ public sealed unsafe class ActionButtons : IDisposable
             switch (kind)
             {
                 case Kind.FillFromTeamList:
-                    AboveTheTeamList(kind, "Fill for levelling", teamSelector.RequestFill);
+                    InTheTeamListHeader(kind, "Fill for levelling", teamSelector.RequestFill);
                     break;
 
                 case Kind.FillFromBestiary:
@@ -149,11 +159,11 @@ public sealed unsafe class ActionButtons : IDisposable
                     break;
 
                 case Kind.CallFromTeamList:
-                    AboveTheTeamList(kind, "Call last familiars", fightSelector.RequestRepeat);
+                    InTheTeamListHeader(kind, "Call last familiars", fightSelector.RequestRepeat);
                     break;
 
                 case Kind.PickHurtFromTeamList:
-                    AboveTheTeamList(kind, "Pick lowest HP", healthSelector.RequestPick);
+                    InTheTeamListHeader(kind, "Pick lowest HP", healthSelector.RequestPick);
                     break;
             }
         }
@@ -187,30 +197,23 @@ public sealed unsafe class ActionButtons : IDisposable
     }
 
     /// <summary>
-    /// Above the list in the team list window. Placed against the list component itself and hung off
-    /// the same parent, for the same reason as the bestiary's: then the two positions are in the same
-    /// units and nothing converts. The capture shows the room for it — the header's separator ends 57
-    /// units down and the list starts at 90.
+    /// In the team list's header, right of its title and above the gold line — the one stretch of
+    /// that window nothing else uses.
     ///
-    /// Where the list sits flush with the top and leaves no room above it, the button goes below it
-    /// instead — a button over the list's first row would take the clicks meant for that row.
+    /// The first placement went above the list, into what looked like a gap in a shallow reading of
+    /// the capture. It is not a gap: the window's own button row — the team counter, "Master's
+    /// Bestiary", "Recommended Team" and three icons — sits there, at 60 to 88, and the button landed
+    /// on top of it. The header is part of the window's frame rather than of its content, so it is
+    /// in the same place whatever the window is doing, and the button follows the window's own width
+    /// rather than the list's position.
     /// </summary>
-    private void AboveTheTeamList(Kind kind, string label, Action onClick)
+    private void InTheTeamListHeader(Kind kind, string label, Action onClick)
     {
-        if (!AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
+        if (!AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon) || addon->RootNode == null)
             return;
 
-        var list = FindList(addon);
-        var parent = list == null ? null : list->ParentNode;
-        if (parent == null)
-            return;
-
-        var above = list->Y - ButtonHeight - 4f;
-        var position = above >= 0f
-                           ? new Vector2(list->X, above)
-                           : new Vector2(list->X, list->Y + list->Height + 4f);
-
-        Attach(kind, parent, position, label, onClick);
+        var root = addon->RootNode;
+        Attach(kind, root, new Vector2(root->Width - HeaderRightMargin - ButtonWidth, HeaderTop), label, onClick);
     }
 
     private void Attach(Kind kind, AtkResNode* parent, Vector2 position, string label, Action onClick)
@@ -227,23 +230,6 @@ public sealed unsafe class ActionButtons : IDisposable
 
         button.AttachNode(parent, NodePosition.AsLastChild);
         buttons[kind] = button;
-    }
-
-    /// <summary>The window's list component node, found by what it is rather than by an id nobody has captured.</summary>
-    private static AtkResNode* FindList(AtkUnitBase* addon)
-    {
-        for (var i = 0; i < addon->UldManager.NodeListCount; i++)
-        {
-            var node = addon->UldManager.NodeList[i];
-            if (node == null || (uint)node->Type < 1000)
-                continue;
-
-            var component = ((AtkComponentNode*)node)->Component;
-            if (component != null && component->GetComponentType() == ComponentType.List)
-                return node;
-        }
-
-        return null;
     }
 
     private void Remove(Kind kind)

@@ -1229,7 +1229,7 @@ Hung off the same parent as the roster's list component and placed above it, for
 same-units reason as the bestiary's. If the list sits flush with the top it goes below instead — over
 the first row it would take that row's clicks. The same capture has the roster's node tree and shows the spot is free:
 at the window's scale of 1.2, the header's separator line ends 57 units down and the list starts at
-90. A 24-high button at 62 sits in that gap.
+90. That was wrong, see below: the button row of the window sits in that stretch.
 
 ## Nothing happens without a button press
 
@@ -1297,3 +1297,19 @@ slot flag a fight uses, and whether these windows use that flag is not yet captu
 is written to point at the likely cause if it does not hold.
 
 The row click itself now lives once, in `TeamListCommands`, shared by the fight call and this.
+
+### The team list's buttons live in its header
+
+The first placement, above the list, sat on the game's own buttons. The claim that the capture
+showed that spot free was wrong: it came from reading the node tree only one level deep. One level
+further down, a row holding the team counter, "Master's Bestiary", "Recommended Team" and three icons
+fills exactly that stretch, at 60 to 88 in the window's units.
+
+The same capture, read all the way down, has one stretch nothing uses: the header, right of the title
+and above its gold line. The title and an empty subtitle slot end 190 across, the gold line is 53
+down, and two hidden header buttons start 54 in from the right edge. The buttons now go at 27 down,
+ending 60 short of the right edge. The header belongs to the window frame, not its content, so this
+holds in every mode of the window, and it is measured from the window's own width, not from the list.
+
+The lesson for the next one is the one the bestiary taught, one level deeper: **read the whole tree
+before calling a spot empty.**
