@@ -12,8 +12,11 @@ namespace BeastMastr.Automation;
 ///
 /// Those windows allow different numbers of picks, and the limit is not something this needs to
 /// know: it picks the most hurt first, one at a time, until the window refuses the next. What made
-/// it in is then the right set for that window. A familiar at full HP is never picked — there is
-/// nothing to gain from it.
+/// it in is then the right set for that window.
+///
+/// Two are never picked. One at full HP, because there is nothing to gain from it. And one at **zero
+/// HP**, because it is not hurt, it is out: it cannot be rested or fed, and picking it would spend
+/// one of the window's few picks on nothing.
 ///
 /// "Most hurt" is the lowest share of HP left, and between equal shares the one missing more. A
 /// share rather than a raw number, because a familiar with a large pool can have more HP left and
@@ -76,16 +79,25 @@ public sealed class HealthSelector : IDisposable
 
     private void Start(IReadOnlyList<PetPartyReader.Slot> slots)
     {
-        var hurt = slots.Where(slot => slot.Beast != null && slot.MaxHp > 0 && slot.Hp < slot.MaxHp && !slot.IsCalled)
+        // Down, not hurt: a familiar at zero HP cannot be rested or fed, so it is left out of the
+        // ordering entirely rather than sorted to the front of it.
+        var down = slots.Count(slot => slot.MaxHp > 0 && slot.Hp <= 0);
+
+        var hurt = slots.Where(slot => slot.Beast != null && slot.MaxHp > 0
+                                       && slot.Hp > 0 && slot.Hp < slot.MaxHp && !slot.IsCalled)
                         .OrderBy(slot => slot.HealthShare)
                         .ThenByDescending(slot => slot.MaxHp - slot.Hp)
                         .ToList();
 
         if (hurt.Count == 0)
         {
-            Tell(slots.Any(slot => slot.MaxHp > 0)
-                     ? "Every familiar is at full HP — nothing to pick."
-                     : "The team list shows no HP for anyone, so there is nothing to sort on.");
+            if (!slots.Any(slot => slot.MaxHp > 0))
+                Tell("The team list shows no HP for anyone, so there is nothing to sort on.");
+            else if (down > 0)
+                Tell($"Nothing to pick: {down} familiar(s) are at 0 HP, which cannot be picked, and the rest are unhurt.");
+            else
+                Tell("Every familiar is at full HP — nothing to pick.");
+
             return;
         }
 
@@ -93,7 +105,9 @@ public sealed class HealthSelector : IDisposable
             pending.Enqueue(slot.Beast!.Number);
 
         picked = 0;
-        Status = $"Picking the most hurt of {hurt.Count}…";
+        Status = down > 0
+                     ? $"Picking the most hurt of {hurt.Count}, leaving out {down} at 0 HP…"
+                     : $"Picking the most hurt of {hurt.Count}…";
         Services.Log.Information($"{Status} In order: " +
                                  string.Join(", ", hurt.Select(slot => $"{slot.Name} {slot.Hp}/{slot.MaxHp}")));
     }

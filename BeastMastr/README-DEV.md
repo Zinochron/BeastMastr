@@ -1290,6 +1290,11 @@ the lowest share of HP left first, and between equal shares the one missing more
 than a raw number, because a big HP pool can have more left and still be closer to going down.
 Full HP is never picked.
 
+Zero HP is not "the most hurt", it is out: such a familiar cannot be rested or fed at all, and
+picking it would spend one of the window's few picks on nothing. It is left out of the ordering
+rather than sorted to the front of it, and the message says how many were left out — otherwise
+"nothing to pick" would read as "everyone is fine" while half the team is down.
+
 Those windows allow different numbers of picks, and the limit does not need to be known: it picks
 one at a time until the window refuses the next. A refusal after at least one pick is the expected
 end. A refusal of the very first pick says so plainly. The pick is confirmed through the same call
