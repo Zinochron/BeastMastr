@@ -131,13 +131,15 @@ public sealed unsafe class EventRecorder : IDisposable
     }
 
     /// <summary>
-    /// The Beastmaster windows, plus the two generic ones a choice can go through. A right-click
-    /// menu is a window of its own called <c>ContextMenu</c>, not part of the window it was opened
-    /// on, so "Remove all" would have been thrown away here as not being an XBM window — and a
-    /// confirmation dialog, if it asks for one, is <c>SelectYesno</c>.
+    /// Everything, while recording is on.
+    ///
+    /// It used to keep only the Beastmaster windows, and that threw away the one click being hunted
+    /// twice over: a right-click menu is a window of its own called <c>ContextMenu</c>, and a
+    /// confirmation is <c>SelectYesno</c>. Both had to be added by name after the recording came
+    /// back empty. Guessing which windows matter is the mistake; recording is switched on
+    /// deliberately, for a few seconds, and the report says which window each line came from.
     /// </summary>
-    private static bool Worth(string addon) =>
-        addon.StartsWith("XBM", StringComparison.Ordinal) || addon is "ContextMenu" or "SelectYesno";
+    private static bool Worth(string addon) => addon.Length > 0;
 
     /// <summary>The values as sent, which is exactly what a replay needs to send back.</summary>
     private static string Describe(uint count, AtkValue* values)

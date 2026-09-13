@@ -500,6 +500,16 @@ public static class XbmColumns
     }
 
     /// <summary>
+    /// The board selection, <c>XBMStageList</c> — where a board is chosen before a run, and where
+    /// the difficulty choice appears once every board has been cleared. Nothing is read from it yet;
+    /// the board report dumps it whole so that one capture of that screen settles what to read.
+    /// </summary>
+    public static class StageList
+    {
+        public const string Addon = "XBMStageList";
+    }
+
+    /// <summary>
     /// The board's room list, <c>XBMStageDetailList</c>. One block of forty AtkValues per room,
     /// starting at <see cref="FirstBlock"/>, listed from the last move backwards.
     /// </summary>

@@ -458,6 +458,15 @@ public sealed class BoardTab : ITab
         text.AppendLine(AddonReader.ToText(XbmColumns.PetParty.Addon,
                                            AddonReader.Nodes(XbmColumns.PetParty.Addon)));
 
+        // The board selection, whole. The difficulty choice on that screen is not read yet, and a
+        // capture taken with it open is what says which value holds it and what a click on it sends.
+        text.AppendLine();
+        text.AppendLine(AddonReader.ToText(XbmColumns.StageList.Addon,
+                                           AddonReader.Values(XbmColumns.StageList.Addon)));
+        text.AppendLine();
+        text.AppendLine(AddonReader.ToText(XbmColumns.StageList.Addon,
+                                           AddonReader.Nodes(XbmColumns.StageList.Addon)));
+
         text.AppendLine();
         text.AppendLine("# Map markers");
         text.AppendLine(MapMarkerReader.DescribeTransform());
