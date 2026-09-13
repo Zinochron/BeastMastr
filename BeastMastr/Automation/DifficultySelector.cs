@@ -12,12 +12,23 @@ namespace BeastMastr.Automation;
 /// back up by hand each time — which is exactly the kind of thing worth doing for someone, and
 /// exactly the kind of thing that must not be done twice.
 ///
-/// So: once per opening of the window, and only while the mode is not already the remembered one.
-/// After that the window is left alone, and whatever is set by hand becomes the new remembered mode.
+/// So: once per opening, and only while the mode is not already the remembered one. After that the
+/// window is left alone, and whatever is set by hand becomes the new remembered mode.
+///
+/// Two things the first version got wrong, both found by it doing nothing at all:
+///
+/// **The window being open is not an opening.** `XBMStageDetailList` stays loaded and reports itself
+/// open long after it was last used — a capture caught it "open" in Central Shroud, nowhere near the
+/// Crucible. So the opening this acts on is the **mode block appearing**, which only happens while
+/// the window is really up.
+///
+/// **Learning has to wait its turn.** The window opens on Standard. Learning on every frame meant
+/// Standard was remembered as the mode wanted before the setting step ever ran, which then found
+/// nothing to do — it overwrote the very thing it was there to restore.
 /// </summary>
 public sealed unsafe class DifficultySelector : IDisposable
 {
-    /// <summary>Frames after the window appears before touching it, so it has drawn its list.</summary>
+    /// <summary>Frames after the mode appears before touching it, so the window has settled.</summary>
     private const int FramesBeforeSetting = 20;
 
     /// <summary>Frames between two presses. The window rebuilds the board on each one.</summary>
@@ -34,7 +45,18 @@ public sealed unsafe class DifficultySelector : IDisposable
 
     private readonly Configuration configuration;
 
-    private bool windowWasOpen;
+    /// <summary>Whether the mode block was there last frame. Its arrival is the opening.</summary>
+    private bool modeWasThere;
+
+    /// <summary>Whether this opening has had its one chance to set the mode. Nothing is learned before that.</summary>
+    private bool settled;
+
+    /// <summary>One log line per opening, rather than one per frame.</summary>
+    private bool announced;
+
+    /// <summary>The same, for the case where the window is up but has no mode to offer.</summary>
+    private bool announcedMissing;
+
     private int countdown = -1;
     private int cooldown;
     private int presses;
@@ -58,23 +80,47 @@ public sealed unsafe class DifficultySelector : IDisposable
 
     private void OnUpdate(IFramework framework)
     {
-        if (!AddonReader.IsOpen(XbmColumns.StageDetailList.Addon))
+        var windowOpen = AddonReader.IsOpen(XbmColumns.StageDetailList.Addon);
+        var mode = windowOpen ? CrucibleModeReader.Read() : null;
+
+        if (mode is null || mode.Index < 0)
         {
-            windowWasOpen = false;
+            // Said once, because "it did nothing" and "it could not read the mode" look identical
+            // from the outside and need different fixes.
+            if (windowOpen && !announcedMissing)
+            {
+                announcedMissing = true;
+                Status = "The board window offers no Crucible mode to set.";
+                Services.Log.Information($"{Status} What the reader saw: {Describe(mode)}");
+            }
+
+            if (!windowOpen)
+                announcedMissing = false;
+
+            modeWasThere = false;
+            settled = false;
+            announced = false;
             countdown = -1;
             Stop();
             return;
         }
 
-        // An opening, which is the one moment this may act.
-        if (!windowWasOpen)
+        announcedMissing = false;
+
+        if (!modeWasThere)
         {
-            windowWasOpen = true;
+            modeWasThere = true;
+            settled = !configuration.RememberCrucibleMode;
             countdown = configuration.RememberCrucibleMode ? FramesBeforeSetting : -1;
         }
 
-        if (CrucibleModeReader.Read() is not { } mode || mode.Index < 0)
-            return;
+        if (!announced)
+        {
+            announced = true;
+            Services.Log.Information(
+                $"Board window opened on {mode.Label}, {mode.Index + 1} of {mode.Options.Count}; " +
+                $"remembered {(configuration.LastCrucibleMode < 0 ? "nothing" : $"{configuration.LastCrucibleMode + 1}")}.");
+        }
 
         if (acting)
         {
@@ -82,9 +128,10 @@ public sealed unsafe class DifficultySelector : IDisposable
             return;
         }
 
-        // Learned only while this is not the one doing the changing, or it would remember its own
-        // steps on the way to the mode it was already aiming for.
-        Remember(mode);
+        // Only after this opening has had its turn. Learning first would take the Standard the
+        // window opens on for the mode wanted.
+        if (settled)
+            Remember(mode);
 
         if (countdown >= 0 && --countdown < 0)
             Begin(mode);
@@ -98,7 +145,8 @@ public sealed unsafe class DifficultySelector : IDisposable
         configuration.LastCrucibleMode = mode.Index;
         configuration.Save();
 
-        Services.Log.Debug($"Crucible mode remembered: {mode.Label} ({mode.Index + 1} of {mode.Options.Count}).");
+        Services.Log.Information($"Crucible mode remembered: {mode.Label}, " +
+                                 $"{mode.Index + 1} of {mode.Options.Count}.");
     }
 
     private void Begin(CrucibleModeReader.Mode mode)
@@ -107,6 +155,7 @@ public sealed unsafe class DifficultySelector : IDisposable
 
         if (target < 0 || target >= mode.Options.Count || target == mode.Index)
         {
+            settled = true;
             Status = $"Crucible mode is {mode.Label}; nothing to set.";
             return;
         }
@@ -184,9 +233,9 @@ public sealed unsafe class DifficultySelector : IDisposable
     }
 
     /// <summary>
-    /// One of the two stepper buttons, as recorded from real clicks: <c>[5]</c> raises and
-    /// <c>[4]</c> lowers, one Int each, sent with the window closing — which is how the game sends
-    /// them, and how the board gets rebuilt for the new mode.
+    /// One of the two stepper buttons, as recorded from real clicks: <c>[5]</c> and <c>[4]</c>, one
+    /// Int each, sent with the window closing — which is how the game sends them, and how the board
+    /// gets rebuilt for the new mode.
     /// </summary>
     private static bool Fire(int command)
     {
@@ -199,6 +248,12 @@ public sealed unsafe class DifficultySelector : IDisposable
         addon->FireCallback(1, values, true);
         return true;
     }
+
+    /// <summary>What the reader saw, for the log line when it saw nothing usable.</summary>
+    private static string Describe(CrucibleModeReader.Mode? mode) =>
+        mode is null
+            ? "no drop-down in the board window"
+            : $"label \"{mode.Label}\", not among [{string.Join(", ", mode.Options)}]";
 
     /// <summary>
     /// Said in chat, unlike the quiet success. A mode left where it was is worth knowing about before
@@ -214,6 +269,9 @@ public sealed unsafe class DifficultySelector : IDisposable
 
     private void Stop()
     {
+        if (modeWasThere)
+            settled = true;
+
         acting = false;
         presses = 0;
         framesWaited = 0;

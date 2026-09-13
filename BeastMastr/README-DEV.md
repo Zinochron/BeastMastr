@@ -1338,9 +1338,27 @@ Three things worth keeping:
   the position again, and flips direction if that went the wrong way. The right-hand button looking
   like "up" is a guess; what one press does is evidence. There is also a hard cap of eight presses,
   because a loop that cannot terminate is worse than a mode left where it was.
-- **Once per opening of the window**, and only while the mode differs from the remembered one. What
-  is set by hand afterwards stays, and becomes the new remembered mode — the same rule the familiar
-  call follows.
+- **Once per opening**, and only while the mode differs from the remembered one. What is set by hand
+  afterwards stays, and becomes the new remembered mode — the same rule the familiar call follows.
+
+### Why the first version did nothing at all
+
+Two mistakes, both invisible from the outside, and the log said nothing because the interesting line
+was written at Debug — of which **not one from this plugin reaches `dalamud.log`**. Anything worth
+reading afterwards goes to Information.
+
+**The window being open is not an opening.** `XBMStageDetailList` stays loaded and reports itself
+open long after it was last used; a capture caught it "open" in Central Shroud, nowhere near the
+Crucible. Waiting for it to open therefore waited for something that had already happened. The
+opening is now the **mode block appearing**, which only exists while the window is really up.
+
+**Learning has to wait its turn.** The window opens on Standard, and learning ran on every frame, so
+Standard was remembered as the mode wanted within a frame of the window appearing — before the
+setting step ran. It then found target and current equal and did nothing, having overwritten the very
+thing it existed to restore. Nothing is learned now until the opening has had its one chance to set.
+
+The general shape of both: **an automation that acts on an event has to be sure the event is the
+event**, and anything that learns from the same state it corrects has to learn after it, not before.
 
 ## The world cards are gone
 
