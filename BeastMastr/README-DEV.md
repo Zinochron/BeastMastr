@@ -1319,6 +1319,29 @@ holds in every mode of the window, and it is measured from the window's own widt
 The lesson for the next one is the one the bestiary taught, one level deeper: **read the whole tree
 before calling a spot empty.**
 
+## The Crucible mode, which the game forgets
+
+Once every board has been cleared the board window offers a mode: Standard, First Degree, Second
+Degree, Third Degree. The game starts every visit at Standard, so anyone playing a harder one steps
+it up by hand each time.
+
+The recording put the two stepper buttons in `XBMStageDetailList`, not in the board selection —
+`XBMStageList` was not even open — and they are single Ints sent with the window closing: `[5]` and
+`[4]`. The dump of that window then showed the rest: node 25 is a `DropDownList` whose closed face
+(a checkbox with text node 3) shows the mode, and whose list holds the four names in order.
+
+Three things worth keeping:
+
+- **The mode is remembered as a position, not a name.** The names are localised; a saved name would
+  stop matching the day the client language changed, and would then walk the mode somewhere wrong.
+- **Which button raises the mode is measured, not assumed.** `DifficultySelector` presses one, reads
+  the position again, and flips direction if that went the wrong way. The right-hand button looking
+  like "up" is a guess; what one press does is evidence. There is also a hard cap of eight presses,
+  because a loop that cannot terminate is worse than a mode left where it was.
+- **Once per opening of the window**, and only while the mode differs from the remembered one. What
+  is set by hand afterwards stays, and becomes the new remembered mode — the same rule the familiar
+  call follows.
+
 ## The world cards are gone
 
 `UI/BoardOverlay.cs` is deleted, and with it the setting that turned it on. Switching it off by

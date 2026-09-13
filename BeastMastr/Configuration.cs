@@ -24,6 +24,18 @@ public class Configuration : IPluginConfiguration
     public bool CallLastFamiliarsOnOpen { get; set; } = true;
 
     /// <summary>
+    /// Put the Crucible mode back to the one last used as the board window opens — once. The game
+    /// forgets the choice between visits, which is the only reason this exists.
+    /// </summary>
+    public bool RememberCrucibleMode { get; set; } = true;
+
+    /// <summary>
+    /// The Crucible mode last seen set, as a position in the window's own list rather than the name
+    /// it shows: the names are localised and a position is not.
+    /// </summary>
+    public int LastCrucibleMode { get; set; } = -1;
+
+    /// <summary>
     /// Which board is being played, which decides how many beasts the team holds. Only a fallback:
     /// the team list states its own size, and that is used whenever it does.
     /// </summary>

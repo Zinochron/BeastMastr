@@ -28,6 +28,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly BoardCache boardCache;
     private readonly TeamSelector teamSelector;
     private readonly HealthSelector healthSelector;
+    private readonly DifficultySelector difficultySelector;
     private readonly ActionButtons actionButtons;
     private readonly CarryContextMenu carryMenu;
     private readonly NextRoomPanel nextRoom;
@@ -73,6 +74,7 @@ public sealed class Plugin : IDalamudPlugin
         boardCache = new BoardCache(Configuration);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
+        difficultySelector = new DifficultySelector(Configuration);
         rankPuller = new RankPuller(rankWatcher);
 
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
@@ -92,7 +94,7 @@ public sealed class Plugin : IDalamudPlugin
             tabs.Add(new BoardTab(Catalog, recorder, rankWatcher, enemies, boardCache));
         }
 
-        tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector, nextRoom));
+        tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector, difficultySelector, nextRoom));
 
         mainWindow = new MainWindow(tabs);
         windowSystem.AddWindow(mainWindow);
@@ -154,6 +156,7 @@ public sealed class Plugin : IDalamudPlugin
         boardCache.Dispose();
         teamSelector.Dispose();
         healthSelector.Dispose();
+        difficultySelector.Dispose();
         actionButtons.Dispose();
         carryMenu.Dispose();
         nextRoom.Dispose();

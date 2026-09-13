@@ -145,6 +145,11 @@ public sealed class BoardTab : ITab
         ImGui.TextUnformatted($"XBMStageMap open: {mapOpen}");
         ImGui.TextUnformatted($"XBMStageDetailList open: {detailOpen}");
 
+        ImGui.TextUnformatted(CrucibleModeReader.Read() is { } mode
+                                  ? $"Crucible mode: {mode.Label} ({mode.Index + 1} of {mode.Options.Count}) — " +
+                                    string.Join(", ", mode.Options)
+                                  : "Crucible mode: the board window does not offer the choice.");
+
         var rooms = StageMapReader.Read();
         var details = StageDetailReader.Read();
 
@@ -409,6 +414,12 @@ public sealed class BoardTab : ITab
                                                                  $"{(tile.IsCurrent ? "*" : string.Empty)}" +
                                                                  $"@{tile.ScreenPosition.X:0}/{tile.ScreenPosition.Y:0}")));
         }
+
+        text.AppendLine();
+        text.AppendLine(CrucibleModeReader.Read() is { } mode
+                            ? $"# Crucible mode: {mode.Label} ({mode.Index + 1} of {mode.Options.Count}) — " +
+                              string.Join(", ", mode.Options)
+                            : "# Crucible mode: not offered");
 
         text.AppendLine();
         text.AppendLine($"# Board cache: {board.Source}");

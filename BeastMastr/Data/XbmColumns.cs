@@ -532,6 +532,17 @@ public static class XbmColumns
         /// <summary>"Elite Enemy #2: Combat 3 types of beast."</summary>
         public const int DescriptionOffset = 7;
 
+        /// <summary>
+        /// The two stepper buttons beside the Crucible mode drop-down, recorded from real clicks:
+        /// one Int each, sent with the window closing. Which of them raises the mode is not taken
+        /// from these names — <see cref="Automation.DifficultySelector"/> presses one and watches
+        /// what happens, because the button that looks like "up" is an assumption and the move is
+        /// evidence.
+        /// </summary>
+        public const int RaiseModeCommand = 5;
+
+        public const int LowerModeCommand = 4;
+
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
     }

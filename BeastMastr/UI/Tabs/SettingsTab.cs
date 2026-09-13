@@ -7,14 +7,17 @@ public sealed class SettingsTab : ITab
     private readonly Configuration configuration;
     private readonly Automation.FightSelector fightSelector;
     private readonly Automation.TeamSelector teamSelector;
+    private readonly Automation.DifficultySelector difficultySelector;
     private readonly Native.NextRoomPanel nextRoom;
 
     public SettingsTab(Configuration configuration, Automation.FightSelector fightSelector,
-                       Automation.TeamSelector teamSelector, Native.NextRoomPanel nextRoom)
+                       Automation.TeamSelector teamSelector, Automation.DifficultySelector difficultySelector,
+                       Native.NextRoomPanel nextRoom)
     {
         this.configuration = configuration;
         this.fightSelector = fightSelector;
         this.teamSelector = teamSelector;
+        this.difficultySelector = difficultySelector;
         this.nextRoom = nextRoom;
     }
 
@@ -27,6 +30,9 @@ public sealed class SettingsTab : ITab
         ImGui.Separator();
 
         DrawFightAutomation();
+        ImGui.Separator();
+
+        DrawCrucibleMode();
         ImGui.Separator();
 
         var decorate = configuration.DecorateNotebook;
@@ -125,6 +131,28 @@ public sealed class SettingsTab : ITab
 
         if (fightSelector.Status.Length > 0)
             ImGui.TextDisabled(fightSelector.Status);
+    }
+
+    /// <summary>
+    /// The Crucible mode, which the game itself forgets between visits.
+    /// </summary>
+    private void DrawCrucibleMode()
+    {
+        var remember = configuration.RememberCrucibleMode;
+        if (ImGui.Checkbox("Set the Crucible mode you last used, when the board opens", ref remember))
+        {
+            configuration.RememberCrucibleMode = remember;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "The game starts every visit at Standard. This puts the mode back to the one you last " +
+            "had set, once, as the board window opens — and then leaves it alone, so anything you " +
+            "change afterwards stays and becomes the one it remembers. The choice only exists once " +
+            "you have cleared every board; until then there is nothing to set.");
+
+        if (difficultySelector.Status.Length > 0)
+            ImGui.TextDisabled(difficultySelector.Status);
     }
 
     public void Dispose() { }
