@@ -28,13 +28,23 @@ namespace BeastMastr.Automation;
 /// </summary>
 public sealed unsafe class DifficultySelector : IDisposable
 {
-    /// <summary>Frames after the mode appears before touching it, so the window has settled.</summary>
-    private const int FramesBeforeSetting = 20;
+    /// <summary>
+    /// Frames after the mode appears before touching it. Enough for the window to have drawn, and
+    /// no more: the mode being readable at all is already the sign that it is there.
+    /// </summary>
+    private const int FramesBeforeSetting = 6;
 
-    /// <summary>Frames between two presses. The window rebuilds the board on each one.</summary>
-    private const int FramesBetweenPresses = 10;
+    /// <summary>
+    /// Frames before looking at what a press did. Short on purpose — the pacing comes from the
+    /// confirmation rather than from here. A press is never followed by another until the mode has
+    /// actually moved, so the game sets the speed and this only decides how soon it is asked.
+    /// </summary>
+    private const int FramesBetweenPresses = 2;
 
-    /// <summary>How long one press is given to show up before it counts as refused.</summary>
+    /// <summary>
+    /// How long one press is given to show up before it counts as refused. A limit, not a wait: it
+    /// costs nothing when things go well, and a tight one would call a slow frame a failure.
+    /// </summary>
     private const int FramesToConfirm = 60;
 
     /// <summary>
