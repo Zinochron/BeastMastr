@@ -1360,6 +1360,23 @@ thing it existed to restore. Nothing is learned now until the opening has had it
 The general shape of both: **an automation that acts on an event has to be sure the event is the
 event**, and anything that learns from the same state it corrects has to learn after it, not before.
 
+### The list of modes is not the list of modes
+
+With the log finally talking, the third mistake showed itself in one line: `Crucible mode remembered:
+Standard, 1 of 1`. The drop-down only draws rows it has needed, so a freshly opened window carries
+**one** name — the one it is set to. The four in the capture were there only because the modes had
+just been stepped through.
+
+That broke the range check. Opening on Standard with Third Degree remembered, the target read as "4
+of 1", was rejected as out of range, and the opening was marked done — after which learning stored
+Standard over the mode it was there to restore. Exactly the reported "the mode is not saved right".
+
+So the count comes from the list's own `ListLength` and never from the names drawn so far. The
+**position** still comes from the label: stepping through the modes, the name shown always landed
+where it should among the drawn ones, which the log proves line by line, while the list's own
+`SelectedItemIndex` has never been checked against anything — it is carried into the log to be
+compared, and decides nothing.
+
 ## The world cards are gone
 
 `UI/BoardOverlay.cs` is deleted, and with it the setting that turned it on. Switching it off by

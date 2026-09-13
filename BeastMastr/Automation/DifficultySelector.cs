@@ -85,6 +85,12 @@ public sealed unsafe class DifficultySelector : IDisposable
 
         if (mode is null || mode.Index < 0)
         {
+            // Mid-press the name shown can briefly be one the list has not drawn a row for yet, and
+            // then it has no position. That is a moment to wait through, not a reason to forget what
+            // is being done.
+            if (acting && mode is not null)
+                return;
+
             // Said once, because "it did nothing" and "it could not read the mode" look identical
             // from the outside and need different fixes.
             if (windowOpen && !announcedMissing)
@@ -118,8 +124,9 @@ public sealed unsafe class DifficultySelector : IDisposable
         {
             announced = true;
             Services.Log.Information(
-                $"Board window opened on {mode.Label}, {mode.Index + 1} of {mode.Options.Count}; " +
-                $"remembered {(configuration.LastCrucibleMode < 0 ? "nothing" : $"{configuration.LastCrucibleMode + 1}")}.");
+                $"Board window opened on {mode.Label}, {mode.Index + 1} of {mode.Count}; " +
+                $"remembered {(configuration.LastCrucibleMode < 0 ? "nothing" : $"{configuration.LastCrucibleMode + 1}")}. " +
+                $"Drawn so far: [{string.Join(", ", mode.Options)}], list says {mode.SelectedItemIndex}.");
         }
 
         if (acting)
@@ -146,14 +153,18 @@ public sealed unsafe class DifficultySelector : IDisposable
         configuration.Save();
 
         Services.Log.Information($"Crucible mode remembered: {mode.Label}, " +
-                                 $"{mode.Index + 1} of {mode.Options.Count}.");
+                                 $"{mode.Index + 1} of {mode.Count}.");
     }
 
     private void Begin(CrucibleModeReader.Mode mode)
     {
         var target = configuration.LastCrucibleMode;
 
-        if (target < 0 || target >= mode.Options.Count || target == mode.Index)
+        // Range-checked against the list's own length, never against the names drawn so far. The
+        // first version checked the drawn ones, which on a freshly opened window is the single mode
+        // it is set to — so every higher mode looked out of range, and it declared there was nothing
+        // to do and then learned Standard over the mode it was meant to restore.
+        if (target < 0 || (mode.Count > 0 && target >= mode.Count) || target == mode.Index)
         {
             settled = true;
             Status = $"Crucible mode is {mode.Label}; nothing to set.";
@@ -170,7 +181,11 @@ public sealed unsafe class DifficultySelector : IDisposable
         // does, not by assuming that the right-hand one counts up.
         raising = target > mode.Index;
 
-        Status = $"Setting the Crucible mode back to {mode.Options[target]}, from {mode.Label}.";
+        // Named where the name has been drawn, numbered where it has not — a mode never yet shown
+        // has no name to give, and "mode 4" beats an index nobody asked to see.
+        var wanted = target < mode.Options.Count ? mode.Options[target] : $"mode {target + 1}";
+
+        Status = $"Setting the Crucible mode back to {wanted}, from {mode.Label}.";
         Services.Log.Information(Status);
     }
 

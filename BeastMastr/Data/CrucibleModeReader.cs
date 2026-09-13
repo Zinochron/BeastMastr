@@ -14,8 +14,18 @@ namespace BeastMastr.Data;
 /// </summary>
 public static unsafe class CrucibleModeReader
 {
-    /// <param name="Index">Position in <paramref name="Options"/>, or -1 when the shown name is not one of them.</param>
-    public sealed record Mode(int Index, string Label, IReadOnlyList<string> Options);
+    /// <param name="Index">Position among the modes, or -1 when the shown name is not one of them.</param>
+    /// <param name="Count">
+    /// How many modes there are, from the list itself. **Not** <c>Options.Count</c>: the list only
+    /// draws rows it has needed, so freshly opened it carries one name — the one it is set to — and a
+    /// count taken from it read "1 of 1" and made every higher mode look out of range.
+    /// </param>
+    /// <param name="Options">The names it has drawn so far. For reading and for the log, not for counting.</param>
+    public sealed record Mode(int Index, int Count, string Label, IReadOnlyList<string> Options)
+    {
+        /// <summary>The list's own idea of what is selected. Kept for the log; the label decides.</summary>
+        public int SelectedItemIndex { get; init; } = -1;
+    }
 
     /// <summary>Text node of the drop-down's closed face, which shows the mode it is set to.</summary>
     private const uint FaceTextNodeId = 3;
@@ -57,7 +67,13 @@ public static unsafe class CrucibleModeReader
                 options.Add(text);
         }
 
-        return new Mode(options.IndexOf(label), label, options);
+        // The label decides the position, because that is what proved out: stepping through the
+        // modes, the name shown always landed at the right place among the ones drawn. The list's
+        // own SelectedItemIndex is carried along unproven, for the log to compare against.
+        return new Mode(options.IndexOf(label), rows->ListLength, label, options)
+        {
+            SelectedItemIndex = rows->SelectedItemIndex,
+        };
     }
 
     /// <summary>

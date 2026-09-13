@@ -146,7 +146,7 @@ public sealed class BoardTab : ITab
         ImGui.TextUnformatted($"XBMStageDetailList open: {detailOpen}");
 
         ImGui.TextUnformatted(CrucibleModeReader.Read() is { } mode
-                                  ? $"Crucible mode: {mode.Label} ({mode.Index + 1} of {mode.Options.Count}) — " +
+                                  ? $"Crucible mode: {mode.Label} ({mode.Index + 1} of {mode.Count}) — " +
                                     string.Join(", ", mode.Options)
                                   : "Crucible mode: the board window does not offer the choice.");
 
@@ -417,7 +417,7 @@ public sealed class BoardTab : ITab
 
         text.AppendLine();
         text.AppendLine(CrucibleModeReader.Read() is { } mode
-                            ? $"# Crucible mode: {mode.Label} ({mode.Index + 1} of {mode.Options.Count}) — " +
+                            ? $"# Crucible mode: {mode.Label} ({mode.Index + 1} of {mode.Count}) — " +
                               string.Join(", ", mode.Options)
                             : "# Crucible mode: not offered");
 
