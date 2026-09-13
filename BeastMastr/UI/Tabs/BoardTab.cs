@@ -458,14 +458,19 @@ public sealed class BoardTab : ITab
         text.AppendLine(AddonReader.ToText(XbmColumns.PetParty.Addon,
                                            AddonReader.Nodes(XbmColumns.PetParty.Addon)));
 
-        // The board selection, whole. The difficulty choice on that screen is not read yet, and a
-        // capture taken with it open is what says which value holds it and what a click on it sends.
         text.AppendLine();
         text.AppendLine(AddonReader.ToText(XbmColumns.StageList.Addon,
                                            AddonReader.Values(XbmColumns.StageList.Addon)));
+
+        // The board window whole, values and nodes. The difficulty stepper lives here rather than in
+        // the board selection — its right-hand button sends this window [5] — and which value holds
+        // the number it is set to is what a capture of this screen has to answer.
         text.AppendLine();
-        text.AppendLine(AddonReader.ToText(XbmColumns.StageList.Addon,
-                                           AddonReader.Nodes(XbmColumns.StageList.Addon)));
+        text.AppendLine(AddonReader.ToText(XbmColumns.StageDetailList.Addon,
+                                           AddonReader.Values(XbmColumns.StageDetailList.Addon)));
+        text.AppendLine();
+        text.AppendLine(AddonReader.ToText(XbmColumns.StageDetailList.Addon,
+                                           AddonReader.Nodes(XbmColumns.StageDetailList.Addon)));
 
         text.AppendLine();
         text.AppendLine("# Map markers");
