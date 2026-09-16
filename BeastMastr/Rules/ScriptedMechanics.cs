@@ -65,11 +65,15 @@ public static class SweepingEvisceration
 }
 
 /// <summary>
-/// Borgny the Venomous (the First Master's Board's boss): Toxic Breath, then a leap back to the wall and a
-/// cleave over everything in front. The one safe spot is right behind Borgny, against the wall, as the
-/// player describes it. In the recording of 2026-09-16 22:34 Borgny leapt from (920, −420) to the south
-/// wall at z −439.6. The cleave hit 2.8 and 2.9 seconds after the cast (48807, 3 s) ended; its hit, 48808,
-/// has no omen to read.
+/// Borgny the Venomous (the First Master's Board's boss): Toxic Breath. Borgny walks to the middle, casts,
+/// turns to the player, leaps backwards 19.6 yalms to the wall, and cleaves everything in front. The one
+/// safe spot is right behind Borgny, against the wall — the wall across from where the player stood.
+///
+/// Its facing as the cast starts is not the one it leaps from. On 2026-09-17 01:13 it cast facing 0.74
+/// and leapt due north: the player stood just south of it. At 01:14 it cast facing −3.12 and leapt due
+/// east: the player stood 16 yalms to the west. Both leaps went along an axis, away from the player as
+/// they stood when the cast began. The leap follows the cast by about 0.6 s and takes one; the cleave
+/// comes 2.8 s after the cast ends (its hit, 48808, has no omen to read).
 /// </summary>
 public static class ToxicBreath
 {
@@ -90,7 +94,18 @@ public static class ToxicBreath
     /// </summary>
     public const float PastBy = 6f;
 
-    /// <param name="facing">Borgny's facing as it cast; it leaps backwards and keeps it.</param>
+    /// <summary>The way Borgny will face: towards the player, along the nearer axis.</summary>
+    public static float FacingFor(Vector2 borgny, Vector2 player)
+    {
+        var towards = player - borgny;
+        if (towards.LengthSquared() < 0.0001f)
+            return 0f;
+
+        var angle = MathF.Atan2(towards.X, towards.Y);
+        return MathF.Round(angle / (MathF.PI / 2f)) * (MathF.PI / 2f);
+    }
+
+    /// <param name="facing">The way Borgny faces as it leaps: it leaps backwards and keeps it.</param>
     /// <param name="landed">Borgny's position is already the landing.</param>
     public static Zone Zone(Vector2 borgny, float facing, bool landed, float untilCleave)
     {

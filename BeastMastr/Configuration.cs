@@ -150,6 +150,11 @@ public class Configuration : IPluginConfiguration
     /// <summary>Drink the Crucible's healing items: Beast Potions and Crucible Ash.</summary>
     public bool UsePotions { get; set; } = true;
 
+    /// <summary>Throw a Fang or Celestial Sand once this many adds attack you or your familiars.</summary>
+    public bool UseAreaItems { get; set; } = true;
+
+    public int AreaItemAtAdds { get; set; } = 3;
+
     /// <summary>In a fight, drink the strongest at or below this share of HP.</summary>
     public float PotionInFightBelow { get; set; } = 0.4f;
 

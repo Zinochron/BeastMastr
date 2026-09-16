@@ -235,6 +235,13 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
+        // Adds on the player — the Treant's Slug Pieces — get an area item thrown at them.
+        if (configuration.UseAreaItems && inCombat && AddsOnPlayer(player) is { } add && ItemUser.TickAttack(add))
+        {
+            Status = "Throwing an area item at the adds.";
+            return;
+        }
+
         if (pausedBossMod)
         {
             pausedBossMod = false;
@@ -446,6 +453,28 @@ public sealed unsafe class CombatDriver : IDisposable
         return manager->GetActionStatus(ActionType.Action, adjusted, TargetFor(adjusted, player, target), true,
                                         false) == 0;
     }
+
+    /// <summary>
+    /// One of the adds attacking the player or a familiar within reach, when there are at least as many as
+    /// the setting asks; null otherwise. The strongest enemy — the boss — is not an add.
+    /// </summary>
+    private IBattleChara? AddsOnPlayer(IPlayerCharacter player)
+    {
+        var enemies = Services.Objects.OfType<IBattleChara>().Where(Hostile).ToList();
+        if (enemies.Count < 2)
+            return null;
+
+        var boss = enemies.MaxBy(enemy => enemy.MaxHp);
+        var ours = Familiars(player).Select(familiar => familiar.GameObjectId).Append(player.GameObjectId).ToHashSet();
+        var adds = enemies.Where(enemy => enemy != boss && ours.Contains(enemy.TargetObjectId) &&
+                                          Vector3.Distance(enemy.Position, player.Position) <= AddsWithin)
+                          .ToList();
+
+        return adds.Count >= configuration.AreaItemAtAdds ? adds[0] : null;
+    }
+
+    /// <summary>How close the adds have to be: the Fangs hit 12 yalms around their target.</summary>
+    private const float AddsWithin = 8f;
 
     private bool OwnDodging => bossMod.Role == BossModRole.Off && configuration.DodgeWithBeastMastr;
 

@@ -78,6 +78,7 @@ public sealed unsafe class RunRecorder : IDisposable
     private string target = string.Empty;
     private string cast = string.Empty;
     private string health = string.Empty;
+    private float targetFacing = float.NaN;
 
     /// <summary>Windows written out whole since they last opened.</summary>
     private readonly HashSet<string> fullDumps = [];
@@ -549,6 +550,13 @@ public sealed unsafe class RunRecorder : IDisposable
         {
             target = targetText;
             Line("target", targetText);
+        }
+
+        if (current != null && MathF.Abs(current.Rotation - targetFacing) > 0.2f)
+        {
+            targetFacing = current.Rotation;
+            Line("facing", $"\"{current.Name.TextValue}\" {current.Rotation:0.00} at " +
+                           $"{current.Position.X:0.0}/{current.Position.Z:0.0}");
         }
 
         var player = Services.Objects.LocalPlayer;

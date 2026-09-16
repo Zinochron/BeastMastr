@@ -40,6 +40,12 @@ public static unsafe class ItemUser
         [80] = 0.10f, [81] = 0.25f, [82] = 0.40f,
     };
 
+    /// <summary>
+    /// Items that hit every enemy around their target, by <c>XBMItem</c> row: the Fangs (128–134, 12 yalms
+    /// around the target) and Celestial Sand (139, 18). The first room's spoils gave a Fang of Ice.
+    /// </summary>
+    public static readonly IReadOnlySet<uint> AreaAttacks = new HashSet<uint> { 128, 129, 130, 131, 132, 133, 134, 139 };
+
     private static int stage;
     private static int slot;
     private static uint row;
@@ -51,10 +57,10 @@ public static unsafe class ItemUser
 
     public static string LastResult { get; private set; } = string.Empty;
 
-    /// <summary>The healing items held: slot and row.</summary>
-    public static List<(int Slot, uint Row, float Heal)> HealingItems()
+    /// <summary>Every item held: slot and row.</summary>
+    public static List<(int Slot, uint Row)> HeldItems()
     {
-        var items = new List<(int, uint, float)>();
+        var items = new List<(int, uint)>();
         if (!AddonReader.IsOpen(Hud))
             return items;
 
@@ -63,13 +69,54 @@ public static unsafe class ItemUser
         {
             var start = FirstSlot + (i * SlotStride);
             if (start + Row >= values.Count || values[start + HasItem].Text != "True" ||
-                !uint.TryParse(values[start + Row].Text, out var r) || !Heals.TryGetValue(r, out var heal))
+                !uint.TryParse(values[start + Row].Text, out var r) || r == 0)
                 continue;
 
-            items.Add((i, r, heal));
+            items.Add((i, r));
         }
 
         return items;
+    }
+
+    /// <summary>The healing items held: slot and row.</summary>
+    public static List<(int Slot, uint Row, float Heal)> HealingItems() =>
+        HeldItems().Where(item => Heals.ContainsKey(item.Row))
+                   .Select(item => (item.Slot, item.Row, Heals[item.Row]))
+                   .ToList();
+
+    /// <summary>
+    /// Throws an area item at <paramref name="target"/>. The item goes at the current target, so that is
+    /// set first. Returns true while it is working.
+    /// </summary>
+    public static bool TickAttack(Dalamud.Game.ClientState.Objects.Types.IGameObject? target)
+    {
+        if (stage != 0)
+        {
+            Continue();
+            return true;
+        }
+
+        if (target == null || DateTime.Now < nextTry)
+            return false;
+
+        var item = HeldItems().FirstOrDefault(held => AreaAttacks.Contains(held.Row));
+        if (item.Row == 0)
+            return false;
+
+        Services.Targets.Target = target;
+        return Begin(item.Slot, item.Row);
+    }
+
+    private static bool Begin(int itemSlot, uint itemRow)
+    {
+        if (!Send(Hud, [Value.Int(OpenMenuCommand), Value.Int(itemSlot), Value.Undefined()], true))
+            return false;
+
+        slot = itemSlot;
+        row = itemRow;
+        stage = 1;
+        stageSince = DateTime.Now;
+        return true;
     }
 
     /// <summary>
@@ -103,14 +150,7 @@ public static unsafe class ItemUser
                            ? enough
                            : items.OrderByDescending(item => item.Heal).First();
 
-        if (!Send(Hud, [Value.Int(OpenMenuCommand), Value.Int(pick.Slot), Value.Undefined()], true))
-            return false;
-
-        slot = pick.Slot;
-        row = pick.Row;
-        stage = 1;
-        stageSince = DateTime.Now;
-        return true;
+        return Begin(pick.Slot, pick.Row);
     }
 
     private static void Continue()
@@ -145,7 +185,7 @@ public static unsafe class ItemUser
                 return;
 
             case 2:
-                if (!HealingItems().Any(item => item.Slot == slot && item.Row == row))
+                if (!HeldItems().Any(item => item.Slot == slot && item.Row == row))
                 {
                     Finish($"Used {Name(row)}.", true);
                     return;
@@ -170,6 +210,8 @@ public static unsafe class ItemUser
     {
         76 => "G1 Beast Potion", 77 => "G2 Beast Potion", 78 => "G3 Beast Potion", 79 => "G4 Beast Potion",
         80 => "G1 Crucible Ash", 81 => "G2 Crucible Ash", 82 => "G3 Crucible Ash",
+        128 => "Fang of Fire", 129 => "Fang of Ice", 130 => "Fang of Water", 131 => "Fang of Lightning",
+        132 => "Fang of Earth", 133 => "Fang of Wind", 134 => "Vampiric Fang", 139 => "Celestial Sand",
         _ => $"item {itemRow}",
     };
 

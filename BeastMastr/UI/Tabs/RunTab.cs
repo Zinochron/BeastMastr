@@ -241,6 +241,22 @@ public sealed class RunTab : ITab
                    value => configuration.ShopBuysPotions = value);
         }
 
+        Toggle("Throw Fangs and Celestial Sand at adds", configuration.UseAreaItems,
+               value => configuration.UseAreaItems = value);
+        if (configuration.UseAreaItems)
+        {
+            ImGui.Indent();
+            var adds = configuration.AreaItemAtAdds;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderInt("once this many adds attack you or a familiar", ref adds, 1, 8))
+            {
+                configuration.AreaItemAtAdds = adds;
+                configuration.Save();
+            }
+
+            ImGui.Unindent();
+        }
+
         Toggle("Drink Beast Potions and Crucible Ash", configuration.UsePotions,
                value => configuration.UsePotions = value);
         if (configuration.UsePotions)

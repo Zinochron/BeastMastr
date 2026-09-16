@@ -714,6 +714,14 @@ var breathBefore = ToxicBreath.Zone(borgnyArena, 0f, false, 5f);
 var toWall = Dodger.Plan(new Vector2(920f, -421f), borgnyArena, 6f, [breathBefore], borgnyArena, 18f)!;
 Check("Toxic Breath: straight behind where Borgny will land, at the south wall",
       MathF.Abs(toWall.Point.X - 920f) < 0.01f && toWall.Point.Y < -439.6f, $"to {toWall.Point}");
+Check("Borgny faces the player standing just south, so it leaps north",
+      MathF.Abs(MathF.Abs(ToxicBreath.FacingFor(borgnyArena, new Vector2(919.9f, -420.6f))) - MathF.PI) < 0.01f);
+var westFacing = ToxicBreath.FacingFor(borgnyArena, new Vector2(904.35f, -413.9f));
+Check("and the player 16 yalms west, so it leaps east", MathF.Abs(westFacing + (MathF.PI / 2f)) < 0.01f);
+var eastRefuge = Dodger.Plan(new Vector2(904.35f, -413.9f), borgnyArena, 6f,
+                             [ToxicBreath.Zone(borgnyArena, westFacing, false, 5f)], borgnyArena, 18f)!;
+Check("the refuge is at the east wall", eastRefuge.Point.X > 939f && MathF.Abs(eastRefuge.Point.Y + 420f) < 0.1f,
+      $"to {eastRefuge.Point}");
 var breathAfter = ToxicBreath.Zone(new Vector2(920f, -439.6f), 0f, true, 1f);
 Check("and the cleave is taken to cover the arena in front of it",
       breathAfter.Contains(new Vector2(920f, -429f)) && breathAfter.Contains(new Vector2(930f, -435f)));

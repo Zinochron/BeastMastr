@@ -2231,3 +2231,32 @@ below the board's drinking threshold (60%), the shop now buys healing items befo
 Borgny faced −0.77 when it cast the second Toxic Breath from the middle, so its refuge was predicted at the
 south-east wall. Whether it leaps straight back from its facing there is not shown yet: the player died
 before the leap.
+
+### Borgny's turn, and area items — 2026-09-17
+
+`captures/run-20260917-010634.txt` reached Borgny again, and the player ran into Toxic Breath twice.
+
+**Which way Borgny leaps.** The player's account: Borgny jumps to the middle, turns, leaps towards its back
+and cleaves. The recording pins it down:
+
+| Breath | Facing at cast start | Player at cast start | Leap |
+|---|---|---|---|
+| 01:13:46 | 0.74 | just south of Borgny (919.9, −420.6) | due north, to (920, −400.5) |
+| 01:14:37 | −3.12 | 16 yalms west (904.4, −413.9) | due east, to (939.6, −420) |
+
+- The facing at cast start is not the one Borgny leaps from.
+- Both leaps went along an axis, away from where the player stood as the cast began.
+- The leap follows the cast's end by about 0.6 s and takes about one second.
+- `ToxicBreath.FacingFor` now takes the axis towards the player at cast start. The refuge is the wall
+  behind the landing, across from the player. Once Borgny is seen leaping, the leap's own direction
+  replaces the guess.
+- The recorder writes the target's facing whenever it turns ("facing" lines), so the moment of the turn
+  shows next time.
+
+**Area items.** The first room's spoils brought a Fang of Ice ("ranged ice damage with a potency of
+2,000 to target and all enemies within 12 yalms"). The Fangs (`XBMItem` 128–134) and Celestial Sand
+(139, 18 yalms) are now thrown from the HUD the same way potions are drunk. The target is set to one of
+the adds first.
+- A throw happens once `AreaItemAtAdds` (3) enemies attack the player or a familiar within 8 yalms,
+  as the Treant's Slug Pieces do.
+- The strongest enemy, the boss, is not counted as an add.

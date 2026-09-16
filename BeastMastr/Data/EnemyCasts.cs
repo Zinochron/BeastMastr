@@ -108,12 +108,16 @@ public static class EnemyCasts
         {
             if (caster.CastActionId == ToxicBreath.Cast && !Breaths.ContainsKey(caster.GameObjectId))
             {
+                var from = new Vector2(caster.Position.X, caster.Position.Z);
+                var facing = ToxicBreath.FacingFor(from, new Vector2(player.Position.X, player.Position.Z));
                 Breaths[caster.GameObjectId] = new Breath
                 {
                     CastEnd = now + TimeSpan.FromSeconds(caster.TotalCastTime - caster.CurrentCastTime),
-                    From = new Vector2(caster.Position.X, caster.Position.Z),
-                    Facing = caster.Rotation,
+                    From = from,
+                    Facing = facing,
                 };
+                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} towards the player; " +
+                                         "behind it is the wall to go to.");
             }
 
             if (caster.CastActionId == SweepingEvisceration.Cast)
@@ -279,6 +283,10 @@ public static class EnemyCasts
 
             var here = new Vector2(borgny.Position.X, borgny.Position.Z);
             var landed = Vector2.Distance(here, breath.From) > ToxicBreath.LeapSeenAt;
+
+            // Once it leaps, its way is known for certain: straight back.
+            if (landed)
+                breath.Facing = SweepingEvisceration.Facing(breath.From - here);
             zones.Add(ToxicBreath.Zone(landed ? here : breath.From, breath.Facing, landed, MathF.Max(0f, untilCleave)));
         }
     }
