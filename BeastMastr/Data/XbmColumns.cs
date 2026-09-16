@@ -667,8 +667,12 @@ public static class XbmColumns
     /// </summary>
     public static class Crucible
     {
-        /// <summary>Where every board is played, whichever board it is.</summary>
-        public const uint RunTerritory = 1339;
+        /// <summary>
+        /// The Crucible's boards each have a zone of their own: 1339–1341 the First to Third Board of the
+        /// Unbroken, 1342 and 1343 the First and Second Master's Board. The TerritoryType sheet marks all
+        /// of them with this intended use, and nothing else with it.
+        /// </summary>
+        public const uint RunIntendedUse = 62;
 
         /// <summary>Central Shroud, where the boards are chosen.</summary>
         public const uint EntranceTerritory = 148;

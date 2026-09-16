@@ -1958,3 +1958,38 @@ be turned back on in the Run tab).
 
 **Still open:** the Void Blizzard III exaflare rows are dodged cast by cast. Their next steps are not
 known ahead of time.
+
+### The First Master's Board — 2026-09-16
+
+`/beastmastr run` refused the First Master's Board ("Start a board first"): the run only knew zone
+1339. Every board has a zone of its own, all marked `TerritoryIntendedUse` 62 in the TerritoryType
+sheet:
+
+| Zone | Board | Map |
+|---|---|---|
+| 1339 | First Board of the Unbroken | 1204 |
+| 1340 | Second Board of the Unbroken | 1209 |
+| 1341 | Third Board of the Unbroken | 1214 |
+| 1342 | First Master's Board | 1219 |
+| 1343 | Second Master's Board | 1224 |
+
+`BoardModel.IsRunTerritory` now asks the sheet. The master board recorded by hand
+(`captures/run-20260916-215152.txt`) has the same layout: start at (−700, 0, 0), columns at −705,
+−700 and −695, rows 7.5 yalms apart from z −9, and the map's y offset is −36 instead of −38. Its
+arenas use the same middles: the Strix, Corpse Flower and Treant at (120, −420), the Gargoyle at
+(120, 0).
+
+Its fights, by the `ecast` lines:
+- **Strix:** Plummet, circles of 10 in waves two seconds apart.
+- **Strix:** On the Properties of Quakes and of Floods, circles of 60 that cannot be dodged. Snarl
+  did not spare the player the 713 damage of Quakes.
+- **Corpse Flower:** Floral Trap, a circle of 80; Rotten Stench, a 45×12 line.
+- **Gargoyle:**
+  - Rippling Evisceration, a circle of 13, then a ring out to 30.
+  - Sweeping Evisceration, a cone.
+  - Malady, circles of 6 on a 7-yalm grid.
+  - Fivefold Fallout, circles of 60.
+- **Treant:**
+  - Rustling Breeze, cones.
+  - Arboreal Storm, a circle of 12, then rings out to 36 every two seconds; the dodger's line for
+    this is the same as for Bedrock Uplift.

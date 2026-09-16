@@ -130,7 +130,25 @@ public sealed class BoardModel : IDisposable
     /// <summary>On the start platform of a run that has not entered a room yet.</summary>
     public bool AtStart { get; private set; }
 
-    public bool InRunZone => Services.ClientState.TerritoryType == XbmColumns.Crucible.RunTerritory;
+    public bool InRunZone => IsRunTerritory(Services.ClientState.TerritoryType);
+
+    private static readonly System.Collections.Generic.Dictionary<uint, bool> RunTerritories = [];
+
+    /// <summary>Whether a zone is one of the Crucible's boards, by the TerritoryType sheet.</summary>
+    public static bool IsRunTerritory(uint territory)
+    {
+        if (territory == 0)
+            return false;
+
+        if (!RunTerritories.TryGetValue(territory, out var known))
+        {
+            known = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(territory) is { } row &&
+                    row.TerritoryIntendedUse.RowId == XbmColumns.Crucible.RunIntendedUse;
+            RunTerritories[territory] = known;
+        }
+
+        return known;
+    }
 
     /// <summary>
     /// Standing on the board itself. Fights happen in arenas of the same zone, hundreds of yalms away,
