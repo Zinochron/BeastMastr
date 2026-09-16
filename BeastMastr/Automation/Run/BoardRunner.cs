@@ -158,6 +158,7 @@ public sealed class BoardRunner : IDisposable
 
         RunsWanted = Math.Max(1, runs);
         RunsDone = 0;
+        downSince = null;
         DoneEvent = -1;
         Target = -1;
         paused = false;

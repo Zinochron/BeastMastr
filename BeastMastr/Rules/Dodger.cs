@@ -174,20 +174,22 @@ public static class Dodger
         return best;
     }
 
-    /// <summary>The hits that land within <see cref="Window"/> of the first, and every lasting patch.</summary>
+    /// <summary>The hits that land within <see cref="Window"/> of the first, every lasting patch, and every refuge.</summary>
     public static List<Zone> Soonest(IReadOnlyList<Zone> zones)
     {
         var first = float.MaxValue;
         foreach (var zone in zones)
         {
-            if (!zone.Lasting)
+            if (!zone.Lasting && zone.Refuge == null)
                 first = MathF.Min(first, zone.ActivatesIn);
         }
 
         var soonest = new List<Zone>();
         foreach (var zone in zones)
         {
-            if (zone.Lasting || zone.ActivatesIn <= first + Window)
+            // A refuge is walked to from the moment it is known: the wall behind Borgny and a briar
+            // patch can be far.
+            if (zone.Lasting || zone.Refuge != null || zone.ActivatesIn <= first + Window)
                 soonest.Add(zone);
         }
 

@@ -117,3 +117,51 @@ public static class GroundHazards
         _ => null,
     };
 }
+
+/// <summary>
+/// The Corpse Flower's Floral Trap (48683, 5 s, a circle of 80 that cannot be dodged): it draws the player
+/// in and binds them, and Devour (48685, a cone of 8 in front of the flower) eats them. In the recording of
+/// 2026-09-16 22:54 that took 1100 HP to 19. Just before, Sapling Pieces leave briar patches (event object
+/// 2015458). Briar (5176) "prevents draw-in and knockback effects", so the way out is to stand in one.
+/// </summary>
+public static class FloralTrap
+{
+    public const uint Cast = 48683;
+    public const uint BriarPatch = 2015458;
+    public const string Name = "Floral Trap";
+
+    /// <summary>The briar patch to stand in: the nearest to the player.</summary>
+    public static Zone? Zone(Vector2 flower, Vector2 player, IEnumerable<Vector2> patches, float castLeft)
+    {
+        Vector2? best = null;
+        foreach (var patch in patches)
+        {
+            if (best == null || Vector2.Distance(patch, player) < Vector2.Distance(best.Value, player))
+                best = patch;
+        }
+
+        return best is { } refuge
+                   ? new Zone(ZoneKind.Circle, flower, 0f, 80f, castLeft, Name + " (into the briar)", Refuge: refuge)
+                   : null;
+    }
+}
+
+/// <summary>
+/// A hit that turns as it repeats: the Morbol's Extremely Bad Breath, a 90-degree cone of 50, went off
+/// every 2.1 seconds, each 45 degrees on from the last (facings 3.14, −2.36, −1.57, −0.79, 0.00 in the
+/// recording of 2026-09-16 22:59). The next one is the last one turned by the last step.
+/// </summary>
+public static class TurningHits
+{
+    /// <summary>The step between two facings, in (−π, π].</summary>
+    public static float Step(float from, float to)
+    {
+        var step = (to - from) % (2f * MathF.PI);
+        if (step > MathF.PI)
+            step -= 2f * MathF.PI;
+        else if (step <= -MathF.PI)
+            step += 2f * MathF.PI;
+
+        return step;
+    }
+}

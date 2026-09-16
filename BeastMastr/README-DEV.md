@@ -2108,3 +2108,27 @@ so the layout comes from diffs and hovers:
   outside the safe circle, and the walk ends at the wall.
 - Fuming Vomit (48812) places circles of 6 that leave Poison Clouds behind; the clouds are ground
   hazards now.
+
+### Two wipes on the second move — 2026-09-16
+
+`captures/run-20260916-225232.txt` took the right-hand room (a Corpse Flower), and
+`run-20260916-225756.txt` the left-hand one (a Morbol). Both ended in a wipe.
+
+**Both second fights began low.** The Strix leaves the player at 20–25% (1282 and 1603 of 6199 HP). Auto-
+heal is off for the whole run, and the second move has no campsite. No recording shows a crucible item
+(potion) being used, so the way to use one is not known yet.
+
+**The Morbol's breath turns.** The helper cast 48673 (a 90-degree cone of 50), then 48675 every 2.1 s,
+each 45 degrees on: facings 3.14, −2.36, −1.57, −0.79, 0.00, then 0.79 for the next 48673.
+- Repeats are now kept by caster and name, since the opening and repeating actions differ. Each
+  predicted repeat is turned by the last step (`TurningHits.Step`).
+- A cone's apex now takes the largest hitbox standing at its origin: the Morbol's, not its helper's.
+
+**The Corpse Flower's Floral Trap** (48683, 5 s, a circle of 80) drew the player in, bound (2518) and
+stunned (2656) them. Devour (48685, a cone of 8 in front) then ate them: Devoured (421) took 1100 HP to
+19. Sapling Pieces leave briar patches (event object 2015458) just before. Briar (5176) "prevents
+draw-in and knockback effects".
+- `FloralTrap` now sends the player into the nearest patch.
+- Refuges are walked to as soon as they are known, not only once they are the next hit.
+
+A run started after a death no longer says "Revived" at its start.

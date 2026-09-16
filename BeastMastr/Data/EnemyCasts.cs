@@ -57,10 +57,15 @@ public static class EnemyCasts
     {
         public DateTime StartedAt;
         public float Interval;
+        public float Turn;
         public Zone? Last;
     }
 
-    private static readonly Dictionary<(ulong Caster, uint Action), Repeat> Repeats = [];
+    /// <summary>
+    /// By caster and name, not action: the Morbol's breath opens with one action (48673) and repeats as
+    /// another (48675).
+    /// </summary>
+    private static readonly Dictionary<(ulong Caster, string Name), Repeat> Repeats = [];
 
     /// <summary>A repeat is only trusted this often; one that has stopped is dropped after this many intervals.</summary>
     private const float LongestRepeat = 6f;
@@ -97,7 +102,7 @@ public static class EnemyCasts
         var zones = new List<Zone>();
         var sheet = Services.Data.GetExcelSheet<LuminaAction>();
         var now = DateTime.Now;
-        var casting = new HashSet<(ulong, uint)>();
+        var casting = new HashSet<(ulong, string)>();
 
         foreach (var caster in Casting(player))
         {
@@ -150,9 +155,12 @@ public static class EnemyCasts
             if (zone.Kind == ZoneKind.Donut)
                 zone = WithHole(zone, caster);
 
+            if (zone.Kind == ZoneKind.Cone)
+                zone = zone with { Apex = MathF.Max(zone.Apex, HitboxAt(zone.Origin)) };
+
             zones.Add(zone);
             Remember(caster, zone, now);
-            casting.Add((caster.GameObjectId, caster.CastActionId));
+            casting.Add((caster.GameObjectId, zone.Name));
         }
 
         // A repeating hit between its casts: the next one is expected an interval after the last began,
@@ -173,6 +181,7 @@ public static class EnemyCasts
                 zones.Add(last with
                 {
                     ActivatesIn = MathF.Max(0.3f, repeat.Interval - since + last.ActivatesIn),
+                    Rotation = last.Rotation + repeat.Turn,
                     Name = last.Name + " (repeating)",
                 });
             }
@@ -181,7 +190,42 @@ public static class EnemyCasts
         AddSweeps(zones, now);
         AddBreaths(zones, now);
         AddHazards(zones, player);
+        AddTraps(zones, player);
         return zones;
+    }
+
+    /// <summary>
+    /// The largest hitbox standing at a point: a helper casts a cone from the Morbol's middle, and the
+    /// Morbol's body around it is part of what the breath hits.
+    /// </summary>
+    private static float HitboxAt(Vector2 point)
+    {
+        var largest = 0f;
+        foreach (var obj in Services.Objects)
+        {
+            if (obj.ObjectKind == ObjectKind.BattleNpc && obj.SubKind != (byte)BattleNpcSubKind.Pet &&
+                Vector2.Distance(new Vector2(obj.Position.X, obj.Position.Z), point) < 1.5f)
+                largest = MathF.Max(largest, obj.HitboxRadius);
+        }
+
+        return largest;
+    }
+
+    /// <summary>Floral Trap: into the nearest briar patch before it resolves.</summary>
+    private static void AddTraps(List<Zone> zones, IPlayerCharacter player)
+    {
+        foreach (var flower in Casting(player))
+        {
+            if (flower.CastActionId != FloralTrap.Cast)
+                continue;
+
+            var patches = Services.Objects.Where(obj => obj.BaseId == FloralTrap.BriarPatch)
+                                  .Select(obj => new Vector2(obj.Position.X, obj.Position.Z));
+            if (FloralTrap.Zone(new Vector2(flower.Position.X, flower.Position.Z),
+                                new Vector2(player.Position.X, player.Position.Z), patches,
+                                flower.TotalCastTime - flower.CurrentCastTime) is { } zone)
+                zones.Add(zone);
+        }
     }
 
     /// <summary>Patches on the ground that hurt while they are there, by <see cref="GroundHazards"/>.</summary>
@@ -340,7 +384,7 @@ public static class EnemyCasts
     private static void Remember(IBattleChara caster, Zone zone, DateTime now)
     {
         var started = now - TimeSpan.FromSeconds(caster.CurrentCastTime);
-        var key = (caster.GameObjectId, caster.CastActionId);
+        var key = (caster.GameObjectId, zone.Name);
 
         if (!Repeats.TryGetValue(key, out var repeat))
         {
@@ -353,6 +397,7 @@ public static class EnemyCasts
         {
             repeat.Interval = gap <= LongestRepeat ? gap : 0f;
             repeat.StartedAt = started;
+            repeat.Turn = repeat.Last is { } previous ? TurningHits.Step(previous.Rotation, zone.Rotation) : 0f;
         }
 
         repeat.Last = zone with { ActivatesIn = caster.TotalCastTime };

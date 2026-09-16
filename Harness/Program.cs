@@ -718,6 +718,17 @@ var breathAfter = ToxicBreath.Zone(new Vector2(920f, -439.6f), 0f, true, 1f);
 Check("and the cleave is taken to cover the arena in front of it",
       breathAfter.Contains(new Vector2(920f, -429f)) && breathAfter.Contains(new Vector2(930f, -435f)));
 
+// The Morbol's turning breath, and the Corpse Flower's trap.
+Check("a breath from 3.14 to -2.36 turns 45 degrees on", MathF.Abs(TurningHits.Step(3.14f, -2.36f) - 0.7832f) < 0.01f);
+Check("and from -0.79 to 0 as well", MathF.Abs(TurningHits.Step(-0.79f, 0f) - 0.79f) < 0.01f);
+var flower = new Vector2(120f, -422.5f);
+var briars = new[] { new Vector2(128.5f, -428.5f), new Vector2(120f, -407f), new Vector2(111.5f, -428.5f) };
+var trap = FloralTrap.Zone(flower, new Vector2(118f, -424f), briars, 4.7f)!;
+var elsewhere = CastShapes.Shape(2, 6, 0, "", 0f, new Vector2(140f, -440f), 0f, 1f, "elsewhere")!;
+var toBriar = Dodger.Plan(new Vector2(118f, -424f), flower, 6f, [elsewhere, trap], arena, 18f)!;
+Check("Floral Trap: into the nearest briar, even with another hit sooner", toBriar.Point == briars[2],
+      $"to {toBriar.Point}");
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);
