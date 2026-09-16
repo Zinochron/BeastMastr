@@ -87,7 +87,7 @@ public sealed class HealthSelector : IDisposable
         var down = slots.Count(slot => slot.MaxHp > 0 && slot.Hp <= 0);
 
         var hurt = slots.Where(slot => slot.Beast != null && slot.MaxHp > 0
-                                       && slot.Hp > 0 && slot.Hp < slot.MaxHp && !slot.IsCalled)
+                                       && slot.Hp > 0 && slot.Hp < slot.MaxHp && !slot.IsChosen)
                         .OrderBy(slot => slot.HealthShare)
                         .ThenByDescending(slot => slot.MaxHp - slot.Hp)
                         .ToList();
@@ -122,7 +122,7 @@ public sealed class HealthSelector : IDisposable
 
         if (waitingFor != 0)
         {
-            if (slots.Any(slot => slot.Beast?.Number == waitingFor && slot.IsCalled))
+            if (slots.Any(slot => slot.Beast?.Number == waitingFor && slot.IsChosen))
             {
                 picked++;
                 waitingFor = 0;
@@ -154,7 +154,7 @@ public sealed class HealthSelector : IDisposable
         var next = pending.Dequeue();
         var row = slots.FirstOrDefault(slot => slot.Beast?.Number == next);
 
-        if (row == null || row.IsCalled)
+        if (row == null || row.IsChosen)
         {
             cooldown = 1;
             return;

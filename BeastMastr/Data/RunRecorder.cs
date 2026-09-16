@@ -424,8 +424,9 @@ public sealed unsafe class RunRecorder : IDisposable
 
             if (Dumped(name))
             {
+                // Unset values are most of every dump — 93% of the first recording — and say nothing.
                 var values = AddonReader.Values(name);
-                Block(AddonReader.ToText(name, values));
+                Block(AddonReader.ToText(name, values.Where(value => value.Type != "Undefined")));
                 lastValues[name] = values.Select(value => $"{value.Type}={value.Text}").ToList();
 
                 // The node tree only once per window per recording: it is long and does not change

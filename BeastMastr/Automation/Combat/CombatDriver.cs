@@ -43,6 +43,15 @@ public sealed unsafe class CombatDriver : IDisposable
     private readonly BeastmasterJob job;
     private readonly ManualInputGuard input;
     private readonly BossModBridge bossMod;
+    private readonly ActionWatcher actions;
+
+    /// <summary>When Parting Blow and a Battlehorn last went off — pressed by anyone.</summary>
+    private DateTime lastPartingBlow = DateTime.MinValue;
+
+    private DateTime lastBattlehorn = DateTime.MinValue;
+
+    /// <summary>How long a familiar sent off still counts as leaving, if no new one is summoned first.</summary>
+    private static readonly TimeSpan LeavingFor = TimeSpan.FromSeconds(8);
 
     private DateTime nextAttempt;
     private DateTime nextRangeCheck;
@@ -50,14 +59,32 @@ public sealed unsafe class CombatDriver : IDisposable
     private bool approaching;
     private bool pausedBossMod;
 
-    public CombatDriver(Configuration configuration, BeastmasterJob job, ManualInputGuard input, BossModBridge bossMod)
+    public CombatDriver(Configuration configuration, BeastmasterJob job, ManualInputGuard input, BossModBridge bossMod,
+                        ActionWatcher actions)
     {
         this.configuration = configuration;
         this.job = job;
         this.input = input;
         this.bossMod = bossMod;
+        this.actions = actions;
+        actions.ActionUsed += OnActionUsed;
         Services.Framework.Update += OnUpdate;
     }
+
+    private void OnActionUsed(ActionWatcher.Use use)
+    {
+        if (!use.Accepted || use.Type != ActionType.Action)
+            return;
+
+        if (use.ActionId == Bst.PartingBlow)
+            lastPartingBlow = use.At;
+        else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0)
+            lastBattlehorn = use.At;
+    }
+
+    /// <summary>Parting Blow went off after the last summon, and not long ago.</summary>
+    private bool FamiliarLeaving =>
+        lastPartingBlow > lastBattlehorn && DateTime.Now - lastPartingBlow < LeavingFor;
 
     public bool Enabled { get; private set; }
 
@@ -229,11 +256,12 @@ public sealed unsafe class CombatDriver : IDisposable
             FamiliarTp: gauge?.PetTp ?? 0,
             Statuses: statuses,
             Ready: id => Ready(manager, player, target, id),
-            InCombat: inCombat,
+            InCombat: inCombat || MayPull,
             HasTarget: true,
             TargetDistance: distance,
             TargetCasting: target.IsCasting && target.IsCastInterruptible,
-            FamiliarOut: FamiliarOut(player));
+            FamiliarOut: FamiliarOut(player),
+            FamiliarLeaving: FamiliarLeaving);
     }
 
     private bool Ready(ActionManager* manager, IGameObject player, IGameObject target, uint id)
@@ -293,9 +321,13 @@ public sealed unsafe class CombatDriver : IDisposable
         chara.ObjectKind == ObjectKind.BattleNpc && chara.SubKind == EnemySubKind && chara.IsTargetable &&
         !chara.IsDead && chara.CurrentHp > 0;
 
+    /// <summary>
+    /// A familiar is a battle NPC of the pet kind — "Opo-opo", "Squirrel", "Cu Sith" in the recording —
+    /// and one that has retreated lingers as dead for a moment, so the dead are not counted.
+    /// </summary>
     private static bool FamiliarOut(IGameObject player) =>
-        Services.Objects.Any(obj => obj.ObjectKind == ObjectKind.BattleNpc && obj.OwnerId == player.EntityId &&
-                                    !obj.IsDead);
+        Services.Objects.Any(obj => obj.ObjectKind == ObjectKind.BattleNpc && obj.SubKind == (byte)BattleNpcSubKind.Pet &&
+                                    obj.OwnerId == player.EntityId && !obj.IsDead);
 
     private void KeepInReach(IGameObject target, float distance)
     {
@@ -325,6 +357,7 @@ public sealed unsafe class CombatDriver : IDisposable
 
     public void Dispose()
     {
+        actions.ActionUsed -= OnActionUsed;
         Services.Framework.Update -= OnUpdate;
         Stop("Unloaded.");
     }

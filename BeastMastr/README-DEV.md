@@ -1604,11 +1604,13 @@ room opens:
 | a treasure coffer | takes an item |
 | the result, after the boss | closes it; the board is done |
 
-`Automation/Run/RoomActions.cs` holds what those buttons send, and **none of them is recorded yet**.
-Until one is copied out of a run recording, the run hands that step to the player: it says in chat and
-in the Run tab what to press, and carries on when the game shows it was done — the fight beginning,
-the window closing. A room that opens nothing the run knows is handed over as well, and the Continue
-button (`/beastmastr continue`) tells the run it is finished. Nothing is guessed.
+`Automation/Run/RoomActions.cs` holds what those buttons send, each copied out of a run recording
+(below), and `ConfirmedStep` carries one through: send it, answer the `SelectYesno` that follows, see
+the window close. What cannot be carried through is handed to the player, who is told in chat and in
+the Run tab what to press; the run carries on once the game shows it was done. A room that opens
+nothing the run knows is handed over too, and the Continue button (`/beastmastr continue`) tells the
+run it is finished. Nothing is guessed. The shop is left without buying and the first treasure offer
+is taken, unless the Run tab says otherwise.
 
 `Automation/Run/RunSafety.cs` refuses to start off Beastmaster, outside the run's zone, without
 vnavmesh or without a known board; stops the run when the player goes down, the job changes or the
@@ -1622,3 +1624,74 @@ everything, and BossMod gets its own presets back.
 
 More than one board needs the way back in from the entrance — choosing the board, "Challenge This
 Board", the team — which is not built yet. Until it is, the run says so after each board.
+
+### What the first run recording showed — 2026-09-16
+
+`captures/run-20260916-170423.txt`: board 1, level 30, played by hand from the start platform to the
+boss in six minutes. It answered everything the run had been handing over.
+
+**A room starts as it is stepped on.** The trigger fired 0.4 to 1.8 yalms from the room's centre in
+all nine rooms. First sign: the status "In Event" (1268) on the player and the condition flag
+SufferingStatusAffliction2, about two seconds before any window. The trigger object 2015483 moves
+onto the room at the same moment. The walker now stops on "In Event".
+
+**The board window opens only for fights**, together with the team list in fight mode, and marks the
+room *being entered*: events 1, 2, 6, 8 and 12. Campsites, treasure and shops open their own windows
+and leave the board window's mark where it was — so `BoardModel.CurrentEvent` now takes whichever of
+the mark and the trigger object moved last.
+
+**Fights happen elsewhere.** "Commence Battle" closes both windows and loads an arena in the same zone
+(X 120 or 520, far from the board at X -700); after the spoils another load puts the player back on
+the room just finished. The run waits to be back on the board before planning the next walk — there
+is a second or so between the spoils closing and the load.
+
+**The boss ends the run.** After it, a cutscene and a load back to the entrance (territory 148). No
+result window appeared in the recording.
+
+**What the buttons send**, every one recorded, with the window closing each time:
+
+| Step | Window | Values | Then |
+|---|---|---|---|
+| Commence Battle | `XBMStageDetailList` | `[Int 8]` | load into the arena |
+| Take the spoils | `XBMContentsBooty` | `[Int 1]` | `SelectYesno` "You will receive:" → `[Int 0]` |
+| Rest at a campsite | `XBMPetParty` (mode 4) | `[Int 3]` | `SelectYesno` → `[Int 0]` |
+| Leave a shop | `XBMContentsItemShop` | `[Int 0]` | `SelectYesno` "Conclude purchasing and leave the shop?" → `[Int 0]` |
+| Take treasure offer n | `XBMContentsTreasure` | `[Int 2, Int n]`, n from 0 | `SelectYesno` "Choose the angel robe?" → `[Int 0]` |
+| Buy or feed shop item n | `XBMContentsItemShop` | `[Int 2, Int n]` | team list mode 3 to pick who is fed, then a `SelectYesno` |
+
+`[Int 1]` answers No. The shop sends itself `[8]` after every change.
+
+**The team list's row click differs by job.** In a fight it is `[Int 1, UInt row]`; at a campsite and
+for a shop's feeding it is `[Int 1, Int row]`, sent as closing. `TeamListCommands` sends whichever the
+window's mode calls for. At a campsite a picked row shows at block offset +75 (a bool), where a fight
+shows its call slot at +74. Modes: 2 fight, 3 shop feeding ("Feed the grape simular to whom?"),
+4 campsite. Confirming a campsite with nobody picked asks "Rest alone while your familiars keep watch
+and recover 90% of HP?"; with a familiar picked, "Rest and recover 45% of HP for you and your: …".
+
+**The treasure coffer** offers four items in blocks of five values from 3: a bool (offered) at +0 and
+the `XBMItem` row at +3. Offers 0..3 were green beret, windblown axe, demonic armour and angel robe;
+choosing 3 asked about the angel robe and choosing 1 gave the windblown axe.
+
+**The gauge**, from 178 changes: byte 0 is the player's TP (Shieldsplitter +15, Rally +40, an axe
+spends all of it), byte 1 the familiar's TP (it rises with the familiar's attacks and Parting Blow),
+byte 2 what the familiar's last action cost (Trick at 108 familiar TP left 108 here and 0 in byte 1 —
+Trick spends everything, not 100), byte 3 the Battlehorn slot summoned (1–3, 0 while none). Bytes 4–8
+move with the instinctual combos and are not identified.
+
+**The job as it was played:** a familiar is summoned before the pull; Borrow, Beast Mode (Beastskin
+under Beast Kinship) and Tempered Release follow; Rally when TP is low; Parting Blow once Tempered
+Release is spent, and the next Battlehorn straight after it — while the old familiar is still on the
+field — which grants One with Nature again and resets Tempered Release from 30. Trick at 100 familiar
+TP or more, then the axe that answers its Heart (Rampant Heart, Mistral Axe → Moonstalker). Familiars
+are battle NPCs of the pet kind. The rotation now does all of this, Parting Blow on by default (config
+version 2 turns it on for older configs).
+
+**The ground.** A grid of the board by height: the platforms are at Y 0, about five yalms long and
+separated by bridges about one and a half yalms wide; the ground 2.5 yalms below is everywhere else.
+The straight line between two rooms of different columns does not stay on the platforms, so those
+links are planned by vnavmesh — all at platform height, and five yalms clear of any other room. The
+Run tab's map now draws platforms and ground apart. vnavmesh's own bitmap
+(`captures/navmesh-20260916-170845.bmp`) only draws what is reachable from where it was taken — the
+middle column's three rooms and their bridges there — and agrees on the widths and the nine-yalm rows.
+
+The recorder now leaves unset values out of its dumps; they were 93% of this file.

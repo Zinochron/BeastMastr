@@ -356,11 +356,11 @@ Check("a choice already behind the run is ignored", fromMiddle.Events.Count == 5
 // is about the priority and nothing else.
 BstState Fight(int level = 50, uint combo = 0, float comboTimer = 0f, int tp = 0, int familiarTp = 0,
                uint[]? statuses = null, uint[]? notReady = null, bool inCombat = true, float distance = 1f,
-               bool casting = false, bool familiarOut = true)
+               bool casting = false, bool familiarOut = true, bool leaving = false)
 {
     var blocked = new HashSet<uint>(notReady ?? []);
     return new BstState(level, combo, comboTimer, tp, familiarTp, new HashSet<uint>(statuses ?? []),
-                        id => !blocked.Contains(id), inCombat, true, distance, casting, familiarOut);
+                        id => !blocked.Contains(id), inCombat, true, distance, casting, familiarOut, leaving);
 }
 
 // Everything but the ability under test is on cooldown, so the check is about that ability alone.
@@ -457,11 +457,29 @@ var far = BstRotation.Next(Fight(distance: 8f, notReady: AllBut(Bst.ShieldCharge
 Check("out of reach the combo waits and Shield Charge closes in",
       far.Gcd == 0 && far.Ogcd == Bst.ShieldCharge, far.Why);
 
-var noParting = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow)), plain);
-Check("Parting Blow stays off unless asked for", noParting.Ogcd == 0, noParting.Why);
+var noParting = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow)), plain with { UsePartingBlow = false });
+Check("Parting Blow stays off when switched off", noParting.Ogcd == 0, noParting.Why);
 
-var parting = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow)), plain with { UsePartingBlow = true });
-Check("asked for, it sends a spent familiar off", parting.Ogcd == Bst.PartingBlow, parting.Why);
+var parting = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow)), plain);
+Check("by default it sends a spent familiar off, as the recording did", parting.Ogcd == Bst.PartingBlow, parting.Why);
+
+var partingEarly = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow, Bst.TemperedRelease),
+                                          statuses: [Bst.OneWithNature]), plain);
+Check("not while Tempered Release is still to be used", partingEarly.Ogcd == Bst.TemperedRelease, partingEarly.Why);
+
+var lowParting = BstRotation.Next(Fight(level: 20, notReady: AllBut(Bst.PartingBlow)), plain);
+Check("not below 30, where a new familiar resets nothing", lowParting.Ogcd == 0, lowParting.Why);
+
+// The recording pressed the next Battlehorn straight after Parting Blow, while the old familiar was
+// still on the field.
+var nextHorn = BstRotation.Next(Fight(leaving: true, notReady: AllBut(Bst.SecondBattlehorn)), plain);
+Check("a familiar sent off is replaced at once", nextHorn.Ogcd == Bst.SecondBattlehorn, nextHorn.Why);
+
+var noBorrowLeaving = BstRotation.Next(Fight(leaving: true, notReady: AllBut(Bst.Borrow)), plain);
+Check("nothing is borrowed from a familiar on its way out", noBorrowLeaving.Ogcd == 0, noBorrowLeaving.Why);
+
+var prePull = BstRotation.Next(Fight(familiarOut: false, distance: 12f), plain);
+Check("a familiar is summoned before the pull, out of reach", prePull.Ogcd == Bst.FirstBattlehorn, prePull.Why);
 
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");

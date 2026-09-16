@@ -50,7 +50,9 @@ public sealed class BoardRunner : IDisposable
 
     private static readonly TimeSpan EnterTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan FamiliarWait = TimeSpan.FromSeconds(4);
-    private static readonly TimeSpan CommenceTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CommenceTimeout = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan TreasureWait = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan BackOnBoardWait = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan FightEndGrace = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan LongestFight = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan SpoilsWait = TimeSpan.FromSeconds(6);
@@ -80,6 +82,11 @@ public sealed class BoardRunner : IDisposable
     private bool acted;
     private bool paused;
     private bool continueRequested;
+
+    /// <summary>The recorded command the current phase is carrying through, if any.</summary>
+    private ConfirmedStep? step;
+
+    private int treasureChoice;
 
     public BoardRunner(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
                        BoardWalker walker, CombatDriver combat, FightSelector fightSelector,
@@ -222,7 +229,7 @@ public sealed class BoardRunner : IDisposable
 
     private void Tick()
     {
-        if (RunSafety.MustStop(board, State == Phase.Finishing) is { } reason)
+        if (RunSafety.MustStop(board, State == Phase.Finishing || IsBoss(Target) || IsBoss(DoneEvent)) is { } reason)
         {
             Fail(reason);
             return;
@@ -324,6 +331,17 @@ public sealed class BoardRunner : IDisposable
     {
         reentries = 0;
 
+        // After a fight the run is still in the arena for a moment before it loads back to the board.
+        if (!board.OnBoard)
+        {
+            if (Elapsed > BackOnBoardWait)
+                Ask("The run is not on the board. Go back to it, and the run carries on.");
+            else
+                Status = "Waiting to be back on the board.";
+
+            return;
+        }
+
         var graph = board.Graph!;
         if (graph.Node(DoneEvent) is { Kind: BoardRoomKind.Boss })
         {
@@ -339,7 +357,7 @@ public sealed class BoardRunner : IDisposable
         }
 
         Target = plan.Next;
-        if (!walker.Walk(Target))
+        if (!walker.Walk(Target, DoneEvent))
         {
             Fail(walker.Status);
             return;
@@ -432,21 +450,19 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        if (RoomActions.CommenceBattle is { } command)
+        // Commence Battle closes the board window and loads the arena; the enemies are there once it
+        // has loaded, and until then there is nothing to do but wait.
+        if (step is { Done: true })
         {
-            if (!acted && Elapsed > TimeSpan.FromMilliseconds(500))
-            {
-                acted = RoomActions.Send(command);
-                return;
-            }
-
-            if (acted && Elapsed > CommenceTimeout)
-                Fail("The fight did not begin after Commence Battle was sent.");
+            if (Elapsed > CommenceTimeout)
+                Ask("The fight has not begun. Start it, and the run carries on.");
+            else
+                Status = "Loading the arena.";
 
             return;
         }
 
-        Ask("Press \"Commence Battle\" — the run carries on when the fight begins.");
+        Carry(RoomActions.CommenceBattle, "Press \"Commence Battle\" — the run carries on when the fight begins.");
     }
 
     private void StartFighting()
@@ -503,35 +519,35 @@ public sealed class BoardRunner : IDisposable
 
         if (AddonReader.IsOpen(XbmColumns.RunWindows.Booty))
         {
-            if (RoomActions.TakeSpoils is { } command)
-            {
-                if (!acted)
-                    acted = RoomActions.Send(command);
-            }
-            else
-            {
-                Ask("Take the spoils — the run carries on when the window closes.");
-            }
+            if (Carry(RoomActions.TakeSpoils, "Take the spoils — the run carries on when the window closes."))
+                RoomDone("Took the spoils.");
 
             return;
         }
 
-        if (acted || Elapsed > SpoilsWait || continueRequested)
-            RoomDone("The fight is done.");
+        if (step != null || Elapsed > SpoilsWait || continueRequested)
+            RoomDone(step != null ? "Took the spoils." : "The fight is done.");
         else
             Status = "Waiting for the spoils.";
     }
 
+    /// <summary>
+    /// The most hurt familiars are picked first, then the rest is confirmed. With nobody hurt — or
+    /// resting familiars switched off — the confirmation rests the player alone, which the game offers
+    /// as recovering 90% while the familiars keep watch.
+    /// </summary>
     private void Campsite()
     {
         if (!acted)
         {
             acted = true;
-            healthSelector.RequestPick();
+            if (configuration.CampsiteRestFamiliars)
+                healthSelector.RequestPick();
+
             return;
         }
 
-        if (!PetPartyReader.IsOpen || continueRequested)
+        if (step == null && (!PetPartyReader.IsOpen || continueRequested))
         {
             RoomDone("The campsite is done.");
             return;
@@ -543,29 +559,26 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        if (RoomActions.ConfirmCampsite is { } command)
-            RoomActions.Send(command);
-        else
-            Ask("The most hurt familiars are picked — confirm the campsite. The run carries on when the window closes.");
+        if (Carry(RoomActions.ConfirmCampsite, "Confirm the campsite — the run carries on when the window closes."))
+            RoomDone("Rested at the campsite.");
     }
 
     private void Shop()
     {
         if (!AddonReader.IsOpen(XbmColumns.RunWindows.ItemShop) || continueRequested)
         {
-            RoomDone("Left the shop.");
+            RoomDone(step != null ? "Left the shop without buying." : "Left the shop.");
             return;
         }
 
-        if (RoomActions.LeaveShop is { } command)
+        if (configuration.ShopByHand)
         {
-            if (!acted)
-                acted = RoomActions.Send(command);
+            Ask("Buy what you want, then leave the shop — the run carries on when it closes.");
+            return;
         }
-        else
-        {
-            Ask("Buy what you want, then close the shop — the run carries on when it closes.");
-        }
+
+        if (Carry(RoomActions.LeaveShop, "Leave the shop — the run carries on when it closes."))
+            RoomDone("Left the shop without buying.");
     }
 
     private void Treasure()
@@ -576,15 +589,53 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        if (RoomActions.TakeTreasure is { } command)
-        {
-            if (!acted)
-                acted = RoomActions.Send(command);
-        }
-        else
+        if (configuration.TreasurePick < 0)
         {
             Ask("Pick your treasure — the run carries on when the window closes.");
+            return;
         }
+
+        if (step == null)
+        {
+            var offers = RoomActions.TreasureOffers();
+            if (offers.Count == 0)
+            {
+                if (Elapsed > TreasureWait)
+                    Ask("The coffer shows no offers BeastMastr can read. Pick one, and the run carries on.");
+                else
+                    Status = "Reading the coffer.";
+
+                return;
+            }
+
+            var pick = offers.FirstOrDefault(offer => offer.Index == configuration.TreasurePick, offers[0]);
+            treasureChoice = pick.Index;
+            Note($"Taking treasure offer {pick.Index + 1} (item {pick.Item}).");
+        }
+
+        if (Carry(RoomActions.ChooseTreasure(treasureChoice), "Pick your treasure — the run carries on when the window closes."))
+            RoomDone("Took the treasure.");
+    }
+
+    /// <summary>
+    /// Carries a recorded command through, and hands it to the player if it cannot be. Returns true
+    /// once the command has happened.
+    /// </summary>
+    private bool Carry(RoomActions.Command command, string handOff)
+    {
+        step ??= new ConfirmedStep(command);
+        step.Tick();
+
+        if (step.Failure != null)
+        {
+            Ask($"{step.Failure} {handOff}");
+            return false;
+        }
+
+        if (!step.Done)
+            Status = $"Sending \"{step.Label}\".";
+
+        return step.Done;
     }
 
     private void RoomDone(string how)
@@ -673,6 +724,12 @@ public sealed class BoardRunner : IDisposable
         Services.Chat.Print($"[BeastMastr] {Status}");
     }
 
+    /// <summary>
+    /// The boss ends a run with a cutscene and a load back to the entrance, so leaving the zone after it
+    /// is how a board finishes rather than a failure.
+    /// </summary>
+    private bool IsBoss(int eventIndex) => board.Graph?.Node(eventIndex) is { Kind: BoardRoomKind.Boss };
+
     // ---- What the room is doing -------------------------------------------
 
     /// <summary>The phase a room window that is up asks for, or null when none is.</summary>
@@ -725,6 +782,7 @@ public sealed class BoardRunner : IDisposable
         State = phase;
         phaseSince = DateTime.Now;
         acted = false;
+        step = null;
         HandOff = string.Empty;
         Status = status;
         Note($"{phase}: {status}");

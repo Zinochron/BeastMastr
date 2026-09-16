@@ -32,13 +32,14 @@ public sealed class BoardModel : IDisposable
 
     /// <summary>
     /// Where the start sits relative to the first room, in world Z, when it has not been measured. The
-    /// start has no icon; one capture had the player standing there 5 yalms short of move 1.
+    /// start has no icon. A recorded run began at (-700, 0, 0) with move 1 at Z -9: one row spacing.
     /// </summary>
-    private const float EstimatedStartOffset = 5f;
+    private const float EstimatedStartOffset = 9f;
 
     private readonly Configuration configuration;
     private int ticks;
     private string markerSignature = string.Empty;
+    private int lastTriggerEvent = -1;
     private Vector3? measuredStart;
 
     public BoardModel(Configuration configuration)
@@ -68,15 +69,48 @@ public sealed class BoardModel : IDisposable
     /// <summary>The room the trigger object sits on, or -1 when there is none nearby.</summary>
     public int TriggerEvent { get; private set; } = -1;
 
+    /// <summary>When the trigger object last moved onto a room.</summary>
+    public DateTime TriggerMovedAt { get; private set; } = DateTime.MinValue;
+
     public Vector3? TriggerPosition { get; private set; }
 
     /// <summary>
-    /// Where the run stands: what the window marked, else the room the trigger sits on. -1 when
-    /// neither has said anything.
+    /// The room the run last entered: whichever of the two signs spoke last. The board window only
+    /// opens — and marks a room — for fights, so after a campsite or a shop the window's mark is old
+    /// and the trigger object, which moves onto every room as it starts, is the newer word.
+    /// -1 when neither has said anything.
     /// </summary>
-    public int CurrentEvent => MarkedEvent >= 0 ? MarkedEvent : TriggerEvent;
+    public int CurrentEvent =>
+        TriggerEvent >= 0 && (MarkedEvent < 0 || TriggerMovedAt >= MarkedAt) ? TriggerEvent
+        : MarkedEvent >= 0 ? MarkedEvent
+        : AtStart && Graph?.Start is { } start ? start.EventIndex
+        : -1;
+
+    /// <summary>On the start platform of a run that has not entered a room yet.</summary>
+    public bool AtStart { get; private set; }
 
     public bool InRunZone => Services.ClientState.TerritoryType == XbmColumns.Crucible.RunTerritory;
+
+    /// <summary>
+    /// Standing on the board itself. Fights happen in arenas of the same zone, hundreds of yalms away,
+    /// so being in the zone is not enough to walk anywhere.
+    /// </summary>
+    public bool OnBoard
+    {
+        get
+        {
+            if (!InRunZone || Join is not { IsComplete: true } join || join.ByEvent.Count == 0 ||
+                Services.Objects.LocalPlayer is not { } player)
+                return false;
+
+            var position = player.Position;
+            const float margin = 12f;
+            return position.X >= join.ByEvent.Values.Min(icon => icon.WorldX) - margin &&
+                   position.X <= join.ByEvent.Values.Max(icon => icon.WorldX) + margin &&
+                   position.Z >= join.ByEvent.Values.Min(icon => icon.WorldZ) - margin &&
+                   position.Z <= join.ByEvent.Values.Max(icon => icon.WorldZ) + margin;
+        }
+    }
 
     public bool InRun => InRunZone || AddonReader.IsOpen(XbmColumns.ContentsMainHUD.Addon);
 
@@ -138,6 +172,7 @@ public sealed class BoardModel : IDisposable
         {
             MarkedEvent = -1;
             TriggerEvent = -1;
+            lastTriggerEvent = -1;
             TriggerPosition = null;
             measuredStart = null;
         }
@@ -167,6 +202,18 @@ public sealed class BoardModel : IDisposable
 
             if (MarkedEvent == 0 && Services.Objects.LocalPlayer is { } player)
                 measuredStart ??= player.Position;
+        }
+
+        // At the very start nothing has marked anything and the trigger sits nowhere; standing short of
+        // the first row then is standing on the start, which the run needs to know to begin at all.
+        AtStart = false;
+        if (InRunZone && MarkedEvent < 0 && lastTriggerEvent < 0 && Graph?.Start is { } start &&
+            Services.Objects.LocalPlayer is { } here && Graph.Next(start.EventIndex).FirstOrDefault() is { } first &&
+            Join?.ByEvent.TryGetValue(first.EventIndex, out var firstIcon) == true &&
+            here.Position.Z > firstIcon.WorldZ + 4f)
+        {
+            AtStart = true;
+            measuredStart ??= here.Position;
         }
 
         if (InRunZone && Graph != null)
@@ -201,6 +248,12 @@ public sealed class BoardModel : IDisposable
     private void RefreshJoin(BoardGraph graph)
     {
         var icons = MapMarkerReader.ReadRooms();
+
+        // In a fight's arena, and while loading, the map shows none of the board's icons. That says
+        // nothing about where the rooms are, so the placement from the board is kept.
+        if (icons.Count == 0 && Join != null)
+            return;
+
         var signature = string.Join(";", icons.Select(icon => $"{icon.IconId}@{icon.MapX}/{icon.MapY}"));
         if (signature == markerSignature && Join != null)
             return;
@@ -244,7 +297,15 @@ public sealed class BoardModel : IDisposable
                               .FirstOrDefault();
 
             if (nearest.Distance <= TriggerMatchRadius && Join.ByEvent.Count > 0)
+            {
                 TriggerEvent = nearest.Event;
+                if (TriggerEvent != lastTriggerEvent)
+                {
+                    lastTriggerEvent = TriggerEvent;
+                    TriggerMovedAt = DateTime.Now;
+                    Services.Log.Information($"The room trigger is on event {TriggerEvent}.");
+                }
+            }
 
             return;
         }

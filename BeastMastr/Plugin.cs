@@ -80,6 +80,8 @@ public sealed class Plugin : IDalamudPlugin
         ECommonsMain.Init(pluginInterface, this);
 
         Configuration = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
+        if (Configuration.Migrate())
+            Configuration.Save();
         delayedSweep = new DelayedSweep();
         Catalog = new BeastCatalog();
 
@@ -97,7 +99,7 @@ public sealed class Plugin : IDalamudPlugin
         walker = new BoardWalker(Configuration, boardModel, boardTerrain, inputGuard);
         job = new BeastmasterJob();
         bossMod = new BossModBridge(Configuration);
-        combat = new CombatDriver(Configuration, job, inputGuard, bossMod);
+        combat = new CombatDriver(Configuration, job, inputGuard, bossMod, actionWatcher);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
         runner = new BoardRunner(Configuration, boardModel, boardTerrain, routeKeeper, walker, combat, fightSelector,

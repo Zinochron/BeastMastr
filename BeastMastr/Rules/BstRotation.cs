@@ -81,12 +81,17 @@ public static class Bst
 public sealed record BstOptions(bool Combo, bool Resources, int SpendTpAt, bool UseBattlehorns, bool UsePartingBlow,
                                 bool UseShieldCharge)
 {
-    public static BstOptions Default => new(true, true, 200, true, false, true);
+    public static BstOptions Default => new(true, true, 200, true, true, true);
 }
 
 /// <summary>Everything the rotation looks at, taken once per decision.</summary>
 /// <param name="Ready">Whether an action can be used right now — the game's own answer, cooldown and all.</param>
 /// <param name="TargetDistance">To the target's edge, in yalms; infinity without a target.</param>
+/// <param name="InCombat">A fight is on — or the run has started one, which is when a familiar is summoned before the pull.</param>
+/// <param name="FamiliarLeaving">
+/// Parting Blow has sent the familiar off and no new one has come yet. It stays on the field for a few
+/// seconds, but the next Battlehorn is already usable, and that is when it was pressed in the recording.
+/// </param>
 public sealed record BstState(
     int Level,
     uint ComboAction,
@@ -99,7 +104,8 @@ public sealed record BstState(
     bool HasTarget,
     float TargetDistance,
     bool TargetCasting,
-    bool FamiliarOut);
+    bool FamiliarOut,
+    bool FamiliarLeaving = false);
 
 /// <param name="Gcd">The weaponskill to press, or 0.</param>
 /// <param name="Ogcd">The ability to press alongside it, or 0.</param>
@@ -149,8 +155,10 @@ public static class BstRotation
         if (!state.InCombat)
             return 0;
 
-        // A familiar in the fight is what every other ability here works through.
-        if (options.UseBattlehorns && !state.FamiliarOut)
+        // A familiar in the fight is what every other ability here works through. The recording
+        // summoned before the pull and again straight after every Parting Blow.
+        var familiar = state.FamiliarOut && !state.FamiliarLeaving;
+        if (options.UseBattlehorns && !familiar)
         {
             foreach (var horn in Bst.Battlehorns)
             {
@@ -171,7 +179,7 @@ public static class BstRotation
             return Bst.TemperedRelease;
         }
 
-        if (state.FamiliarOut && Usable(state, Bst.Borrow))
+        if (familiar && Usable(state, Bst.Borrow))
         {
             why.Add("Borrow");
             return Bst.Borrow;
@@ -182,7 +190,7 @@ public static class BstRotation
             return axe;
 
         var heart = Heart(state);
-        if (heart == 0 && !state.Statuses.Contains(Bst.WaveringHeart) && state.FamiliarOut &&
+        if (heart == 0 && !state.Statuses.Contains(Bst.WaveringHeart) && familiar &&
             state.FamiliarTp >= Bst.FamiliarActionTp && Usable(state, Bst.Trick))
         {
             why.Add("Trick for a Heart");
@@ -195,7 +203,7 @@ public static class BstRotation
             return Bst.Rally;
         }
 
-        if (state.FamiliarOut && state.FamiliarTp <= 150 && Usable(state, Bst.RallyingCheer))
+        if (familiar && state.FamiliarTp <= 150 && Usable(state, Bst.RallyingCheer))
         {
             why.Add("Rallying Cheer for familiar TP");
             return Bst.RallyingCheer;
@@ -208,7 +216,7 @@ public static class BstRotation
             return Bst.BeastMode;
         }
 
-        if (options.UsePartingBlow && state.FamiliarOut && state.Level >= 30 &&
+        if (options.UsePartingBlow && familiar && state.Level >= 30 &&
             !Usable(state, Bst.TemperedRelease) && !Usable(state, Bst.Borrow) && Usable(state, Bst.PartingBlow))
         {
             why.Add("Parting Blow, to summon the next familiar");

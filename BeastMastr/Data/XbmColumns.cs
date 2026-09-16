@@ -448,6 +448,22 @@ public static class XbmColumns
 
         public const uint CampsiteMode = 4;
 
+        /// <summary>Picking the familiar a bought feed goes to, at a shop ("Feed the grape simular to whom?").</summary>
+        public const uint ShopFeedMode = 3;
+
+        /// <summary>
+        /// Outside a fight the row click is <c>[1, row]</c> with the row as an **Int** and the window
+        /// told it closes — recorded at a campsite and at a shop's feeding. In a fight the row is a UInt
+        /// and nothing closes. Same command, different payload per job.
+        /// </summary>
+        public const int PickedOffset = 75;
+
+        /// <summary>
+        /// The window's confirm button outside team composition — "Rest" at a campsite, the feeding at a
+        /// shop: <c>[3]</c>, sent with the window closing, answered by a <c>SelectYesno</c>.
+        /// </summary>
+        public const int ConfirmCommand = 3;
+
         /// <summary>A beast's HP as the row shows it, "2943/2943". Offset 5 carries the first number alone.</summary>
         public const int HpTextOffset = 4;
 
@@ -558,6 +574,12 @@ public static class XbmColumns
         /// </summary>
         public const int CommenceBattleValue = 40056;
 
+        /// <summary>
+        /// What "Commence Battle" sends: <c>[8]</c>, one Int, with the window closing. Recorded on all five
+        /// fights of a run. The run then loads into a separate arena in the same zone.
+        /// </summary>
+        public const int CommenceBattleCommand = 8;
+
         public const int FleeValue = 40057;
 
         /// <summary>-1 before a run; in a run the room list index of the room the board marks.</summary>
@@ -657,6 +679,14 @@ public static class XbmColumns
         /// </summary>
         public const uint RoomTriggerDataId = 2015483;
 
+        /// <summary>
+        /// "In Event": on the player the moment a room starts — together with the condition flag
+        /// SufferingStatusAffliction2 — about two seconds before the room's windows open. A room
+        /// starts when the player is within 0.4 to 1.8 yalms of its centre (one recorded run, nine
+        /// rooms).
+        /// </summary>
+        public const uint InEventStatus = 1268;
+
         /// <summary>The event object at the entrance that opens the board selection.</summary>
         public const uint EntranceDataId = 2015511;
 
@@ -677,8 +707,37 @@ public static class XbmColumns
 
         public const string Result = "XBMResult";
 
-        /// <summary>The job's own gauge on the HUD. Never dumped yet.</summary>
+        /// <summary>The job's own gauge on the HUD, in two parts: JobHudXBM0 and JobHudXBM1.</summary>
         public const string JobHud = "JobHudXBM";
+
+        /// <summary>
+        /// The spoils: <c>[1]</c>, with the window closing, takes everything; a <c>SelectYesno</c>
+        /// ("You will receive:") confirms it.
+        /// </summary>
+        public const int TakeSpoilsCommand = 1;
+
+        /// <summary>
+        /// A treasure coffer offers four items. <c>[2, n]</c> — both Ints, n counted from 0, with the
+        /// window closing — picks one, and a <c>SelectYesno</c> ("Choose the angel robe?") confirms it;
+        /// answering No leaves the choice open. The offers are blocks of five values from
+        /// <see cref="TreasureFirstOffer"/>, the <c>XBMItem</c> row at +3.
+        /// </summary>
+        public const int ChooseTreasureCommand = 2;
+
+        public const int TreasureOffers = 4;
+        public const int TreasureFirstOffer = 3;
+        public const int TreasureOfferStride = 5;
+        public const int TreasureItemOffset = 3;
+
+        /// <summary>
+        /// The shop's own close: <c>[0]</c>, with the window closing, then a <c>SelectYesno</c>
+        /// ("Conclude purchasing and leave the shop?"). <c>[2, n]</c> buys or feeds item n, and the
+        /// window sends itself <c>[8]</c> after every change.
+        /// </summary>
+        public const int LeaveShopCommand = 0;
+
+        /// <summary>A <c>SelectYesno</c>'s answers: <c>[0]</c> yes, <c>[1]</c> no, both closing it.</summary>
+        public const int Yes = 0;
     }
 
     /// <summary>

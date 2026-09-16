@@ -8,7 +8,8 @@ namespace BeastMastr;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public const int CurrentVersion = 1;
+    /// <summary>2: Parting Blow on by default, since that is how the job was played in the first recording.</summary>
+    public const int CurrentVersion = 2;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -106,6 +107,24 @@ public class Configuration : IPluginConfiguration
     /// <summary>Mark the route on the game's board window, with a pin on every fork to pick a room.</summary>
     public bool ShowRouteOnBoard { get; set; } = true;
 
+    /// <summary>
+    /// Which of a treasure coffer's four offers the run takes, counted from 0. -1 hands the choice to
+    /// you, and the run carries on once you have picked.
+    /// </summary>
+    public int TreasurePick { get; set; }
+
+    /// <summary>
+    /// At a shop the run buys nothing and leaves. On: it hands the shop to you instead, and carries on
+    /// once you have left it.
+    /// </summary>
+    public bool ShopByHand { get; set; }
+
+    /// <summary>
+    /// At a campsite the run picks the most hurt familiars. Off: it rests alone — you recover 90%,
+    /// the familiars keep watch.
+    /// </summary>
+    public bool CampsiteRestFamiliars { get; set; } = true;
+
     /// <summary>How many boards <c>/beastmastr run</c> plays when no number is given.</summary>
     public int RunCount { get; set; } = 1;
 
@@ -157,7 +176,7 @@ public class Configuration : IPluginConfiguration
     /// Send the familiar off with Parting Blow when its cooldowns are spent, to summon the next one and
     /// have them reset. Off until a recording shows it pays.
     /// </summary>
-    public bool UsePartingBlow { get; set; }
+    public bool UsePartingBlow { get; set; } = true;
 
     public bool UseShieldCharge { get; set; } = true;
 
@@ -223,6 +242,19 @@ public class Configuration : IPluginConfiguration
     public bool ShowDataTab { get; set; } = true;
 
     public void Save() => Services.PluginInterface.SavePluginConfig(this);
+
+    /// <summary>Brings an older saved config up to date. Returns whether anything changed.</summary>
+    public bool Migrate()
+    {
+        if (Version >= CurrentVersion)
+            return false;
+
+        if (Version < 2)
+            UsePartingBlow = true;
+
+        Version = CurrentVersion;
+        return true;
+    }
 }
 
 /// <summary>

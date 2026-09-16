@@ -72,17 +72,21 @@ public sealed class BoardWalker : IDisposable
     public bool Busy => State is Phase.WaitingForScan or Phase.Walking or Phase.Paused;
 
     /// <summary>Walks to <paramref name="eventIndex"/>, which has to be a room the run can step to next.</summary>
-    public bool Walk(int eventIndex)
+    /// <param name="fromEvent">
+    /// The room the run has finished, when the caller knows it better than the board does; otherwise
+    /// the board's own word is taken.
+    /// </param>
+    public bool Walk(int eventIndex, int fromEvent = -1)
     {
         Stop(null);
 
         if (board.Graph is not { IsValid: true } graph)
             return Fail("There is no usable board: " + board.Status);
 
-        if (!board.InRunZone)
-            return Fail("Walking only happens inside the run's zone.");
+        if (!board.OnBoard)
+            return Fail("Walking only happens on the board.");
 
-        var current = board.CurrentEvent;
+        var current = fromEvent >= 0 ? fromEvent : board.CurrentEvent;
         if (current < 0)
             return Fail("Where the run stands is not known yet. Open the Board Layout once.");
 
@@ -338,6 +342,11 @@ public sealed class BoardWalker : IDisposable
     private bool RoomStarted()
     {
         if (board.MarkedEvent == Target || board.TriggerEvent == Target)
+            return true;
+
+        // The first sign, about two seconds before any window: "In Event" on the player.
+        if (Services.Objects.LocalPlayer is { } player &&
+            player.StatusList.Any(status => status.StatusId == XbmColumns.Crucible.InEventStatus))
             return true;
 
         if (PetPartyReader.Mode() is XbmColumns.PetParty.FightMode or XbmColumns.PetParty.CampsiteMode)

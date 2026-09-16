@@ -161,6 +161,8 @@ public sealed class RunTab : ITab
             configuration.Save();
         }
 
+        DrawRoomChoices();
+
         var failed = runner.State == Automation.Run.BoardRunner.Phase.Failed;
         ImGui.TextColored(failed ? Bad : runner.Running ? Good : Muted,
                           $"{runner.State}{(runner.Paused ? " (paused)" : string.Empty)}: {runner.Status}");
@@ -178,6 +180,46 @@ public sealed class RunTab : ITab
 
         foreach (var line in runner.Log)
             ImGui.TextDisabled(line);
+    }
+
+    /// <summary>What the run does in the rooms that offer a choice.</summary>
+    private void DrawRoomChoices()
+    {
+        using var node = ImRaii.TreeNode("In the rooms");
+        if (!node.Success)
+            return;
+
+        var pick = configuration.TreasurePick;
+        var label = pick < 0 ? "Let me choose" : $"Offer {pick + 1}";
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("Treasure", label))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.Selectable("Let me choose", pick < 0))
+                    SetTreasure(-1);
+
+                for (var offer = 0; offer < XbmColumns.RunWindows.TreasureOffers; offer++)
+                {
+                    if (ImGui.Selectable($"Offer {offer + 1}", pick == offer))
+                        SetTreasure(offer);
+                }
+            }
+        }
+
+        Widgets.HelpMarker("A treasure coffer offers four items, left to right. The run takes the one set here " +
+                           "(the first one offered if that slot is empty), or hands the choice to you.");
+
+        Toggle("Let me shop (otherwise the run leaves without buying)", configuration.ShopByHand,
+               value => configuration.ShopByHand = value);
+        Toggle("Rest the most hurt familiars at a campsite (otherwise rest alone)",
+               configuration.CampsiteRestFamiliars, value => configuration.CampsiteRestFamiliars = value);
+    }
+
+    private void SetTreasure(int pick)
+    {
+        configuration.TreasurePick = pick;
+        configuration.Save();
     }
 
     /// <summary>What can be set going from here, and how it stops.</summary>
@@ -658,15 +700,24 @@ public sealed class RunTab : ITab
 
         if (grid != null)
         {
+            // The platforms are what is walked on; the ground two and a half yalms below them is what
+            // a step off a platform lands on. Told apart by height against the rooms' own floor.
+            var floor = terrain.Current!.Rooms.Where(room => room.Floor != null)
+                               .Select(room => room.Floor!.Value.Y)
+                               .DefaultIfEmpty(0f)
+                               .Average();
+
             for (var gz = 0; gz < grid.Depth; gz++)
             {
                 for (var gx = 0; gx < grid.Width; gx++)
                 {
-                    if (float.IsNaN(grid.At(gx, gz)))
+                    var height = grid.At(gx, gz);
+                    if (float.IsNaN(height))
                         continue;
 
                     var corner = At(grid.OriginX + ((gx - 0.5f) * grid.Step), grid.OriginZ + ((gz - 0.5f) * grid.Step));
-                    draw.AddRectFilled(corner, corner + new Vector2(grid.Step * scale), 0xFF3A3A3A);
+                    var colour = MathF.Abs(height - floor) < 0.6f ? 0xFF5A5A5Au : 0xFF2A2A2Au;
+                    draw.AddRectFilled(corner, corner + new Vector2(grid.Step * scale), colour);
                 }
             }
         }
@@ -729,7 +780,8 @@ public sealed class RunTab : ITab
         if (Services.Objects.LocalPlayer is { } player)
             draw.AddCircleFilled(At(player.Position.X, player.Position.Z), 4f * ImGuiHelpers.GlobalScale, 0xFFFFFFFF);
 
-        ImGui.TextDisabled("Grey: scanned floor. Lines: links — green walkable, red unsafe, grey not scanned; " +
+        ImGui.TextDisabled("Light grey: platforms. Dark grey: the ground below them. " +
+                           "Lines: links — green walkable, red unsafe, grey not scanned; " +
                            "thick is the route. Rings: star pick (yellow), planned (green), where the run stands (white).");
     }
 
