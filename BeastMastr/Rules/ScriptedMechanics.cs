@@ -106,14 +106,15 @@ public static class ToxicBreath
 /// Master's Board:
 /// - 2010106, an event object under the Treant: Sludge (3071) set in 8.0 yalms from its middle, and at
 ///   8.4–8.7 walking in on 2026-09-17 00:03 — with the status arriving a moment after the step.
-/// - 19674, Poison Cloud: left by Borgny's Fuming Vomit, placed circles of 6.
+/// - 19674, Poison Cloud: left by Borgny's Fuming Vomit, placed circles of 6. The clouds drift, and on
+///   2026-09-17 00:40 two hits of about 850 came 6.4 yalms from one.
 /// </summary>
 public static class GroundHazards
 {
     public static float? Radius(uint baseId) => baseId switch
     {
         2010106 => 9.5f,
-        19674 => 6.5f,
+        19674 => 7.5f,
         _ => null,
     };
 }

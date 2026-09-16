@@ -658,7 +658,7 @@ public sealed class BoardRunner : IDisposable
 
         if (configuration.ShopBuysGear && step == null)
         {
-            shopBuyer ??= new ShopBuyer(configuration.ShopBuysPotions);
+            shopBuyer ??= new ShopBuyer(configuration.ShopBuysPotions, configuration.PotionOnBoardBelow);
             shopBuyer.Tick();
             if (!shopBuyer.Done)
             {

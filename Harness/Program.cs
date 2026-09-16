@@ -736,6 +736,11 @@ Check("two badly hurt are both taken when you are nearly full", CampsiteRest.How
 Check("never more than the campsite takes", CampsiteRest.HowMany(0.1f, [0.6f, 0.5f, 0.5f], 2) <= 2);
 Check("the recording's rest heals 45% each", MathF.Abs(CampsiteRest.Healed(0.55f, [0.55f], 1) - 0.9f) < 0.001f);
 
+var noDash = BstRotation.Next(Fight(distance: 10f, notReady: AllBut(Bst.ShieldCharge)) with { MayDash = false }, plain);
+Check("no Shield Charge while something is on the ground", noDash.Ogcd != Bst.ShieldCharge, noDash.Why);
+var dash = BstRotation.Next(Fight(distance: 10f, notReady: AllBut(Bst.ShieldCharge)), plain);
+Check("but otherwise, to close in", dash.Ogcd == Bst.ShieldCharge, dash.Why);
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);

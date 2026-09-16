@@ -142,6 +142,10 @@ public enum DutyTank
 /// A hit on its way that no position avoids — one aimed at you, or one that fills the arena — by name,
 /// or null.
 /// </param>
+/// <param name="MayDash">
+/// Shield Charge may be used: nothing is on the ground or on its way. Against Borgny it carried the
+/// player through the Poison Clouds and the run died of it.
+/// </param>
 /// <param name="FamiliarLeaving">
 /// Parting Blow has sent the familiar off and no new one has come yet. It stays on the field for a few
 /// seconds, but the next Battlehorn is already usable, and that is when it was pressed in the recording.
@@ -167,7 +171,8 @@ public sealed record BstState(
     float PlayerHpShare = 1f,
     float FamiliarHpShare = 1f,
     bool TargetOnFamiliar = false,
-    string? UnavoidableHit = null);
+    string? UnavoidableHit = null,
+    bool MayDash = true);
 
 /// <param name="Gcd">The weaponskill to press, or 0.</param>
 /// <param name="Ogcd">The ability to press alongside it, or 0.</param>
@@ -333,8 +338,8 @@ public static class BstRotation
             }
         }
 
-        if (options.UseShieldCharge && state.TargetDistance > MeleeRange + 1f && state.TargetDistance <= 20f &&
-            Usable(state, Bst.ShieldCharge))
+        if (options.UseShieldCharge && state.MayDash && state.TargetDistance > MeleeRange + 1f &&
+            state.TargetDistance <= 20f && Usable(state, Bst.ShieldCharge))
         {
             why.Add("Shield Charge to close in");
             return Bst.ShieldCharge;

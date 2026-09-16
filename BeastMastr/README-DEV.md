@@ -2207,3 +2207,27 @@ The run reached the Treant at 1654 of 6199 HP, with nothing left to drink.
   (`ShopBuysPotions`).
 - At or below half HP, a coffer's strongest healing item is taken instead of gear
   (`TreasureHealBelow`).
+
+### As far as Borgny — 2026-09-17
+
+`captures/run-20260917-003214.txt` played the First Master's Board to its boss. What worked:
+- shops bought gear and a G2 Beast Potion;
+- the campsite rested with two familiars;
+- the Gargoyle and the Treant were survived;
+- potions were drunk in a fight and on the board;
+- a coffer gave a G3 Crucible Ash at low HP.
+
+At Borgny, the first Toxic Breath was dodged against the south wall without a scratch.
+
+**The death:** Borgny leapt back to the middle, and Shield Charge carried the player after it, through
+drifting Poison Clouds: two hits of about 850 and stacking Toxicosis. The clouds move; the ones placed at
+(920, −408) were gone from (920, −400.5).
+- Shield Charge now waits while any hit or patch is around (`BstState.MayDash`).
+- Poison Clouds count as 7.5 yalms.
+
+**The HP:** the run met Borgny at 45%, the last shop's 1100 tokens having gone on a Mystic Veil. At or
+below the board's drinking threshold (60%), the shop now buys healing items before gear.
+
+Borgny faced −0.77 when it cast the second Toxic Breath from the middle, so its refuge was predicted at the
+south-east wall. Whether it leaps straight back from its facing there is not shown yet: the player died
+before the leap.

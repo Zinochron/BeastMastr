@@ -21,6 +21,7 @@ public sealed class ShopBuyer
 
     private readonly HashSet<int> tried = [];
     private readonly bool buyPotions;
+    private readonly float potionsFirstBelow;
     private readonly List<string> bought = [];
     private RoomActions.ShopOffer? pending;
     private DateTime stageSince = DateTime.Now;
@@ -28,7 +29,15 @@ public sealed class ShopBuyer
     private int tokensBefore;
 
     /// <param name="buyPotions">With no gear left to buy, spend what is left on healing items, strongest first.</param>
-    public ShopBuyer(bool buyPotions = false) => this.buyPotions = buyPotions;
+    /// <param name="potionsFirstBelow">
+    /// At or below this share of HP, healing items come before gear: the run met Borgny at 45% after the
+    /// last shop's tokens went on a Mystic Veil.
+    /// </param>
+    public ShopBuyer(bool buyPotions = false, float potionsFirstBelow = 0f)
+    {
+        this.buyPotions = buyPotions;
+        this.potionsFirstBelow = potionsFirstBelow;
+    }
 
     public bool Done { get; private set; }
 
@@ -49,24 +58,26 @@ public sealed class ShopBuyer
                     return;
 
                 var tokens = RoomActions.ShopTokens();
-                pending = RoomActions.ShopOffers()
-                                     .Where(offer => offer.IsGear && !offer.Bought && !offer.Held &&
-                                                     offer.Price > 0 && offer.Price <= tokens &&
-                                                     !tried.Contains(offer.Index))
-                                     .OrderByDescending(offer => offer.Price)
-                                     .FirstOrDefault();
+                var offers = RoomActions.ShopOffers();
+                var gear = offers.Where(offer => offer.IsGear && !offer.Bought && !offer.Held &&
+                                                 offer.Price > 0 && offer.Price <= tokens &&
+                                                 !tried.Contains(offer.Index))
+                                 .OrderByDescending(offer => offer.Price)
+                                 .FirstOrDefault();
 
                 // HP does not come back on its own, and the Strix alone took three quarters of it.
-                if (pending == null && buyPotions)
-                {
-                    pending = RoomActions.ShopOffers()
-                                         .Where(offer => ItemUser.Heals.ContainsKey(offer.Row) && !offer.Bought &&
-                                                         offer.Price > 0 && offer.Price <= tokens &&
-                                                         !tried.Contains(offer.Index))
-                                         .OrderByDescending(offer => ItemUser.Heals[offer.Row])
-                                         .ThenBy(offer => offer.Price)
-                                         .FirstOrDefault();
-                }
+                var healing = buyPotions
+                                  ? offers.Where(offer => ItemUser.Heals.ContainsKey(offer.Row) && !offer.Bought &&
+                                                          offer.Price > 0 && offer.Price <= tokens &&
+                                                          !tried.Contains(offer.Index))
+                                          .OrderByDescending(offer => ItemUser.Heals[offer.Row])
+                                          .ThenBy(offer => offer.Price)
+                                          .FirstOrDefault()
+                                  : null;
+
+                var low = Services.Objects.LocalPlayer is { MaxHp: > 0 } player &&
+                          (float)player.CurrentHp / player.MaxHp <= potionsFirstBelow;
+                pending = low ? healing ?? gear : gear ?? healing;
 
                 if (pending == null)
                 {

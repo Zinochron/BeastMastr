@@ -96,6 +96,9 @@ public sealed unsafe class CombatDriver : IDisposable
     private const float OffArenaRadius = 25f;
 
     private DodgePlan? dodge;
+
+    /// <summary>How many hits and patches the last dodge plan saw.</summary>
+    private int zonesAround;
     private DateTime nextDodgePlan;
     private Vector2 dodgeGoal;
     private DateTime nextDodgeOrder;
@@ -394,7 +397,8 @@ public sealed unsafe class CombatDriver : IDisposable
             PlayerHpShare: Share(player),
             FamiliarHpShare: summoned == null ? 1f : Share(summoned),
             TargetOnFamiliar: familiars.Any(familiar => familiar.GameObjectId == target.TargetObjectId),
-            UnavoidableHit: configuration.UseDutyActions ? EnemyCasts.Unavoidable(player) : null);
+            UnavoidableHit: configuration.UseDutyActions ? EnemyCasts.Unavoidable(player) : null,
+            MayDash: dodge == null && zonesAround == 0);
     }
 
     private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;
@@ -450,6 +454,7 @@ public sealed unsafe class CombatDriver : IDisposable
         var here = new Vector2(player.Position.X, player.Position.Z);
         var arena = CrucibleArena.CentreNear(here);
         var zones = EnemyCasts.Zones(player);
+        zonesAround = zones.Count;
         if (arena == null && zones.Count == 0)
             return null;
 
