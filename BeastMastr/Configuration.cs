@@ -106,6 +106,28 @@ public class Configuration : IPluginConfiguration
     /// <summary>Mark the route on the game's board window, with a pin on every fork to pick a room.</summary>
     public bool ShowRouteOnBoard { get; set; } = true;
 
+    // ---- When you take over ----------------------------------------------
+    // Whatever the automation is doing, your own input wins at once. These decide what happens after.
+
+    /// <summary>Stop the run for good on manual input instead of pausing it.</summary>
+    public bool AbortOnManualInput { get; set; }
+
+    /// <summary>How long after your last input a paused run carries on.</summary>
+    public float ResumeDelaySeconds { get; set; } = 3f;
+
+    /// <summary>Typing into chat or a text field, and keys ImGui is using, do not count as taking over.</summary>
+    public bool IgnoreMenuInput { get; set; } = true;
+
+    public bool CountMovementInput { get; set; } = true;
+    public bool CountJumpInput { get; set; } = true;
+    public bool CountTargetingInput { get; set; } = true;
+
+    /// <summary>An action pressed on a hotbar. Automated actions never go through the hotbar.</summary>
+    public bool CountActionInput { get; set; } = true;
+
+    /// <summary>How far the left stick has to be pushed to count, 0 to 1.</summary>
+    public float StickDeadzone { get; set; } = 0.3f;
+
     /// <summary>A method rather than a property, so the saved config does not carry a copy of it.</summary>
     public Rules.RoutePreferences BuildRoutePreferences() =>
         new(RouteOrder.Count == 0

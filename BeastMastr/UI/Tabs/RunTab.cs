@@ -26,12 +26,17 @@ public sealed class RunTab : ITab
     private readonly RouteKeeper route;
     private readonly Native.RouteOverlay overlay;
     private readonly RunRecorder recorder;
+    private readonly Automation.Run.BoardWalker walker;
+    private readonly Automation.Run.ManualInputGuard input;
 
     private string imageResult = string.Empty;
 
     public RunTab(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
-                  Native.RouteOverlay overlay, RunRecorder recorder)
+                  Native.RouteOverlay overlay, RunRecorder recorder, Automation.Run.BoardWalker walker,
+                  Automation.Run.ManualInputGuard input)
     {
+        this.walker = walker;
+        this.input = input;
         this.configuration = configuration;
         this.board = board;
         this.terrain = terrain;
@@ -46,6 +51,8 @@ public sealed class RunTab : ITab
     public void Draw()
     {
         DrawHelpers();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawControls();
         ImGuiHelpers.ScaledDummy(4f);
         DrawBoard();
         ImGuiHelpers.ScaledDummy(4f);
@@ -94,6 +101,100 @@ public sealed class RunTab : ITab
         {
             ImGui.SameLine();
             ImGui.TextDisabled(recorder.LastPath);
+        }
+    }
+
+    /// <summary>What can be set going from here, and how it stops.</summary>
+    private void DrawControls()
+    {
+        if (!ImGui.CollapsingHeader("Walking", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        using (ImRaii.Disabled(walker.Busy || route.NextEvent < 0))
+        {
+            if (ImGui.Button("Walk to the next room"))
+                walker.Walk(route.NextEvent);
+        }
+
+        Widgets.HelpMarker("Walks one room along the route and stops as the room starts. " +
+                           "Same as /beastmastr step. Scans the ground first if it has not been.");
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!walker.Busy))
+        {
+            if (ImGui.Button("Stop"))
+                walker.Stop(null);
+        }
+
+        ImGui.TextColored(walker.State == Automation.Run.BoardWalker.Phase.Failed ? Bad : Muted,
+                          $"{walker.State}: {walker.Status}");
+
+        ImGui.TextDisabled(input.LastInput.Length == 0
+                               ? "No manual input seen."
+                               : $"Last manual input: {input.LastInput}, {input.SecondsSinceInput:0.0} s ago.");
+
+        using var node = ImRaii.TreeNode("When you take over");
+        if (!node.Success)
+            return;
+
+        var abort = configuration.AbortOnManualInput;
+        if (ImGui.Checkbox("Stop for good instead of pausing", ref abort))
+        {
+            configuration.AbortOnManualInput = abort;
+            configuration.Save();
+        }
+
+        var delay = configuration.ResumeDelaySeconds;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderFloat("Carry on after", ref delay, 0.5f, 30f, "%.1f s without input"))
+        {
+            configuration.ResumeDelaySeconds = delay;
+            configuration.Save();
+        }
+
+        var menus = configuration.IgnoreMenuInput;
+        if (ImGui.Checkbox("Ignore typing and keys used by plugin windows", ref menus))
+        {
+            configuration.IgnoreMenuInput = menus;
+            configuration.Save();
+        }
+
+        ImGui.TextUnformatted("What counts as taking over:");
+
+        var movement = configuration.CountMovementInput;
+        if (ImGui.Checkbox("Moving (keys, autorun, left stick)", ref movement))
+        {
+            configuration.CountMovementInput = movement;
+            configuration.Save();
+        }
+
+        var jump = configuration.CountJumpInput;
+        if (ImGui.Checkbox("Jumping", ref jump))
+        {
+            configuration.CountJumpInput = jump;
+            configuration.Save();
+        }
+
+        var targeting = configuration.CountTargetingInput;
+        if (ImGui.Checkbox("Targeting (keys, or clicking something in the world)", ref targeting))
+        {
+            configuration.CountTargetingInput = targeting;
+            configuration.Save();
+        }
+
+        var actions = configuration.CountActionInput;
+        if (ImGui.Checkbox("Pressing an action on a hotbar", ref actions))
+        {
+            configuration.CountActionInput = actions;
+            configuration.Save();
+        }
+
+        var deadzone = configuration.StickDeadzone * 100f;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderFloat("Stick deadzone", ref deadzone, 5f, 90f, "%.0f%%"))
+        {
+            configuration.StickDeadzone = deadzone / 100f;
+            configuration.Save();
         }
     }
 

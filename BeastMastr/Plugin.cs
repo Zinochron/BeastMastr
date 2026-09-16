@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Dalamud.Game.Command;
 using Dalamud.Interface.Windowing;
@@ -6,6 +7,7 @@ using Dalamud.Plugin;
 using ECommons;
 using KamiToolKit;
 using BeastMastr.Automation;
+using BeastMastr.Automation.Run;
 using BeastMastr.Data;
 using BeastMastr.Native;
 using BeastMastr.Rules;
@@ -32,6 +34,8 @@ public sealed class Plugin : IDalamudPlugin
     private readonly BoardTerrain boardTerrain;
     private readonly RouteKeeper routeKeeper;
     private readonly RouteOverlay routeOverlay;
+    private readonly ManualInputGuard inputGuard;
+    private readonly BoardWalker walker;
     private readonly TeamSelector teamSelector;
     private readonly HealthSelector healthSelector;
     private readonly DifficultySelector difficultySelector;
@@ -83,6 +87,8 @@ public sealed class Plugin : IDalamudPlugin
         boardModel = new BoardModel(Configuration);
         boardTerrain = new BoardTerrain(Configuration, boardModel);
         routeKeeper = new RouteKeeper(Configuration, Catalog, boardModel, boardTerrain);
+        inputGuard = new ManualInputGuard(Configuration, actionWatcher);
+        walker = new BoardWalker(Configuration, boardModel, boardTerrain, inputGuard);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
         difficultySelector = new DifficultySelector(Configuration);
@@ -94,7 +100,7 @@ public sealed class Plugin : IDalamudPlugin
         actionButtons = new ActionButtons(Configuration, teamSelector, fightSelector, healthSelector,
                                           () => kamiToolKitReady.IsCompletedSuccessfully);
         carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
-        nextRoom = new NextRoomPanel(Configuration, boardCache, enemies, boardModel, routeKeeper,
+        nextRoom = new NextRoomPanel(Configuration, boardCache, enemies, boardModel, routeKeeper, StepToNextRoom,
                                      () => kamiToolKitReady.IsCompletedSuccessfully);
         routeOverlay = new RouteOverlay(Configuration, boardModel, routeKeeper,
                                         () => kamiToolKitReady.IsCompletedSuccessfully);
@@ -102,7 +108,8 @@ public sealed class Plugin : IDalamudPlugin
         var tabs = new List<ITab>
         {
             new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
-            new RunTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder),
+            new RunTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder, walker,
+                       inputGuard),
         };
         if (Configuration.ShowDataTab)
         {
@@ -121,7 +128,9 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings, " +
                           "/beastmastr room (open or close the next-room window), " +
                           "/beastmastr record (start or stop recording a run to a file), " +
-                          "/beastmastr scan (scan the board's ground with vnavmesh), /beastmastr run (the Run tab).",
+                          "/beastmastr scan (scan the board's ground with vnavmesh), " +
+                          "/beastmastr step (walk to the next room of the route), /beastmastr stop (stop everything), " +
+                          "/beastmastr run (the Run tab).",
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -159,10 +168,41 @@ public sealed class Plugin : IDalamudPlugin
                 mainWindow.OpenAt("run");
                 break;
 
+            case "step":
+                StepToNextRoom();
+                break;
+
+            case "stop":
+                StopEverything("Stopped by /beastmastr stop.");
+                break;
+
             default:
                 ToggleMainUi();
                 break;
         }
+    }
+
+    /// <summary>Walks one room along the route. The one thing a single press should do.</summary>
+    private void StepToNextRoom()
+    {
+        routeKeeper.Replan();
+        var next = routeKeeper.NextEvent;
+        if (next < 0)
+        {
+            Services.Chat.Print("[BeastMastr] There is no next room on the route: " +
+                                string.Join(" ", routeKeeper.Plan.Notes.DefaultIfEmpty(boardModel.Status)));
+            return;
+        }
+
+        if (walker.Walk(next))
+            Services.Chat.Print($"[BeastMastr] {walker.Status}");
+    }
+
+    private void StopEverything(string reason)
+    {
+        walker.Stop(null);
+        boardTerrain.Cancel();
+        Services.Chat.Print($"[BeastMastr] {reason}");
     }
 
     private void ToggleMainUi() => mainWindow.Toggle();
@@ -188,6 +228,8 @@ public sealed class Plugin : IDalamudPlugin
         rankWatcher.Dispose();
         enemies.Dispose();
         boardCache.Dispose();
+        walker.Dispose();
+        inputGuard.Dispose();
         routeKeeper.Dispose();
         boardTerrain.Dispose();
         boardModel.Dispose();

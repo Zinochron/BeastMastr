@@ -31,6 +31,7 @@ public sealed class NextRoomPanel : IDisposable
     private readonly EnemyCache enemies;
     private readonly BoardModel model;
     private readonly RouteKeeper route;
+    private readonly Action walkNext;
     private readonly Func<bool> nativeUiReady;
 
     private NextRoomAddon? window;
@@ -51,8 +52,9 @@ public sealed class NextRoomPanel : IDisposable
     private bool broken;
 
     public NextRoomPanel(Configuration configuration, BoardCache board, EnemyCache enemies, BoardModel model,
-                         RouteKeeper route, Func<bool> nativeUiReady)
+                         RouteKeeper route, Action walkNext, Func<bool> nativeUiReady)
     {
+        this.walkNext = walkNext;
         this.configuration = configuration;
         this.board = board;
         this.enemies = enemies;
@@ -179,6 +181,7 @@ public sealed class NextRoomPanel : IDisposable
             OpenInBounds = true,
             OnPrevious = () => Step(-1),
             OnNext = () => Step(1),
+            OnWalk = () => walkNext(),
         };
 
     /// <summary>The move the panel is showing: the next one, plus however far the arrows have walked.</summary>
@@ -305,6 +308,8 @@ internal sealed unsafe class NextRoomAddon : NativeAddon
     private const uint BodyNodeId = 0x42470002;
     private const uint PreviousNodeId = 0x42470003;
     private const uint NextNodeId = 0x42470004;
+    private const uint WalkNodeId = 0x42470005;
+    private const float WalkWidth = 80f;
 
     private const float ArrowWidth = 40f;
     private const float ArrowHeight = 24f;
@@ -314,6 +319,7 @@ internal sealed unsafe class NextRoomAddon : NativeAddon
     private TextNode? body;
     private TextButtonNode? previous;
     private TextButtonNode? next;
+    private TextButtonNode? walk;
 
     private string headlineText = string.Empty;
     private string bodyText = string.Empty;
@@ -322,6 +328,9 @@ internal sealed unsafe class NextRoomAddon : NativeAddon
 
     public Action? OnPrevious { get; init; }
     public Action? OnNext { get; init; }
+
+    /// <summary>Walks to the route's next room — the same as /beastmastr step.</summary>
+    public Action? OnWalk { get; init; }
 
     public void Show(string title, string text, bool back, bool on)
     {
@@ -382,10 +391,21 @@ internal sealed unsafe class NextRoomAddon : NativeAddon
             OnClick = () => OnNext?.Invoke(),
         };
 
+        walk = new TextButtonNode
+        {
+            NodeId = WalkNodeId,
+            Position = start + new Vector2(size.X - WalkWidth, size.Y - ArrowHeight),
+            Size = new Vector2(WalkWidth, ArrowHeight),
+            String = "Walk",
+            IsVisible = true,
+            OnClick = () => OnWalk?.Invoke(),
+        };
+
         AddNode(headline);
         AddNode(body);
         AddNode(previous);
         AddNode(next);
+        AddNode(walk);
 
         Apply();
     }
