@@ -196,6 +196,24 @@ public class Configuration : IPluginConfiguration
     /// <summary>…or when the target is down to this share of its HP.</summary>
     public float PartingBlowFinisherShare { get; set; } = 0.1f;
 
+    /// <summary>Decide who takes the hits with the duty actions: Challenge draws them to you, Snarl to the familiar.</summary>
+    public bool UseDutyActions { get; set; } = true;
+
+    /// <summary>Who takes the hits while neither you nor the familiar is low.</summary>
+    public Rules.DutyTank DutyTank { get; set; } = Rules.DutyTank.Auto;
+
+    /// <summary>At or below this share of your HP, the familiar takes over with Snarl.</summary>
+    public float SnarlBelowPlayerHp { get; set; } = 0.5f;
+
+    /// <summary>At or below this share of the familiar's HP, you take over with Challenge.</summary>
+    public float ChallengeBelowFamiliarHp { get; set; } = 0.35f;
+
+    /// <summary>
+    /// The version of BeastMastr's BossMod presets last written. An older one is written again before the
+    /// next fight.
+    /// </summary>
+    public int BossModPresetVersion { get; set; }
+
     /// <summary>Walk into melee range with vnavmesh when BossMod is not doing the moving.</summary>
     public bool KeepRangeWithNavmesh { get; set; } = true;
 

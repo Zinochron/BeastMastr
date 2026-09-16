@@ -4,7 +4,10 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using BeastMastr.Rules;
 using Dalamud.Game.ClientState.Conditions;
+using Dalamud.Game.ClientState.Objects.Enums;
+using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Text;
 using Dalamud.Game.Chat;
@@ -74,6 +77,10 @@ public sealed unsafe class RunRecorder : IDisposable
     private int currentEvent = -2;
     private string target = string.Empty;
     private string cast = string.Empty;
+    private string health = string.Empty;
+
+    /// <summary>What each enemy was last seen casting, so a cast is written once, as it starts.</summary>
+    private readonly Dictionary<ulong, uint> enemyCasts = [];
     private Vector3 lastPosition = new(float.NaN);
     private DateTime lastPositionAt;
     private DateTime lastObjectsAt;
@@ -282,7 +289,8 @@ public sealed unsafe class RunRecorder : IDisposable
         Block($"# {MapMarkerReader.DescribeTransform()}");
         Block("# Columns: time, kind, text. Kinds: flag+/flag-, zone, open/close, values, nodes, diff, cb (callback " +
               "or input event), use (action), combo, gauge, pets, event (board's current event), target, cast, " +
-              "status+/status-, pos, obj+/obj-/obj~, chat, board, marker");
+              "status+/status-, pos, obj+/obj-/obj~, chat, board, marker, ecast (an enemy's cast, helpers " +
+              "included, with its shape), hp (yours and your familiars')");
         Block(string.Empty);
         WriteBoard();
     }
@@ -536,6 +544,75 @@ public sealed unsafe class RunRecorder : IDisposable
             cast = castText;
             Line("cast", castText);
         }
+
+        if (player == null)
+            return;
+
+        PollEnemyCasts(player);
+        PollHealth(player);
+    }
+
+    /// <summary>
+    /// Every enemy cast as it starts — the hidden helpers' too, which is where the Crucible's area hits
+    /// come from — with the shape BossMod dodges by, for telling afterwards what could not be dodged.
+    /// </summary>
+    private void PollEnemyCasts(IPlayerCharacter player)
+    {
+        var seen = new HashSet<ulong>();
+
+        foreach (var caster in EnemyCasts.Casting(player))
+        {
+            seen.Add(caster.GameObjectId);
+            if (enemyCasts.TryGetValue(caster.GameObjectId, out var known) && known == caster.CastActionId)
+                continue;
+
+            enemyCasts[caster.GameObjectId] = caster.CastActionId;
+
+            var target = caster.CastTargetObjectId;
+            var on = target == player.GameObjectId ? "you"
+                     : target == caster.GameObjectId ? "itself"
+                     : $"0x{target:X}";
+
+            var text = new StringBuilder();
+            text.Append($"\"{caster.Name.TextValue}\" base={caster.BaseId} id=0x{caster.GameObjectId:X} ");
+            text.Append($"{caster.CastActionId} {ActionName(caster.CastActionId)} on {on} {caster.TotalCastTime:0.0}s");
+
+            if (EnemyCasts.ShapeOf(caster.CastActionId) is { } shape)
+            {
+                text.Append($" type={shape.CastType} range={shape.EffectRange} width={shape.Width} area={shape.TargetArea}");
+                if (shape.Id != caster.CastActionId)
+                    text.Append($" (shape of {shape.Id})");
+
+                var unavoidable = IncomingHits.Unavoidable(shape.CastType, shape.EffectRange, shape.TargetArea,
+                                                           target == player.GameObjectId);
+                text.Append($" unavoidable={unavoidable}");
+            }
+
+            text.Append($" at {caster.Position.X:0.0}/{caster.Position.Z:0.0}");
+            Line("ecast", text.ToString());
+        }
+
+        foreach (var gone in enemyCasts.Keys.Where(id => !seen.Contains(id)).ToList())
+            enemyCasts.Remove(gone);
+    }
+
+    private void PollHealth(IPlayerCharacter player)
+    {
+        var text = new StringBuilder($"you {player.CurrentHp}/{player.MaxHp}");
+
+        foreach (var obj in Services.Objects)
+        {
+            if (obj is IBattleChara { ObjectKind: ObjectKind.BattleNpc, IsDead: false } familiar &&
+                familiar.SubKind == (byte)BattleNpcSubKind.Pet && familiar.OwnerId == player.EntityId)
+                text.Append($", \"{familiar.Name.TextValue}\" {familiar.CurrentHp}/{familiar.MaxHp}");
+        }
+
+        var now = text.ToString();
+        if (now == health)
+            return;
+
+        health = now;
+        Line("hp", now);
     }
 
     private void PollBoard()

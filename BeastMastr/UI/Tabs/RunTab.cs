@@ -457,11 +457,72 @@ public sealed class RunTab : ITab
         }
         Toggle("Close gaps with Shield Charge", configuration.UseShieldCharge,
                value => configuration.UseShieldCharge = value);
+        DutyActionSettings();
         Toggle("Walk into reach with vnavmesh when BossMod is off", configuration.KeepRangeWithNavmesh,
                value => configuration.KeepRangeWithNavmesh = value);
         Toggle("Let BossMod keep dodging while you have taken over", configuration.KeepBossModWhilePaused,
                value => configuration.KeepBossModWhilePaused = value);
     }
+
+    private void DutyActionSettings()
+    {
+        Toggle("Decide who takes the hits with the duty actions", configuration.UseDutyActions,
+               value => configuration.UseDutyActions = value);
+        Widgets.HelpMarker("Duty Action I, Challenge: you draw the enemy, and the familiar's cover ends.\n" +
+                           "Duty Action II, Snarl: the familiar draws the enemy and takes every hit meant for you, " +
+                           "for 45 seconds.\n" +
+                           "They share one 15 second recast. Snarl goes out for a hit no position avoids (one aimed at " +
+                           "you, or one that fills the arena) and when your HP runs low. Challenge takes the hits back " +
+                           "when the familiar runs low. Neither is pressed before the pull.");
+
+        if (!configuration.UseDutyActions)
+            return;
+
+        ImGui.Indent();
+        ImGui.SetNextItemWidth(200f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("Otherwise, the hits go to", TankName(configuration.DutyTank)))
+        {
+            if (combo.Success)
+            {
+                foreach (var tank in Enum.GetValues<DutyTank>())
+                {
+                    if (ImGui.Selectable(TankName(tank), tank == configuration.DutyTank))
+                    {
+                        configuration.DutyTank = tank;
+                        configuration.Save();
+                    }
+                }
+            }
+        }
+
+        var player = configuration.SnarlBelowPlayerHp * 100f;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderFloat("Snarl when your HP is at or below", ref player, 10f, 90f, "%.0f%%"))
+        {
+            configuration.SnarlBelowPlayerHp = player / 100f;
+            configuration.Save();
+        }
+
+        var familiar = configuration.ChallengeBelowFamiliarHp * 100f;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderFloat("Challenge when the familiar's HP is at or below", ref familiar, 10f, 90f, "%.0f%%"))
+        {
+            configuration.ChallengeBelowFamiliarHp = familiar / 100f;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker("Your HP does not come back on its own in the Crucible, and a familiar's carries on to " +
+                           "the next room; the campsite heals both.");
+        ImGui.Unindent();
+    }
+
+    private static string TankName(DutyTank tank) => tank switch
+    {
+        DutyTank.Auto => "Whoever is hit, until low",
+        DutyTank.Familiar => "The familiar (Snarl)",
+        DutyTank.Player => "You (Challenge)",
+        _ => tank.ToString(),
+    };
 
     private void Toggle(string label, bool value, Action<bool> set)
     {

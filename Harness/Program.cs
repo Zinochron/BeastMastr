@@ -357,12 +357,13 @@ Check("a choice already behind the run is ignored", fromMiddle.Events.Count == 5
 BstState Fight(int level = 50, uint combo = 0, float comboTimer = 0f, int tp = 0, int familiarTp = 0,
                uint[]? statuses = null, uint[]? notReady = null, bool inCombat = true, float distance = 1f,
                bool casting = false, bool familiarOut = true, bool leaving = false, bool prePull = false,
-               int horns = 2, float otherHornIn = 0f, float hpShare = 1f)
+               int horns = 2, float otherHornIn = 0f, float hpShare = 1f, float playerHp = 1f,
+               float familiarHp = 1f, bool onFamiliar = false, string? unavoidable = null)
 {
     var blocked = new HashSet<uint>(notReady ?? []);
     return new BstState(level, combo, comboTimer, tp, familiarTp, new HashSet<uint>(statuses ?? []),
                         id => !blocked.Contains(id), inCombat, true, distance, casting, familiarOut, leaving,
-                        prePull, horns, otherHornIn, hpShare);
+                        prePull, horns, otherHornIn, hpShare, playerHp, familiarHp, onFamiliar, unavoidable);
 }
 
 // Everything but the ability under test is on cooldown, so the check is about that ability alone.
@@ -371,7 +372,7 @@ uint[] AllBut(params uint[] keep) =>
     {
         Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn, Bst.TemperedRelease, Bst.Borrow,
         Bst.AvalancheAxe, Bst.MistralAxe, Bst.SpinningAxe, Bst.GaleAxe, Bst.Trick, Bst.Rally, Bst.RallyingCheer,
-        Bst.BeastMode, Bst.PartingBlow, Bst.ShieldCharge,
+        Bst.BeastMode, Bst.PartingBlow, Bst.ShieldCharge, Bst.Challenge, Bst.Snarl,
     }.Where(id => !keep.Contains(id)).ToArray();
 
 var plain = BstOptions.Default;
@@ -516,6 +517,60 @@ Check("it goes once the first horn is ready within ten seconds", lastGoes.Ogcd =
 var finisher = BstRotation.Next(Fight(otherHornIn: float.PositiveInfinity, hpShare: 0.05f,
                                       notReady: AllBut(Bst.PartingBlow)), plain);
 Check("or when the blow finishes the target", finisher.Ogcd == Bst.PartingBlow, finisher.Why);
+
+// Who takes the hits: Snarl hands them to the familiar, Challenge takes them back. They share a recast.
+uint[] duties = AllBut(Bst.Snarl, Bst.Challenge);
+var buster = BstRotation.Next(Fight(unavoidable: "Deadly Thrust", notReady: duties), plain);
+Check("a hit no position avoids goes to the familiar", buster.Ogcd == Bst.Snarl, buster.Why);
+
+var busterFirst = BstRotation.Next(Fight(unavoidable: "Deadly Thrust", statuses: [Bst.OneWithNature],
+                                         notReady: AllBut(Bst.Snarl, Bst.TemperedRelease)), plain);
+Check("and before Tempered Release", busterFirst.Ogcd == Bst.Snarl, busterFirst.Why);
+
+var keepCover = BstRotation.Next(Fight(unavoidable: "Arcane Blast", familiarHp: 0.2f, statuses: [Bst.Covered],
+                                       notReady: duties), plain);
+Check("a covering familiar keeps covering through the hit, low or not", keepCover.Ogcd == 0, keepCover.Why);
+
+var playerLow = BstRotation.Next(Fight(playerHp: 0.4f, notReady: duties), plain);
+Check("low HP hands the hits to the familiar", playerLow.Ogcd == Bst.Snarl, playerLow.Why);
+
+var bothLow = BstRotation.Next(Fight(playerHp: 0.4f, familiarHp: 0.2f, onFamiliar: true, notReady: duties), plain);
+Check("not to a familiar that is low itself, and nobody challenges", bothLow.Ogcd == 0, bothLow.Why);
+
+var familiarLow = BstRotation.Next(Fight(familiarHp: 0.3f, statuses: [Bst.Covered], notReady: duties), plain);
+Check("a low familiar that covers gives the hits back", familiarLow.Ogcd == Bst.Challenge, familiarLow.Why);
+
+var familiarHit = BstRotation.Next(Fight(familiarHp: 0.3f, onFamiliar: true, notReady: duties), plain);
+Check("so does a low familiar the target turned to", familiarHit.Ogcd == Bst.Challenge, familiarHit.Why);
+
+var healthyHit = BstRotation.Next(Fight(onFamiliar: true, notReady: duties), plain);
+Check("a healthy familiar under attack is left to it", healthyHit.Ogcd == 0, healthyHit.Why);
+
+var playerTanks = BstRotation.Next(Fight(onFamiliar: true, notReady: duties), plain with { Tank = DutyTank.Player });
+Check("unless you are the one who tanks", playerTanks.Ogcd == Bst.Challenge, playerTanks.Why);
+
+var familiarTanks = BstRotation.Next(Fight(notReady: duties), plain with { Tank = DutyTank.Familiar });
+Check("or the familiar is, by Snarl", familiarTanks.Ogcd == Bst.Snarl, familiarTanks.Why);
+
+var noFamiliar = BstRotation.Next(Fight(familiarOut: false, unavoidable: "Deadly Thrust",
+                                        notReady: AllBut(Bst.Snarl, Bst.Challenge)), plain);
+Check("no Snarl without a familiar", noFamiliar.Ogcd != Bst.Snarl, noFamiliar.Why);
+
+var dutyPrePull = BstRotation.Next(Fight(prePull: true, unavoidable: "Deadly Thrust", notReady: duties), plain);
+Check("nothing that draws the target before the pull", dutyPrePull.Ogcd == 0, dutyPrePull.Why);
+
+var dutyOff = BstRotation.Next(Fight(unavoidable: "Deadly Thrust", notReady: duties), plain with { DutyActions = false });
+Check("and nothing with the duty actions off", dutyOff.Ogcd == 0, dutyOff.Why);
+
+// What cannot be dodged, by the shapes the recording's casts have in the Action sheet.
+Check("Deadly Thrust on you cannot be dodged", IncomingHits.Unavoidable(1, 0, false, true));
+Check("a single-target hit on someone else is not yours", !IncomingHits.Unavoidable(1, 0, false, false));
+Check("Void Flare Star, radius 100, cannot be dodged", IncomingHits.Unavoidable(2, 100, false, false));
+Check("Allfire, radius 40, cannot be dodged", IncomingHits.Unavoidable(2, 40, false, false));
+Check("Void Blizzard III, radius 5, can", !IncomingHits.Unavoidable(2, 5, false, false));
+Check("Venom Web, placed radius 9, can", !IncomingHits.Unavoidable(2, 9, true, false));
+Check("Bedrock Uplift's ring can", !IncomingHits.Unavoidable(10, 24, false, false));
+Check("Void Aero II's line can", !IncomingHits.Unavoidable(12, 60, false, true));
 
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");

@@ -1571,6 +1571,9 @@ familiar is out — it names one weaponskill and one ability:
    resets them from 30 and 34); Shield Charge to close a gap;
 8. the combo, in melee reach.
 
+Before 2, the duty actions decide who takes the hits: Snarl hands them to the familiar, Challenge
+takes them back. See "The second automated test" below.
+
 `Data/BeastmasterJob.cs` holds the assumed levels and combo links against the `Action` sheet as the
 plugin loads and reports any difference in the Run tab.
 
@@ -1741,3 +1744,94 @@ are placed by the grid's cell size on screen rather than the tile node's own siz
 **On the board itself**, `UI/WorldRouteOverlay.cs` draws the next step: a green ring on the room the
 route takes next (yellow while walking), red rings on the other rooms of that move, and the checked
 way there on the ground. Nothing is drawn on the game's map; the map in the Run tab is the plugin's.
+
+### The second automated test — 2026-09-16
+
+Two whole boards ran on `/beastmastr run`: 17:56–18:02 with the recorder on
+(`captures/run-20260916-175650.txt`), and 18:05–18:16 without. Every room was walked to and
+handled — spoils, treasure, shop, boss — but only the first two fights of a board were fought.
+
+**Later fights never started, because the enemy was out of reach of the target search.** Every
+arena puts you at z −404. The first fight's Piscodemon stood 22.6 yalms away, and the boss 21. The
+Banemite and the Ogre stood at z −430, 26 yalms away, and the driver only looked 25 yalms around.
+It found no target, so it pressed nothing, not even the opener; you started those fights by hand.
+Before the pull, the search now reaches 45 yalms: the arena holds this fight alone. The run's own
+hostile search, used to see that the fight has begun and that nothing is left, reaches 45 as well.
+
+**Continue while waiting for the fight ended it.** Eight seconds into the arena, the run went to
+"the fight is over", and the only thing that ends a fight that has not begun is Continue. Continue
+before any combat now means the fight did not start: the driver is started again, and the run
+stays in the fight.
+
+**BossMod broke the Battlehorns to dodge.** The driver's Third Battlehorn went off twice while Bedrock
+Uplift was cast. Both times you were moving within 70 and 380 ms, and the cast broke. A Battlehorn has
+a one second cast in the sheet, 0.54 s under Haste. BossMod does not know a cast it did not start,
+so it slides out of it at once. Its movement module has a `Cast` track with the options Leeway,
+Explicit, Greedy, FinishMove, DropMove, FinishInstants and DropInstants. The presets now set it to
+Greedy, which never breaks a cast to move. The only casts are these one-second horns. The presets
+carry a version: older ones already in BossMod are written again before the next fight, which
+replaces any edits made to them there. The driver also starts a cast only once you have stood
+still for 300 ms, and it stops walking into reach while a horn is next.
+
+**BossMod has no module for any Crucible enemy.** None of the recording's enemy ids (19338 Piscodemon,
+19339 Banemite, 19341 Ogre, 19344 Pas de Seul, 19345/19346 its adds) is an `OID` in
+`BossMod.Modules.dll`. BossMod dodges them only by the shape the `Action` sheet gives each cast.
+
+Most area hits come from hidden helpers: BattleNpc sub kind 11, base 9020, named after the enemy,
+never targetable. The visible enemy casts a same-named action without a shape a few rows away:
+Void Flare Star is cast by the enemy as 46893 (single, radius 0) and by a helper as 46895 (circle,
+radius 100). Before the change, the recorder only kept the helpers in `obj~` lines.
+
+What the recording's casts are, by the sheet:
+
+| Enemy | Cast | Shape | Can it be dodged? |
+|---|---|---|---|
+| Piscodemon | Void Blizzard III 46889 (helper) | circle 5 | yes |
+| Piscodemon | Void Flare Star 46893 → 46895 (helper) | circle 100 | no — 439 damage at 17:57:57 |
+| Piscodemon | Arcane Blast 46899 | circle 100, 8 s | no |
+| Banemite | Bedrock Uplift 46901 → 46902–46905 (helpers) | circle 6, then rings 12/18/24 | yes, in turn |
+| Banemite | Deadly Thrust 46906 | on you | no — you pressed Snarl for it |
+| Banemite | Venom Web 46908 (helper) | placed circle 9 | yes |
+| Ogre | Scorching Smite 46913 → 46912 | cone 40 | yes |
+| Ogre | Allfire 46915 | circle 40 | no |
+| Ogre | Magma 46916/46917 (helpers) | placed circles 3/5 | yes |
+| Pas de Seul | Blood Rain 46923 → 46924 | ring 40 | yes |
+| Pas de Seul | Void Aero II 46932 / 46933 | line 60×8 / cone 60 | yes |
+| Pas de Seul | Cold Caress 46935 | on you | no — you pressed Snarl for it |
+
+`Rules/IncomingHits.cs` calls a hit unavoidable when it is aimed at you alone, or when it is a circle
+of 30 yalms or more around its caster. `Data/EnemyCasts.cs` scans every battle NPC that is not a
+familiar, helpers included. A cast without a shape takes the widest same-named neighbour within six
+rows.
+
+**The duty actions** are `ContentExAction` row 26: Duty Action I is **Challenge** (46750), Duty Action II
+is **Snarl** (46751). In the recording, `GeneralAction 27` went to Snarl.
+- Challenge: you go to the top of the enmity list, and the familiar's cover ends.
+- Snarl: the familiar goes to the top, and "takes all damage intended for the beastmaster" for 45 s.
+  You get Covered (status 2413).
+- Both have a 15 s recast in cooldown group 81, so they share one timer. Both reach 25 yalms and use
+  the enemy as target. `UseAction` takes them as plain actions, which is what the game does too.
+
+You pressed Snarl exactly twice, for Deadly Thrust and for Cold Caress. The rotation now does the
+same:
+- Snarl for a hit that cannot be dodged, and when your HP is at or below a setting (50%). Either
+  needs a familiar that is not itself low.
+- Challenge when the familiar is at or below its setting (35%) while it covers you or is being hit,
+  unless your own HP is low. While an undodgeable hit is on its way, the cover stays.
+- The setting "Otherwise, the hits go to" picks Auto (the rules above), the familiar (Snarl whenever
+  it can), or you (Challenge whenever the target turns to a familiar).
+- Neither is pressed before the pull, since both draw the target. The HP matters: status 1097
+  "Auto-heal Penalty" stops your regeneration for the whole run, and familiars carry their HP from
+  room to room. Every Challenge and Snarl is logged with its reason.
+
+**The recorder** now writes two more kinds of line:
+- `ecast`: every enemy cast as it starts, helpers included, with caster, target (you, itself, or an
+  id), cast time, and the sheet's shape. A borrowed shape is marked, and each line says whether the
+  cast counts as unavoidable.
+- `hp`: yours and your familiars' HP whenever it changes. `pos` only carries HP when you move.
+
+**Still open:** the ring sequence of Bedrock Uplift and the placed circles are dodged by BossMod's
+generic shapes. Whether that holds needs the `ecast` and `hp` lines of the next recording.
+Auto-attack (`GeneralAction 1`) is asked for once a frame for about 13 frames at the pull, and 421 times
+after the boss, always refused. It is not from a hotbar and not from BeastMastr; BossMod is the likely
+source.

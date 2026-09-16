@@ -28,6 +28,15 @@ public static class Bst
     public const uint Rally = 44905;
     public const uint Trick = 47093;
 
+    /// <summary>Duty Action I: you take the target's enmity, and the familiar's cover ends.</summary>
+    public const uint Challenge = 46750;
+
+    /// <summary>Duty Action II: the familiar takes the target's enmity and every hit meant for you, for 45 seconds.</summary>
+    public const uint Snarl = 46751;
+
+    /// <summary>On you while a familiar's Snarl covers you.</summary>
+    public const uint Covered = 2413;
+
     public const uint VolantHeart = 4595;
     public const uint RampantHeart = 4596;
     public const uint DurantHeart = 4597;
@@ -83,11 +92,30 @@ public static class Bst
 /// is not sent off with nothing to follow it.
 /// </param>
 /// <param name="PartingBlowFinisherShare">…or when the target is down to this share of its HP, where the blow finishes it.</param>
+/// <param name="DutyActions">Use Challenge and Snarl to decide who takes the hits.</param>
+/// <param name="Tank">Who takes the hits when nobody is in trouble.</param>
+/// <param name="PlayerLowShare">At or below this share of your HP, the familiar takes over with Snarl.</param>
+/// <param name="FamiliarLowShare">At or below this share of the familiar's HP, you take over with Challenge.</param>
 public sealed record BstOptions(bool Combo, bool Resources, int SpendTpAt, bool UseBattlehorns, bool UsePartingBlow,
                                 bool UseShieldCharge, float PartingBlowHornWithin = 10f,
-                                float PartingBlowFinisherShare = 0.1f)
+                                float PartingBlowFinisherShare = 0.1f, bool DutyActions = true,
+                                DutyTank Tank = DutyTank.Auto, float PlayerLowShare = 0.5f,
+                                float FamiliarLowShare = 0.35f)
 {
     public static BstOptions Default => new(true, true, 200, true, true, true);
+}
+
+/// <summary>Who takes the hits while neither you nor the familiar is low.</summary>
+public enum DutyTank
+{
+    /// <summary>Whoever is being hit, until they run low; hits that cannot be dodged go to the familiar.</summary>
+    Auto,
+
+    /// <summary>The familiar, by Snarl, whenever it has the HP for it.</summary>
+    Familiar,
+
+    /// <summary>You, by Challenge, whenever the target turns to a familiar.</summary>
+    Player,
 }
 
 /// <summary>Everything the rotation looks at, taken once per decision.</summary>
@@ -101,6 +129,13 @@ public sealed record BstOptions(bool Combo, bool Resources, int SpendTpAt, bool 
 /// when none will.
 /// </param>
 /// <param name="TargetHpShare">The target's share of HP left, 1 when not known.</param>
+/// <param name="PlayerHpShare">Your share of HP left.</param>
+/// <param name="FamiliarHpShare">The summoned familiar's share of HP left, 1 without one.</param>
+/// <param name="TargetOnFamiliar">The target is attacking one of your familiars.</param>
+/// <param name="UnavoidableHit">
+/// A hit on its way that no position avoids — one aimed at you, or one that fills the arena — by name,
+/// or null.
+/// </param>
 /// <param name="FamiliarLeaving">
 /// Parting Blow has sent the familiar off and no new one has come yet. It stays on the field for a few
 /// seconds, but the next Battlehorn is already usable, and that is when it was pressed in the recording.
@@ -122,7 +157,11 @@ public sealed record BstState(
     bool PrePull = false,
     int HornsThisFight = 0,
     float OtherHornReadyIn = 0f,
-    float TargetHpShare = 1f);
+    float TargetHpShare = 1f,
+    float PlayerHpShare = 1f,
+    float FamiliarHpShare = 1f,
+    bool TargetOnFamiliar = false,
+    string? UnavoidableHit = null);
 
 /// <param name="Gcd">The weaponskill to press, or 0.</param>
 /// <param name="Ogcd">The ability to press alongside it, or 0.</param>
@@ -207,6 +246,10 @@ public static class BstRotation
         if (!state.HasTarget)
             return 0;
 
+        var duty = Duty(state, options, familiar, why);
+        if (duty != 0)
+            return duty;
+
         if (state.Statuses.Contains(Bst.OneWithNature) && Usable(state, Bst.TemperedRelease))
         {
             why.Add("One with Nature: Tempered Release");
@@ -288,6 +331,61 @@ public static class BstRotation
         {
             why.Add("Shield Charge to close in");
             return Bst.ShieldCharge;
+        }
+
+        return 0;
+    }
+
+    /// <summary>
+    /// Who takes the hits, by the two duty actions — they share one recast. Snarl hands everything aimed
+    /// at you to the familiar: for a hit no position avoids (in the recording it was pressed for exactly
+    /// those, Deadly Thrust and Cold Caress), and when your HP runs low. Challenge takes it back when the
+    /// familiar runs low. Nothing is pressed before the pull: both draw the target.
+    /// </summary>
+    private static uint Duty(BstState state, BstOptions options, bool familiar, List<string> why)
+    {
+        if (!options.DutyActions || state.PrePull)
+            return 0;
+
+        var covered = state.Statuses.Contains(Bst.Covered);
+        var playerLow = state.PlayerHpShare <= options.PlayerLowShare;
+        var familiarLow = state.FamiliarHpShare <= options.FamiliarLowShare;
+
+        if (familiar && !covered && !familiarLow && Usable(state, Bst.Snarl))
+        {
+            if (state.UnavoidableHit is { } hit)
+            {
+                why.Add($"Snarl: the familiar takes {hit}");
+                return Bst.Snarl;
+            }
+
+            if (playerLow)
+            {
+                why.Add("Snarl: your HP is low");
+                return Bst.Snarl;
+            }
+
+            if (options.Tank == DutyTank.Familiar)
+            {
+                why.Add("Snarl: the familiar tanks");
+                return Bst.Snarl;
+            }
+        }
+
+        // While a hit that cannot be dodged is on its way, the familiar's cover stays.
+        if (playerLow || (covered && state.UnavoidableHit != null) || !Usable(state, Bst.Challenge))
+            return 0;
+
+        if (familiarLow && (covered || state.TargetOnFamiliar))
+        {
+            why.Add("Challenge: the familiar is low");
+            return Bst.Challenge;
+        }
+
+        if (options.Tank == DutyTank.Player && state.TargetOnFamiliar && !covered)
+        {
+            why.Add("Challenge: you tank");
+            return Bst.Challenge;
         }
 
         return 0;

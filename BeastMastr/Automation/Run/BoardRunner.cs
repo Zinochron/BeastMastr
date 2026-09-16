@@ -59,7 +59,7 @@ public sealed class BoardRunner : IDisposable
     private static readonly TimeSpan SettleTime = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan ResultWait = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan PlacementWait = TimeSpan.FromSeconds(10);
-    private const float FightSearchRange = 30f;
+    private const float FightSearchRange = 45f;
     private const int LogLength = 30;
 
     private readonly Configuration configuration;
@@ -530,6 +530,15 @@ public sealed class BoardRunner : IDisposable
         var over = (sawCombat && !inCombat && DateTime.Now - lastInCombat > FightEndGrace && !Hostiles().Any())
                    || AddonReader.IsOpen(XbmColumns.RunWindows.Booty)
                    || (leftBoard && board.OnBoard && !inCombat);
+
+        // Continue before anything has fought means the fight did not start, not that it is over.
+        if (continueRequested && !sawCombat && !over && Hostiles().Any())
+        {
+            Note("Continue: the fight has not started; pulling again.");
+            combat.Stop("Pulling again.");
+            StartFighting();
+            return;
+        }
 
         if (over || continueRequested)
         {

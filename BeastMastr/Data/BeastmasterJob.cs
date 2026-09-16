@@ -15,7 +15,9 @@ public sealed class BeastmasterJob
 {
     /// <param name="TargetsEnemy">Used on the target rather than on the player.</param>
     /// <param name="Range">In yalms; -1 is melee.</param>
-    public sealed record ActionInfo(uint Id, string Name, int Level, int Range, bool TargetsEnemy, uint ComboFrom);
+    /// <param name="Cast">Cast time in seconds; 0 for an instant.</param>
+    public sealed record ActionInfo(uint Id, string Name, int Level, int Range, bool TargetsEnemy, uint ComboFrom,
+                                    float Cast);
 
     private readonly Dictionary<uint, ActionInfo> actions = [];
 
@@ -31,8 +33,7 @@ public sealed class BeastmasterJob
                 continue;
             }
 
-            var info = new ActionInfo(id, row.Name.ExtractText(), row.ClassJobLevel, row.Range, row.CanTargetHostile,
-                                      row.ActionCombo.RowId);
+            var info = Read(row);
             actions[id] = info;
 
             if (info.Level != level)
@@ -59,22 +60,26 @@ public sealed class BeastmasterJob
     /// </summary>
     public bool TargetsEnemy(uint id) => Lookup(id)?.TargetsEnemy ?? false;
 
+    /// <summary>Whether an action has a cast time — a Battlehorn does, and walking breaks it.</summary>
+    public bool IsCast(uint id) => id != 0 && Lookup(id)?.Cast > 0f;
+
     private ActionInfo? Lookup(uint id)
     {
         if (actions.TryGetValue(id, out var known))
             return known;
 
         var row = Services.Data.GetExcelSheet<LuminaAction>().GetRowOrDefault(id);
-        var info = row is { } r
-                       ? new ActionInfo(id, r.Name.ExtractText(), r.ClassJobLevel, r.Range, r.CanTargetHostile,
-                                        r.ActionCombo.RowId)
-                       : null;
+        var info = row is { } r ? Read(r) : null;
 
         if (info != null)
             actions[id] = info;
 
         return info;
     }
+
+    private static ActionInfo Read(LuminaAction row) =>
+        new(row.RowId, row.Name.ExtractText(), row.ClassJobLevel, row.Range, row.CanTargetHostile,
+            row.ActionCombo.RowId, row.Cast100ms / 10f);
 
     private void Check(uint action, uint comboFrom)
     {

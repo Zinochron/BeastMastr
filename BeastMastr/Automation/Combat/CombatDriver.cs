@@ -35,6 +35,15 @@ public sealed unsafe class CombatDriver : IDisposable
     private static readonly TimeSpan CombatEndGrace = TimeSpan.FromSeconds(3);
 
     private const float TargetSearchRange = 25f;
+
+    /// <summary>
+    /// Before the pull the arena holds this fight alone, and the run is put about 26 yalms from the
+    /// enemy — just out of <see cref="TargetSearchRange"/>, which is why later fights never started.
+    /// </summary>
+    private const float PullSearchRange = 45f;
+
+    /// <summary>A cast is only started once you have stood still this long; moving breaks it.</summary>
+    private static readonly TimeSpan StillFor = TimeSpan.FromMilliseconds(300);
     private const float MeleeReach = 2.5f;
 
     private const byte EnemySubKind = (byte)BattleNpcSubKind.Combatant;
@@ -68,6 +77,8 @@ public sealed unsafe class CombatDriver : IDisposable
     private DateTime lastInCombat;
     private bool approaching;
     private bool pausedBossMod;
+    private Vector3 lastPosition;
+    private DateTime lastMovedAt;
 
     public CombatDriver(Configuration configuration, BeastmasterJob job, ManualInputGuard input, BossModBridge bossMod,
                         ActionWatcher actions)
@@ -179,6 +190,12 @@ public sealed unsafe class CombatDriver : IDisposable
         if (inCombat)
             lastInCombat = DateTime.Now;
 
+        if (Vector3.DistanceSquared(player.Position, lastPosition) > 0.0001f)
+        {
+            lastPosition = player.Position;
+            lastMovedAt = DateTime.Now;
+        }
+
         if (input.Holding)
         {
             Hold(player);
@@ -227,16 +244,22 @@ public sealed unsafe class CombatDriver : IDisposable
                  (decision.Engage ? string.Empty : " Setting up the opener.");
 
         // Moving breaks a cast, and walking in before the opener is set up starts the fight early.
-        if (!bossMod.Moves && configuration.KeepRangeWithNavmesh && decision.Engage && !player.IsCasting)
+        var casting = player.IsCasting || job.IsCast(decision.Ogcd);
+        if (!bossMod.Moves && configuration.KeepRangeWithNavmesh && decision.Engage && !casting)
             KeepInReach(target, distance);
-        else if (!decision.Engage || player.IsCasting)
+        else if (!decision.Engage || casting)
             StopApproaching();
 
         if (manager->AnimationLock > 0f || player.IsCasting || DateTime.Now < nextAttempt)
             return;
 
         if (decision.Ogcd != 0 && Use(manager, player, target, decision.Ogcd))
+        {
+            if (decision.Ogcd is Bst.Snarl or Bst.Challenge)
+                Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}.");
+
             return;
+        }
 
         if (decision.Gcd != 0)
             Use(manager, player, target, decision.Gcd);
@@ -272,7 +295,11 @@ public sealed unsafe class CombatDriver : IDisposable
                               UsePartingBlow: configuration.UsePartingBlow,
                               UseShieldCharge: configuration.UseShieldCharge,
                               PartingBlowHornWithin: configuration.PartingBlowHornWithin,
-                              PartingBlowFinisherShare: configuration.PartingBlowFinisherShare);
+                              PartingBlowFinisherShare: configuration.PartingBlowFinisherShare,
+                              DutyActions: configuration.UseDutyActions,
+                              Tank: configuration.DutyTank,
+                              PlayerLowShare: configuration.SnarlBelowPlayerHp,
+                              FamiliarLowShare: configuration.ChallengeBelowFamiliarHp);
     }
 
     private BstState Snapshot(ActionManager* manager, IPlayerCharacter player, IBattleChara target, float distance,
@@ -281,6 +308,8 @@ public sealed unsafe class CombatDriver : IDisposable
         var gauge = GaugeReader.Read();
         var statuses = player.StatusList.Where(status => status.StatusId != 0).Select(status => status.StatusId)
                              .ToHashSet();
+        var familiars = Familiars(player).ToList();
+        var summoned = familiars.FirstOrDefault();
 
         return new BstState(
             Level: player.Level,
@@ -299,8 +328,14 @@ public sealed unsafe class CombatDriver : IDisposable
             PrePull: MayPull && !inCombat,
             HornsThisFight: hornsThisFight,
             OtherHornReadyIn: OtherHornReadyIn(manager, player),
-            TargetHpShare: target.MaxHp > 0 ? (float)target.CurrentHp / target.MaxHp : 1f);
+            TargetHpShare: Share(target),
+            PlayerHpShare: Share(player),
+            FamiliarHpShare: summoned == null ? 1f : Share(summoned),
+            TargetOnFamiliar: familiars.Any(familiar => familiar.GameObjectId == target.TargetObjectId),
+            UnavoidableHit: configuration.UseDutyActions ? EnemyCasts.Unavoidable(player) : null);
     }
+
+    private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;
 
     private bool FamiliarArriving =>
         lastBattlehorn > lastPartingBlow && DateTime.Now - lastBattlehorn < ArrivingFor;
@@ -351,6 +386,9 @@ public sealed unsafe class CombatDriver : IDisposable
         nextAttempt = DateTime.Now + AttemptInterval;
 
         var adjusted = manager->GetAdjustedActionId(id);
+        if (job.IsCast(adjusted) && DateTime.Now - lastMovedAt < StillFor)
+            return false;
+
         var targetId = TargetFor(adjusted, player, target);
         if (manager->GetActionStatus(ActionType.Action, adjusted, targetId) != 0)
             return false;
@@ -379,10 +417,11 @@ public sealed unsafe class CombatDriver : IDisposable
         if (!inCombat && !MayPull)
             return null;
 
+        var range = MayPull ? PullSearchRange : TargetSearchRange;
         var nearest = Services.Objects.OfType<IBattleChara>()
                               .Where(Hostile)
                               .Select(enemy => (enemy, distance: Vector3.Distance(enemy.Position, player.Position)))
-                              .Where(pair => pair.distance <= TargetSearchRange)
+                              .Where(pair => pair.distance <= range)
                               .OrderBy(pair => pair.distance)
                               .Select(pair => pair.enemy)
                               .FirstOrDefault();
@@ -401,10 +440,12 @@ public sealed unsafe class CombatDriver : IDisposable
     /// A familiar is a battle NPC of the pet kind — "Opo-opo", "Squirrel", "Cu Sith" in the recording —
     /// and one that has retreated lingers as dead for a moment, so the dead are not counted.
     /// </summary>
-    private static bool FamiliarOut(IGameObject? player) =>
-        player != null &&
-        Services.Objects.Any(obj => obj.ObjectKind == ObjectKind.BattleNpc && obj.SubKind == (byte)BattleNpcSubKind.Pet &&
-                                    obj.OwnerId == player.EntityId && !obj.IsDead);
+    private static bool FamiliarOut(IGameObject? player) => player != null && Familiars(player).Any();
+
+    private static IEnumerable<IBattleChara> Familiars(IGameObject player) =>
+        Services.Objects.OfType<IBattleChara>()
+                .Where(obj => obj.ObjectKind == ObjectKind.BattleNpc && obj.SubKind == (byte)BattleNpcSubKind.Pet &&
+                              obj.OwnerId == player.EntityId && !obj.IsDead);
 
     private void KeepInReach(IGameObject target, float distance)
     {
