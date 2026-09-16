@@ -2026,3 +2026,39 @@ Going down now waits up to 10 seconds for a revive.
 took that as the next room beginning and stood waiting 15 seconds for a window. Settling now waits for
 the status to go, for up to 15 seconds. A walk that starts with the status already on ignores it until
 it has gone once.
+
+### The Gargoyle's Sweeping Evisceration — 2026-09-16
+
+`captures/run-20260916-222548.txt`. Board, campsite and revive all worked. The Gargoyle killed the run.
+
+**Every cone and line pointed north.** `BattleChara.CastInfo.Rotation` read 0 for every cast. Zones now
+take the caster's own facing, which the recorder logs as "facing" with every `ecast`. Desolation (48727,
+a line 60 long and 7 wide) had been placed wrong because of this.
+
+**Rippling Evisceration's ring had no hole.** 48721 is a ring out to 30 with no omen, so its hole could
+not be read and it was treated as a full circle. It follows the 13-yalm circle 48720, cast from the same
+spot. A ring without a hole now takes the largest circle of the same name cast from its origin.
+
+**Sweeping Evisceration** (`Rules/ScriptedMechanics.cs`): 48717 is cast for 7.9 s and has no shape of its
+own. Its hits (48718, a 60-yalm cone with no omen) are not cast. The player describes it: stretch the
+tether while it casts, get behind the Gargoyle after its dash, and go back through it after the first
+swing. The recording shows the timings, the same both times:
+
+| After | What |
+|---|---|
+| cast end + ~1.1 s | a 0.45 s dash of 6–7 yalms, towards the tethered player |
+| dash end + 1.96 s | the first swing — the player was hit |
+| dash end + 4.0 s | the second swing — the player was hit |
+
+`EnemyCasts` follows each Sweeping Evisceration from its cast through the dash (seen as the Gargoyle
+moving, then stopping). It hands the dodger:
+- a 14-yalm circle while the Gargoyle casts,
+- then a half-circle in front of the dash direction until the first swing,
+- then a half-circle behind it until the second.
+
+The dodger takes them in turn: out to 14 yalms, then behind the Gargoyle, then back through it to its
+front. The harness checks all three steps with the recorded positions. If no dash is seen within three
+seconds, the Gargoyle's own facing is used.
+
+Tethers are not recorded yet. If the swings turn out to be the other way round, swap the two cones
+in `SweepingEvisceration.Zones`.

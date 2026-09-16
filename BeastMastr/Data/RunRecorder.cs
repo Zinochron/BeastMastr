@@ -588,17 +588,13 @@ public sealed unsafe class RunRecorder : IDisposable
                 text.Append($" unavoidable={unavoidable}");
             }
 
-            text.Append($" at {caster.Position.X:0.0}/{caster.Position.Z:0.0} facing {caster.Rotation:0.00}" +
-                        $" cast facing {CastRotation(caster):0.00}");
+            text.Append($" at {caster.Position.X:0.0}/{caster.Position.Z:0.0} facing {caster.Rotation:0.00}");
             Line("ecast", text.ToString());
         }
 
         foreach (var gone in enemyCasts.Keys.Where(id => !seen.Contains(id)).ToList())
             enemyCasts.Remove(gone);
     }
-
-    private static unsafe float CastRotation(IBattleChara caster) =>
-        ((FFXIVClientStructs.FFXIV.Client.Game.Character.BattleChara*)caster.Address)->CastInfo.Rotation;
 
     private void PollHealth(IPlayerCharacter player)
     {

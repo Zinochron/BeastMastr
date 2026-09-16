@@ -101,6 +101,12 @@ public static class EnemyCasts
 
         foreach (var caster in Casting(player))
         {
+            if (caster.CastActionId == SweepingEvisceration.Cast)
+                Sweeps[caster.GameObjectId] = new Sweep
+                {
+                    CastEnd = now + TimeSpan.FromSeconds(caster.TotalCastTime - caster.CurrentCastTime),
+                };
+
             if (sheet.GetRowOrDefault(caster.CastActionId) is not { } row)
                 continue;
 
@@ -122,12 +128,17 @@ public static class EnemyCasts
                 origin = new Vector2(aimed.Position.X, aimed.Position.Z);
             }
 
+            // The caster's own facing: CastInfo.Rotation read 0 for every cast of the master board
+            // recording, which pointed every cone and line north.
             var omen = row.Omen.ValueNullable?.Path.ExtractText() ?? string.Empty;
             var zone = CastShapes.Shape(row.CastType, row.EffectRange, row.XAxisModifier, omen, caster.HitboxRadius,
-                                        origin, info->Rotation, caster.TotalCastTime - caster.CurrentCastTime,
+                                        origin, caster.Rotation, caster.TotalCastTime - caster.CurrentCastTime,
                                         row.Name.ExtractText());
             if (zone == null)
                 continue;
+
+            if (zone.Kind == ZoneKind.Donut)
+                zone = WithHole(zone, caster);
 
             zones.Add(zone);
             Remember(caster, zone, now);
@@ -157,7 +168,120 @@ public static class EnemyCasts
             }
         }
 
+        AddSweeps(zones, now);
         return zones;
+    }
+
+    /// <summary>The Gargoyle's Sweeping Evisceration, followed from its cast through its dash and two swings.</summary>
+    private sealed class Sweep
+    {
+        public DateTime CastEnd;
+        public Vector2? DashFrom;
+        public Vector2 LastPosition;
+        public bool Dashing;
+        public DateTime? DashEnd;
+        public float Facing;
+    }
+
+    private static readonly Dictionary<ulong, Sweep> Sweeps = [];
+
+    /// <summary>With no dash seen this long after the cast, it is taken to have happened in place.</summary>
+    private const float DashWait = 3f;
+
+    private static void AddSweeps(List<Zone> zones, DateTime now)
+    {
+        foreach (var (id, sweep) in Sweeps.ToList())
+        {
+            if (Services.Objects.SearchById(id) is not IBattleChara { IsDead: false } gargoyle)
+            {
+                Sweeps.Remove(id);
+                continue;
+            }
+
+            var here = new Vector2(gargoyle.Position.X, gargoyle.Position.Z);
+            float? castLeft = null;
+            float? sinceDash = null;
+
+            if (now < sweep.CastEnd)
+            {
+                castLeft = (float)(sweep.CastEnd - now).TotalSeconds;
+            }
+            else if (sweep.DashEnd == null)
+            {
+                sweep.DashFrom ??= here;
+                var moved = Vector2.Distance(here, sweep.DashFrom.Value);
+
+                if (moved > 1f)
+                {
+                    if (sweep.Dashing && Vector2.Distance(here, sweep.LastPosition) < 0.05f)
+                    {
+                        sweep.DashEnd = now;
+                        sweep.Facing = SweepingEvisceration.Facing(here - sweep.DashFrom.Value);
+                        Services.Log.Information($"{SweepingEvisceration.Name}: the dash ended at ({here.X:0.0}, {here.Y:0.0}).");
+                    }
+
+                    sweep.Dashing = true;
+                }
+                else if ((now - sweep.CastEnd).TotalSeconds > DashWait)
+                {
+                    sweep.DashEnd = sweep.CastEnd + TimeSpan.FromSeconds(SweepingEvisceration.DashAfterCast);
+                    sweep.Facing = gargoyle.Rotation;
+                }
+
+                sweep.LastPosition = here;
+            }
+
+            if (sweep.DashEnd is { } dashEnd)
+            {
+                sinceDash = (float)(now - dashEnd).TotalSeconds;
+                if (sinceDash > SweepingEvisceration.SecondSwing + 0.5f)
+                {
+                    Sweeps.Remove(id);
+                    continue;
+                }
+            }
+
+            zones.AddRange(SweepingEvisceration.Zones(here, sweep.DashEnd == null ? gargoyle.Rotation : sweep.Facing,
+                                                      gargoyle.HitboxRadius, castLeft, sinceDash));
+        }
+    }
+
+    /// <summary>Holes of donuts whose omen does not give one, by caster and action.</summary>
+    private static readonly Dictionary<(ulong, uint), float> Holes = [];
+
+    /// <summary>
+    /// A donut without an omen has no hole to read, and would be taken for a full circle. The
+    /// Gargoyle's Rippling Evisceration is a circle of 13 and then a ring out to 30 from the same
+    /// spot; the ring's hole is the circle it follows. A circle of the same name cast from the same
+    /// spot gives the hole, remembered for as long as the ring is cast.
+    /// </summary>
+    private static Zone WithHole(Zone donut, IBattleChara caster)
+    {
+        if (donut.Inner > 0f)
+            return donut;
+
+        var key = (caster.GameObjectId, caster.CastActionId);
+        if (!Holes.TryGetValue(key, out var hole))
+        {
+            foreach (var other in Casting(Services.Objects.LocalPlayer!))
+            {
+                if (ShapeOf(other.CastActionId) is not { CastType: IncomingHits.Circle } circle ||
+                    circle.Name != donut.Name || circle.EffectRange >= donut.Radius ||
+                    Vector2.Distance(new Vector2(other.Position.X, other.Position.Z), donut.Origin) > 1f)
+                    continue;
+
+                hole = MathF.Max(hole, circle.EffectRange);
+            }
+
+            if (hole <= 0f)
+                return donut;
+
+            Holes[key] = hole;
+            if (Holes.Count > 64)
+                Holes.Clear();
+        }
+
+        return donut with { Inner = hole };
     }
 
     private static void Remember(IBattleChara caster, Zone zone, DateTime now)

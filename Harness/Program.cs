@@ -671,6 +671,30 @@ foreach (var (x, z) in new[] { (109.5f, -10.5f), (130.5f, -10.5f), (102.5f, 17.5
 var maladyPlan = Dodger.Plan(new Vector2(116.5f, 3.5f), new Vector2(120f, -8f), 8f, malady, gargoyleArena, 18f)!;
 Check("Malady's grid leaves a free cell to stand in", maladyPlan.Safe, $"to {maladyPlan.Point}");
 
+// Sweeping Evisceration, with the positions of the recording's second one.
+var gargoyleCast = new Vector2(116.1f, 4.3f);
+var sweepCast = SweepingEvisceration.Zones(gargoyleCast, 0f, 3f, 5f, null);
+var stretch = Dodger.Plan(new Vector2(112f, 5f), gargoyleCast, 6f, sweepCast, gargoyleArena, 18f)!;
+Check("while it casts, the tether is stretched",
+      stretch.Safe && Vector2.Distance(stretch.Point, gargoyleCast) >= SweepingEvisceration.StretchRadius &&
+      Vector2.Distance(stretch.Point, gargoyleArena) <= 18f, $"to {stretch.Point}");
+
+var dashed = new Vector2(110.3f, 5f);
+var dashFacing = SweepingEvisceration.Facing(dashed - gargoyleCast);
+var front = new Vector2(107f, 5.4f);
+var afterDash = Dodger.Plan(front, dashed, 6f, SweepingEvisceration.Zones(dashed, dashFacing, 3f, null, 0.2f),
+                            gargoyleArena, 18f)!;
+var ahead = new Vector2(MathF.Sin(dashFacing), MathF.Cos(dashFacing));
+Check("after the dash, behind it", afterDash.Safe && Vector2.Dot(afterDash.Point - dashed, ahead) < 0f,
+      $"to {afterDash.Point}");
+
+var afterSwing = Dodger.Plan(afterDash.Point, dashed, 6f,
+                             SweepingEvisceration.Zones(dashed, dashFacing, 3f, null, 2.1f), gargoyleArena, 18f)!;
+Check("after the first swing, back through to its front",
+      afterSwing.Safe && Vector2.Dot(afterSwing.Point - dashed, ahead) > 0f, $"to {afterSwing.Point}");
+Check("and nothing is left to dodge once both have swung",
+      SweepingEvisceration.Zones(dashed, dashFacing, 3f, null, 4.2f).Count == 0);
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);
