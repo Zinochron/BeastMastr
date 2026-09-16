@@ -32,8 +32,13 @@ public static unsafe class MapMarkerReader
             [63856] = XbmColumns.RoomKind.Boss,
         };
 
-    /// <summary>Is this one of the board's rooms, rather than a landmark of the zone around it?</summary>
-    public static bool IsRoom(uint iconId) => RoomIcons.ContainsKey(iconId);
+    /// <summary>
+    /// Is this one of the board's rooms, rather than a landmark of the zone around it? The whole icon
+    /// range counts, not only the icons already identified: a room whose icon is not in the table yet
+    /// still takes a place on the board, and leaving it out would shift every row after it.
+    /// </summary>
+    public static bool IsRoom(uint iconId) =>
+        iconId >= XbmColumns.Crucible.FirstRoomIcon && iconId <= XbmColumns.Crucible.LastRoomIcon;
 
     /// <param name="Source">Which list it came from — the two behave differently and it matters which is which.</param>
     /// <param name="World">Where the icon floats, in world units, or null when the map offers no transform.</param>

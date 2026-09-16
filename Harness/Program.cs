@@ -226,6 +226,132 @@ Check("nothing said about interrupting is not an offer to interrupt",
 var quiet = new[] { new BriefEnemy("Sheep", "Fire", []) };
 Check("a room with nothing to prepare for asks for nothing", RoomBriefing.Needs(quiet).Count == 0);
 
+// The board as a graph, straight out of the sheets the board window itself is built from. Every one
+// of the five boards has to come out whole: one start, one boss, nothing that leads nowhere.
+List<BoardCell> Cells(uint board)
+{
+    var sheet = game.Excel.GetSubrowSheet<RawSubrow>(null, "XBMContentStageEventMap");
+    return sheet.TryGetRow(board, out var rows)
+               ? rows.Select(r => new BoardCell(Convert.ToInt32(r.ReadColumn(0)), Convert.ToInt32(r.ReadColumn(1)),
+                                                Convert.ToInt32(r.ReadColumn(2)), Convert.ToInt32(r.ReadColumn(3)),
+                                                Convert.ToInt32(r.ReadColumn(4))))
+                     .ToList()
+               : [];
+}
+
+List<BoardEventInfo> Events(uint board)
+{
+    var sheet = game.Excel.GetSubrowSheet<RawSubrow>(null, "XBMContentStageEvent");
+    return sheet.TryGetRow(board, out var rows)
+               ? rows.Select(r => new BoardEventInfo(r.SubrowId, Convert.ToInt32(r.ReadColumn(0)),
+                                                     BoardGraph.KindOfEventType(Convert.ToInt32(r.ReadColumn(1)))))
+                     .ToList()
+               : [];
+}
+
+var graphs = new Dictionary<uint, BoardGraph>();
+for (var board = 1u; board <= 5; board++)
+{
+    var g = BoardGraph.Build(Cells(board), Events(board));
+    graphs[board] = g;
+    Check($"board {board} is a whole graph", g.IsValid, string.Join(" | ", g.Problems));
+}
+
+var first = graphs[1];
+Check("board 1 runs nine moves to its boss", first.LastMove == 9 && first.Boss?.Move == 9, $"{first.LastMove}");
+Check("board 1 forks at move 2 and rejoins at move 4",
+      first.OnMove(2).Count == 2 && first.OnMove(3).Count == 2 && first.OnMove(4).Count == 1);
+Check("the start leads to the first enemy", first.Next(0).Single().Kind == BoardRoomKind.Enemy);
+Check("the room list starts at the boss", first.RoomListIndex(first.Boss!.EventIndex) == 0);
+Check("the fifth board's sideways links are one edge each",
+      graphs[5].Edges.Count(e => e.From == 17) == 1 && graphs[5].Edges.Count(e => e.From == 16) == 1);
+
+// The icons of board 1 as a capture in the run listed them (captures/board-20260909-200727.txt).
+var icons = new List<MapPoint>
+{
+    new(0, 1856, BoardRoomKind.Enemy, -700f, -9f),
+    new(-320, 1376, BoardRoomKind.Enemy, -705f, -16.5f),
+    new(320, 1376, BoardRoomKind.Enemy, -695f, -16.5f),
+    new(-320, 800, BoardRoomKind.Campsite, -705f, -25.5f),
+    new(320, 800, BoardRoomKind.Treasure, -695f, -25.5f),
+    new(0, 320, BoardRoomKind.Enemy, -700f, -33f),
+    new(0, -256, BoardRoomKind.Treasure, -700f, -42f),
+    new(0, -832, BoardRoomKind.EliteEnemy, -700f, -51f),
+    new(-320, -1312, BoardRoomKind.Treasure, -705f, -58.5f),
+    new(320, -1312, BoardRoomKind.Campsite, -695f, -58.5f),
+    new(0, -1792, BoardRoomKind.Shop, -700f, -66f),
+    new(0, -2368, BoardRoomKind.Boss, -700f, -75f),
+};
+
+var joined = BoardJoin.Join(first, icons);
+Check("every room of board 1 finds its icon", joined.IsComplete && joined.ByEvent.Count == 12,
+      string.Join(" | ", joined.Problems));
+Check("the campsite on move 3 is the left one",
+      joined.ByEvent.TryGetValue(4, out var campIcon) && campIcon.MapX == -320
+      && first.Node(4)!.Kind == BoardRoomKind.Campsite);
+
+var mirrored = icons.Select(i => i with { MapX = -i.MapX }).ToList();
+Check("mirrored icons are refused, not joined", !BoardJoin.Join(first, mirrored).IsComplete);
+
+var missing = icons.Skip(1).ToList();
+Check("a missing row of icons is refused", !BoardJoin.Join(first, missing).IsComplete);
+
+// Board 2's tiles as the entrance window drew them (captures/board-20260913-145220.txt), by cell index.
+var second = graphs[2];
+var secondCells = Cells(2);
+var drawn = new Dictionary<int, (float X, float Y)>
+{
+    [0] = (1121, 808), [2] = (1121, 838), [4] = (1152, 869), [6] = (1091, 869), [9] = (1121, 899),
+    [28] = (1121, 1112), [19] = (1152, 1021), [21] = (1091, 1021),
+};
+var tiles = drawn.Select(d => ((float)secondCells[d.Key].X, (float)secondCells[d.Key].Y,
+                               new System.Numerics.Vector2(d.Value.X + 25, d.Value.Y + 25))).ToList();
+var projection = PreviewProjection.Fit(tiles, []);
+Check("the window's grid is fitted", projection != null);
+var secondStart = second.Start!;
+var startAt = projection!.GridToScreen(secondStart.X, secondStart.Y);
+Check("the start lands where the window drew it",
+      Math.Abs(startAt.X - 1146) < 2 && Math.Abs(startAt.Y - 1137) < 2, $"{startAt.X:0}/{startAt.Y:0}");
+
+var anchors = joined.ByEvent.Select(p => ((float)first.Node(p.Key)!.X, (float)first.Node(p.Key)!.Y,
+                                          p.Value.WorldX, p.Value.WorldZ)).ToList();
+var firstTiles = first.Nodes.Select(n => ((float)n.X, (float)n.Y,
+                                          new System.Numerics.Vector2(100 + (30 * n.X), 100 + (30 * n.Y)))).ToList();
+var world = PreviewProjection.Fit(firstTiles, anchors)!;
+var campsite = first.Node(4)!;
+var placed = world.WorldToGrid(-705f, -25.5f);
+Check("a room's world position maps back onto its own cell",
+      placed is { } onCell && Math.Abs(onCell.X - campsite.X) < 0.01f && Math.Abs(onCell.Y - campsite.Y) < 0.01f,
+      $"{placed}");
+var between = world.WorldToGrid(-700f, -29.25f)!.Value;
+Check("halfway between two rows is halfway between their cells",
+      Math.Abs(between.Y - ((first.Node(4)!.Y + first.Node(6)!.Y) / 2f)) < 0.01f, $"{between.Y}");
+
+// Which way to go.
+var noneChosen = new HashSet<int>();
+var nothingBlocked = new HashSet<(int, int)>();
+var planned = RoutePlanner.Plan(first, 0, noneChosen, RoutePreferences.Default, 1f, nothingBlocked);
+Check("a plan runs from the next room to the boss",
+      planned.Events.Count == 9 && planned.Events[^1] == first.Boss!.EventIndex, string.Join(",", planned.Events));
+Check("with nothing chosen, the treasure beats the campsite on move 3",
+      planned.Events.Contains(5) && !planned.Events.Contains(4), string.Join(",", planned.Events));
+
+var hurtPlan = RoutePlanner.Plan(first, 0, noneChosen, RoutePreferences.Default, 0.3f, nothingBlocked);
+Check("a hurt team takes the campsite", hurtPlan.Events.Contains(4), string.Join(",", hurtPlan.Events));
+
+var chosenLeft = new HashSet<int> { 2 };
+var picked = RoutePlanner.Plan(first, 0, chosenLeft, RoutePreferences.Default, 1f, nothingBlocked);
+Check("a room chosen by hand is taken", picked.Events.Contains(2) && picked.ChosenByHand.Contains(2),
+      string.Join(",", picked.Events));
+
+var blockedRight = new HashSet<(int, int)> { (1, 3) };
+var detour = RoutePlanner.Plan(first, 0, noneChosen, RoutePreferences.Default, 1f, blockedRight);
+Check("an unsafe edge is never taken", !detour.Events.Contains(3), string.Join(",", detour.Events));
+
+var fromMiddle = RoutePlanner.Plan(first, 6, chosenLeft, RoutePreferences.Default, 1f, nothingBlocked);
+Check("a choice already behind the run is ignored", fromMiddle.Events.Count == 5 && fromMiddle.Notes.Count == 0,
+      string.Join(",", fromMiddle.Events) + " " + string.Join(" | ", fromMiddle.Notes));
+
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");
 foreach (var b in beasts.Where(b => b.Inflicts(BeastStatus.Interruption)))

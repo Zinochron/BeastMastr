@@ -28,6 +28,10 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RankWatcher rankWatcher;
     private readonly EnemyCache enemies;
     private readonly BoardCache boardCache;
+    private readonly BoardModel boardModel;
+    private readonly BoardTerrain boardTerrain;
+    private readonly RouteKeeper routeKeeper;
+    private readonly RouteOverlay routeOverlay;
     private readonly TeamSelector teamSelector;
     private readonly HealthSelector healthSelector;
     private readonly DifficultySelector difficultySelector;
@@ -76,6 +80,9 @@ public sealed class Plugin : IDalamudPlugin
         rankWatcher = new RankWatcher(Configuration);
         enemies = new EnemyCache();
         boardCache = new BoardCache(Configuration);
+        boardModel = new BoardModel(Configuration);
+        boardTerrain = new BoardTerrain(Configuration, boardModel);
+        routeKeeper = new RouteKeeper(Configuration, Catalog, boardModel, boardTerrain);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
         difficultySelector = new DifficultySelector(Configuration);
@@ -87,10 +94,16 @@ public sealed class Plugin : IDalamudPlugin
         actionButtons = new ActionButtons(Configuration, teamSelector, fightSelector, healthSelector,
                                           () => kamiToolKitReady.IsCompletedSuccessfully);
         carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
-        nextRoom = new NextRoomPanel(Configuration, boardCache, enemies,
+        nextRoom = new NextRoomPanel(Configuration, boardCache, enemies, boardModel, routeKeeper,
                                      () => kamiToolKitReady.IsCompletedSuccessfully);
+        routeOverlay = new RouteOverlay(Configuration, boardModel, routeKeeper,
+                                        () => kamiToolKitReady.IsCompletedSuccessfully);
 
-        var tabs = new List<ITab> { new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller) };
+        var tabs = new List<ITab>
+        {
+            new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
+            new RunTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder),
+        };
         if (Configuration.ShowDataTab)
         {
             tabs.Add(new SheetsTab(Configuration));
@@ -107,7 +120,8 @@ public sealed class Plugin : IDalamudPlugin
         {
             HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings, " +
                           "/beastmastr room (open or close the next-room window), " +
-                          "/beastmastr record (start or stop recording a run to a file).",
+                          "/beastmastr record (start or stop recording a run to a file), " +
+                          "/beastmastr scan (scan the board's ground with vnavmesh), /beastmastr run (the Run tab).",
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -134,6 +148,15 @@ public sealed class Plugin : IDalamudPlugin
 
             case "record":
                 runRecorder.Toggle();
+                break;
+
+            case "scan":
+                boardTerrain.RequestScan();
+                Services.Chat.Print($"[BeastMastr] {boardTerrain.Status}");
+                break;
+
+            case "run":
+                mainWindow.OpenAt("run");
                 break;
 
             default:
@@ -165,12 +188,16 @@ public sealed class Plugin : IDalamudPlugin
         rankWatcher.Dispose();
         enemies.Dispose();
         boardCache.Dispose();
+        routeKeeper.Dispose();
+        boardTerrain.Dispose();
+        boardModel.Dispose();
         teamSelector.Dispose();
         healthSelector.Dispose();
         difficultySelector.Dispose();
         actionButtons.Dispose();
         carryMenu.Dispose();
         nextRoom.Dispose();
+        routeOverlay.Dispose();
         rankPuller.Dispose();
         KamiToolKitLibrary.Dispose();
 

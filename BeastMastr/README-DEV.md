@@ -6,12 +6,14 @@ Written for whoever touches this next, including future me.
 
 | Folder | What lives there |
 |---|---|
-| `Data/` | Reading the game: Excel sheets, addon values and node trees, the beast catalogue |
-| `Rules/` | Pure calculation: the beast model, trait classification, filtering |
+| `Data/` | Reading the game: Excel sheets, addon values and node trees, the beast catalogue, the board model and its ground |
+| `Rules/` | Pure calculation: the beast model, trait classification, filtering, the board graph and the route |
 | `Native/` | Everything that mutates the game's UI: KamiToolKit node injection |
+| `Automation/` | Everything that changes game state: callbacks sent to windows, and later movement and actions |
+| `Ipc/` | Other plugins, over their IPC: vnavmesh now, BossMod later |
 | `UI/` | ImGui windows and tabs |
 
-`Data` and `Rules` never change game state. `Native` is the only place that writes.
+`Data` and `Rules` never change game state. `Native` and `Automation` are the only places that write.
 `Rules` additionally holds no Dalamud references at all, so it can be exercised from a console
 harness the way LootMastr's `Planning` is.
 
@@ -1391,3 +1393,139 @@ nothing but the presentation.
 
 A setting that no longer exists cannot be saved as on, which is the point of removing the property
 rather than only the drawing. An old config carrying `ShowBoardOverlay` is simply ignored.
+
+## Board automation, from the ground up
+
+The goal: `/beastmastr run` plays a whole board on its own. It is built in the order the plan fixed —
+record what is not known, place the board in the world, scan the ground, pick a route on the board
+window, then walking, the rotation, the rooms and the runner that ties them together.
+
+### Recording a run
+
+`Data/RunRecorder.cs` writes a timeline to `captures/run-*.txt` while `/beastmastr record` is on:
+condition flags, windows opening (with their values, and their node tree the first time) and the
+values that change while they stay open, every callback, every action used, the combo, the raw gauge,
+the familiar bytes, the board's current event, the target, casts, statuses, objects appearing and
+going, chat the game writes, and the player's position ten times a second.
+
+It exists because everything the automation still lacks is a *sequence* — what "Commence Battle"
+sends, what closes the spoils, what the job presses while the gauge does what — and a capture is a
+moment. One board played by hand with it on answers all of it.
+
+`Data/ActionWatcher.cs` watches `ActionManager.UseAction` and the hotbar's `ExecuteSlot` and
+`ExecuteSlotById`. A use that arrives inside a hotbar press is the player's; BossMod and this plugin
+call `UseAction` directly and never pass through the hotbar. That is how a manual press will be told
+from an automated one later, which `UseAction` alone could not say.
+
+`EventRecorder` prints callback values as their own type now. It printed `.Int` for everything, which
+turned a string into half a pointer.
+
+### The board is in the game data, links included
+
+Found offline with a Lumina dump, and it replaces every screen-position heuristic:
+
+- **`XBMContentStageEventMap`**, a subrow sheet, one row per board, one subrow per drawn cell:
+  `X, Y, Type, EventIndex, LinkedEventIndex`, all UInt8. Type 1 is a room. Every other type is a piece
+  of a link *from* `EventIndex` *to* `LinkedEventIndex` — 6 straight, 4/9 and 5/10 the diagonals, 7/8
+  sideways on the fifth board, where a link spans two cells. Type 0 is padding. Y counts down the
+  window: the start (event 0) has the largest Y, the boss the smallest. X is the column, 6 in the middle.
+- **`XBMContentStageEvent`**, subrow index = event index: `Move, EventType, ?, ?`. Event type 1 is the
+  start, then the room list's kind ids plus two — 2 Enemy, 3 Elite, 4 Boss, 5 Shop, 6 Campsite,
+  7 Treasure, 8 Random. Checked move for move and kind for kind against the room lists captured at the
+  entrance.
+- The board window's component carries the same five bytes live, as
+  `AtkComponentXBMContentStageEventMap.EventMapEntries`, plus `CurrentEventIndex`, `GridSize` and
+  `XBMContentStageEventMapRowId` — the board's row in the sheet. The "tile index" the component hands
+  out per drawn node is an index into these entries. That is why a twelve-room board handed out indices
+  up to 28: the links are entries too.
+- The room list at the entrance counts back from the boss: list index = highest event − event.
+
+All five boards come out as whole graphs — one start, one boss, nothing leading nowhere — and the
+harness asserts it. `Rules/BoardGraph.cs` builds them, `Data/BoardSheets.cs` reads the sheets,
+`Data/BoardEventMapReader.cs` reads the live component.
+
+### Placing the board in the world
+
+`Rules/BoardJoin.cs` pairs every room with its map icon. Rows pair by order from the start, columns by
+position (map X 320 per column, taken from the icons themselves), and every pair has to agree on the
+kind. A mirrored or shifted set of icons is refused rather than joined; the harness checks both. The
+icon range 63850–63859 counts as rooms, known kind or not, so an unidentified icon cannot shift a row.
+
+`Data/BoardModel.cs` keeps it together: the board's row (remembered in the config, since the window
+has to be open to name it), the graph, the join, where the run stands — the window's marked event
+while it is up, else the room trigger object 2015483, which sits on the current platform — and, while
+the window is open, `Rules/PreviewProjection.cs`: grid to screen fitted from the drawn tiles, world
+to grid linear across the columns and piecewise down the rows, because the platforms are not evenly
+spaced (7.5 and 9 yalms alternate on the first board).
+
+The start has no icon. Its position is measured when the board marks event 0, else estimated five
+yalms short of the first room, which is where one capture had the player standing.
+
+### Scanning the ground
+
+`Ipc/NavmeshIpc.cs` wraps vnavmesh 1.2.3.14. Every signature was read off the installed dll with
+reflection — the lambdas it registers keep their parameter and return types — because an IPC type
+mismatch fails at runtime, not at build time. `Nav.Pathfind` returns `Task<List<Vector3>>`,
+`Query.Mesh.PointOnFloor` is `(Vector3, bool allowUnlandable, float halfExtentXZ) → Vector3?`,
+`Nav.Rebuild` returns a bool, `Path.Stop` is a plain action.
+
+`Data/BoardTerrain.cs` asks, and never moves:
+
+1. the floor under every room — a room off the mesh cannot be walked to, and usually means the mesh
+   cached for this zone belongs to a different board, which is what "Rebuild the mesh" is for;
+2. a half-yalm grid of the ground around the board, for the map;
+3. every link as a walk: a straight line if the floor holds along it, a planned path if not, and in
+   either case the closest it comes to any *other* room. The columns are five yalms apart and walking
+   onto a platform starts its room, so a walk that comes within the trigger radius (a setting, 2 y by
+   default) plus half a yalm of a room it is not heading for is retried around that room, and marked
+   unsafe if it still does. The route never takes an unsafe link.
+
+A few hundred queries a frame at most. The result is stored per board in the config folder as JSON.
+
+### Picking the route
+
+`Rules/RoutePlanner.cs` scores whole paths, not single rooms — a good room can lead into a lane whose
+next rooms are worse. A room picked by hand binds its move while it is still reachable; everything
+else follows the preference order (treasure, shop, campsite, enemy, random, elite by default), a
+campsite jumps to the front while the most hurt familiar the team list last showed is under the set
+share, and elite rooms can be avoided outright. Ties go to the lower event index, so a board plans the
+same way twice. It is planned again every quarter second, from where the run stands.
+
+`Data/RouteKeeper.cs` holds the picks, per board. `Native/RouteOverlay.cs` draws the route on the
+board window — an arrow on every planned room, a star on every picked one — and puts a pin in the
+corner of every room on a fork; clicking the pin picks the room. The marks hang off the window's root,
+not the tiles: the tiles are components inside a component, and the team list's buttons, which work,
+hang off a root too. The Run tab offers the same picks as buttons and on its map.
+
+### The job, read offline
+
+Beast Tamer is ClassJob 43. From the `Action` and `ActionTransient` sheets:
+
+| Id | Action | Level | What |
+|---|---|---|---|
+| 44879 | Smash Axe | 1 | combo 1, GCD |
+| 44883 | Axeblade Bite | 2 | combo 2 after Smash Axe |
+| 44885 | Shieldsplitter | 12 | combo 3 after Axeblade Bite, +15 TP |
+| 44884, 44887, 44888, 44889 | Avalanche, Mistral, Spinning, Gale Axe | 4, 8, 14, 16 | 100 TP minimum, spends all TP, potency 400 to 1000 with TP; shared 5 s timer (group 16); affinity Rampant, Durant, Eldritch, Volant |
+| 44930 to 44933 | Brutal Rage, Hawkish Talons, Risen Fall, Calamity | 50 | the four axes at 250 TP (trait 758) |
+| 47093 | Trick | 8 | 100 familiar TP; grants a Heart |
+| 44890, 47092 | Tempered Release | 18 | 30 s; needs One with Nature (4601) |
+| 44895 | Borrow | 22 | 30 s; grants a Kinship, turns Beast Mode into that kinship's action |
+| 44886 | Beast Mode | 22 | GCD |
+| 44891 | Parting Blow | 6 | 10 s; the familiar retreats after an AoE of 1000 |
+| 44881, 44892, 44894 | First, Second, Third Battlehorn | 1, 10, 20 | 1 s cast; summons that slot's familiar |
+| 44893 | Shield Charge | 24 | 60 s gap closer |
+| 44905, 44904 | Rally, Rallying Cheer | 28, 40 | 120 s; spend Instinct stacks for TP and familiar TP |
+
+The resource loop: the combo builds TP (cost type 111); Trick spends familiar TP (cost type 112) and
+grants a Heart — Volant 4595, Rampant 4596, Durant 4597, Eldritch 4598. An axe whose affinity follows
+the Heart completes an intentional combo: Rampant after Volant, Durant after Rampant, Eldritch after
+Durant, Volant after Eldritch. Those grant Sunstrider 4599 or Moonstalker 4600, and a skill of the
+other one completes the infinitive combo. Summoning a familiar grants One with Nature (trait 692) and,
+from 30 and 34, resets Tempered Release and Borrow.
+
+BossMod 7.5.6.5 knows the job (`BossMod.BST`), but its "xan BST" rotation presses the combo only; its
+gauge read is commented out. The gauge layout it declares — counted from the gauge pointer, past eight
+bytes: player TP, familiar TP, the last familiar action's TP, the summoned beast — is what
+`Data/GaugeReader.cs` reads raw, since neither ClientStructs nor Dalamud has a struct for it. What each
+byte does in a fight is for the first run recording to show.

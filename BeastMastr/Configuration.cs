@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Configuration;
 
 namespace BeastMastr;
@@ -69,6 +70,48 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>What was taken into the last fight, so it can be taken into the next one.</summary>
     public List<uint> LastFightBeasts { get; set; } = [];
+
+    // ---- Board automation -------------------------------------------------
+
+    /// <summary>
+    /// The board last seen in a board window, as its <c>XBMContentStageEventMap</c> row. The graph is
+    /// read from the sheet by this, so the board is known out in the run where no window is open.
+    /// </summary>
+    public uint LastBoardRowId { get; set; }
+
+    /// <summary>
+    /// Rooms picked on the board, per board row, by event index. A pick binds its move for as long as
+    /// the run can still reach it; picking another room on the same move replaces it.
+    /// </summary>
+    public Dictionary<uint, List<int>> ChosenRooms { get; set; } = [];
+
+    /// <summary>
+    /// Room kinds from most to least wanted, as <see cref="Rules.BoardRoomKind"/> numbers. Empty means
+    /// the default order. It starts empty on purpose: a list that starts filled has the saved one
+    /// appended to it on every load.
+    /// </summary>
+    public List<int> RouteOrder { get; set; } = [];
+
+    /// <summary>A campsite goes first while the most hurt familiar has less than this share of HP.</summary>
+    public float CampsiteBelowHpShare { get; set; } = Rules.RoutePreferences.Default.CampsiteBelowHpShare;
+
+    public bool AvoidElite { get; set; }
+
+    /// <summary>
+    /// How close to a room's centre counts as stepping onto it. Walking keeps at least this far from
+    /// every room it is not heading for. A guess until a run recording measures it.
+    /// </summary>
+    public float RoomTriggerRadius { get; set; } = 2f;
+
+    /// <summary>Mark the route on the game's board window, with a pin on every fork to pick a room.</summary>
+    public bool ShowRouteOnBoard { get; set; } = true;
+
+    /// <summary>A method rather than a property, so the saved config does not carry a copy of it.</summary>
+    public Rules.RoutePreferences BuildRoutePreferences() =>
+        new(RouteOrder.Count == 0
+                ? Rules.RoutePreferences.DefaultOrder
+                : [.. RouteOrder.Select(kind => (Rules.BoardRoomKind)kind)],
+            CampsiteBelowHpShare, AvoidElite);
 
     // ---- Data explorer ----------------------------------------------------
     // Phase 0 tooling. The Beastmaster sheets are almost entirely unnamed upstream, so the

@@ -29,6 +29,8 @@ public sealed class NextRoomPanel : IDisposable
     private readonly Configuration configuration;
     private readonly BoardCache board;
     private readonly EnemyCache enemies;
+    private readonly BoardModel model;
+    private readonly RouteKeeper route;
     private readonly Func<bool> nativeUiReady;
 
     private NextRoomAddon? window;
@@ -48,12 +50,14 @@ public sealed class NextRoomPanel : IDisposable
     /// </summary>
     private bool broken;
 
-    public NextRoomPanel(Configuration configuration, BoardCache board, EnemyCache enemies,
-                         Func<bool> nativeUiReady)
+    public NextRoomPanel(Configuration configuration, BoardCache board, EnemyCache enemies, BoardModel model,
+                         RouteKeeper route, Func<bool> nativeUiReady)
     {
         this.configuration = configuration;
         this.board = board;
         this.enemies = enemies;
+        this.model = model;
+        this.route = route;
         this.nativeUiReady = nativeUiReady;
 
         Services.Framework.Update += OnUpdate;
@@ -218,7 +222,8 @@ public sealed class NextRoomPanel : IDisposable
             if (text.Count > 0)
                 text.Add(string.Empty);
 
-            text.Add(rooms.Count > 1 ? $"— {room.Label} —" : room.Label);
+            var mark = RouteMark(room);
+            text.Add(rooms.Count > 1 ? $"— {mark}{room.Label} —" : mark + room.Label);
 
             if (room.Detail.Length > 0)
                 text.Add(room.Detail);
@@ -247,6 +252,23 @@ public sealed class NextRoomPanel : IDisposable
         }
 
         return string.Join("\n", text).TrimEnd();
+    }
+
+    /// <summary>
+    /// "★ " for a room picked on the board, "▶ " for one the route takes, nothing otherwise. The saved
+    /// room list counts back from the boss, which is how its entries are matched to the board's events;
+    /// the move and kind have to agree as well, or no mark is claimed.
+    /// </summary>
+    private string RouteMark(StageDetailReader.Room room)
+    {
+        if (model.Graph is not { } graph)
+            return string.Empty;
+
+        var eventIndex = graph.MaxEventIndex - room.Index;
+        if (graph.Node(eventIndex) is not { } node || node.Move != room.Move || (int)node.Kind != (int)room.Kind)
+            return string.Empty;
+
+        return route.IsChosen(eventIndex) ? "★ " : route.IsPlanned(eventIndex) ? "▶ " : string.Empty;
     }
 
     private static bool Fights(XbmColumns.RoomKind kind) =>
