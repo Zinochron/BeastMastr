@@ -79,6 +79,11 @@ public sealed unsafe class RunRecorder : IDisposable
     private string cast = string.Empty;
     private string health = string.Empty;
 
+    /// <summary>Windows written out whole since they last opened.</summary>
+    private readonly HashSet<string> fullDumps = [];
+
+    private const int FullDumpAfter = 40;
+
     /// <summary>What each enemy was last seen casting, so a cast is written once, as it starts.</summary>
     private readonly Dictionary<ulong, uint> enemyCasts = [];
     private Vector3 lastPosition = new(float.NaN);
@@ -451,6 +456,7 @@ public sealed unsafe class RunRecorder : IDisposable
 
             Line("close", name);
             lastValues.Remove(name);
+            fullDumps.Remove(name);
         }
 
         openWindows.Clear();
@@ -501,6 +507,14 @@ public sealed unsafe class RunRecorder : IDisposable
 
             if (total > 0)
                 Line("diff", $"{name} {total} changed: {string.Join("; ", changes)}");
+
+            // A window fills its values a moment after it opens, so the dump on opening is often empty.
+            // A large change is written out whole once per opening.
+            if (total >= FullDumpAfter && fullDumps.Add(name))
+            {
+                var values = AddonReader.Values(name);
+                Block(AddonReader.ToText(name, values.Where(value => value.Type != "Undefined")));
+            }
 
             lastValues[name] = now;
         }

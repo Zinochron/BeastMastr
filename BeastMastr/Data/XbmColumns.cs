@@ -756,6 +756,31 @@ public static class XbmColumns
 
         /// <summary>A <c>SelectYesno</c>'s answers: <c>[0]</c> yes, <c>[1]</c> no, both closing it.</summary>
         public const int Yes = 0;
+
+        public const int No = 1;
+
+        /// <summary>
+        /// The shop's values, read off the diffs of <c>captures/run-20260916-215152.txt</c> (no full dump
+        /// was ever taken). [1] is the tokens held, as text ("1,500"); [2] is how many items are offered
+        /// (16). Each offer is a block of five from [3]: a Bool, the <c>XBMItem</c> row (+1), the price
+        /// as text (+2), a Bool, and a Bool that turned true when the item was bought (+4) — offer 12
+        /// flipped [67], offer 13 [72]. <c>[2, n]</c>, with the window closing, buys offer n and asks
+        /// "Purchase the ice shield?"; yes buys it, and the shop refreshes itself with <c>[8]</c>.
+        /// </summary>
+        public const int ShopTokens = 1;
+
+        public const int ShopOfferCount = 2;
+        public const int ShopFirstOffer = 3;
+        public const int ShopOfferStride = 5;
+        public const int ShopOfferRow = 1;
+        public const int ShopOfferPrice = 2;
+        public const int ShopOfferBought = 4;
+        public const int BuyItemCommand = 2;
+
+        /// <summary>The <c>Item</c> rows of Beast Gear: 243000 plus the <c>XBMItem</c> row, rows 1 to 76.</summary>
+        public const uint GearItemBase = 243000;
+
+        public const uint LastGearRow = 76;
     }
 
     /// <summary>
@@ -768,6 +793,10 @@ public static class XbmColumns
         public const int ColumnCount = 14;
 
         public const int Kind = 0;
+
+        /// <summary>The name with its article as a question uses it: "ice shield", "pair of mystic boots".</summary>
+        public const int Singular = 3;
+
         public const int DisplayName = 11;
 
         public const int GearKind = 1;

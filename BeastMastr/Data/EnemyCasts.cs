@@ -101,6 +101,16 @@ public static class EnemyCasts
 
         foreach (var caster in Casting(player))
         {
+            if (caster.CastActionId == ToxicBreath.Cast && !Breaths.ContainsKey(caster.GameObjectId))
+            {
+                Breaths[caster.GameObjectId] = new Breath
+                {
+                    CastEnd = now + TimeSpan.FromSeconds(caster.TotalCastTime - caster.CurrentCastTime),
+                    From = new Vector2(caster.Position.X, caster.Position.Z),
+                    Facing = caster.Rotation,
+                };
+            }
+
             if (caster.CastActionId == SweepingEvisceration.Cast)
                 Sweeps[caster.GameObjectId] = new Sweep
                 {
@@ -169,7 +179,50 @@ public static class EnemyCasts
         }
 
         AddSweeps(zones, now);
+        AddBreaths(zones, now);
+        AddHazards(zones, player);
         return zones;
+    }
+
+    /// <summary>Patches on the ground that hurt while they are there, by <see cref="GroundHazards"/>.</summary>
+    private static void AddHazards(List<Zone> zones, IPlayerCharacter player)
+    {
+        foreach (var obj in Services.Objects)
+        {
+            if (GroundHazards.Radius(obj.BaseId) is not { } radius ||
+                Vector3.Distance(obj.Position, player.Position) > SearchRange)
+                continue;
+
+            zones.Add(new Zone(ZoneKind.Circle, new Vector2(obj.Position.X, obj.Position.Z), 0f, radius, 0f,
+                               "ground hazard", Lasting: true));
+        }
+    }
+
+    private sealed class Breath
+    {
+        public DateTime CastEnd;
+        public Vector2 From;
+        public float Facing;
+    }
+
+    private static readonly Dictionary<ulong, Breath> Breaths = [];
+
+    /// <summary>Borgny's Toxic Breath, followed from its cast through the leap to the cleave.</summary>
+    private static void AddBreaths(List<Zone> zones, DateTime now)
+    {
+        foreach (var (id, breath) in Breaths.ToList())
+        {
+            var untilCleave = (float)(breath.CastEnd - now).TotalSeconds + ToxicBreath.CleaveAfterCast;
+            if (untilCleave < -0.3f || Services.Objects.SearchById(id) is not IBattleChara { IsDead: false } borgny)
+            {
+                Breaths.Remove(id);
+                continue;
+            }
+
+            var here = new Vector2(borgny.Position.X, borgny.Position.Z);
+            var landed = Vector2.Distance(here, breath.From) > ToxicBreath.LeapSeenAt;
+            zones.Add(ToxicBreath.Zone(landed ? here : breath.From, breath.Facing, landed, MathF.Max(0f, untilCleave)));
+        }
     }
 
     /// <summary>The Gargoyle's Sweeping Evisceration, followed from its cast through its dash and two swings.</summary>

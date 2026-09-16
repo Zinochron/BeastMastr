@@ -68,6 +68,7 @@ public sealed class BoardRunner : IDisposable
     private static readonly TimeSpan EventWait = TimeSpan.FromSeconds(15);
 
     private DateTime? downSince;
+    private ShopBuyer? shopBuyer;
     private const int LogLength = 30;
 
     private readonly Configuration configuration;
@@ -647,8 +648,19 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
+        if (configuration.ShopBuysGear && step == null)
+        {
+            shopBuyer ??= new ShopBuyer();
+            shopBuyer.Tick();
+            if (!shopBuyer.Done)
+            {
+                Status = "Buying Beast Gear.";
+                return;
+            }
+        }
+
         if (Carry(RoomActions.LeaveShop, "Leave the shop — the run carries on when it closes."))
-            RoomDone("Left the shop without buying.");
+            RoomDone($"Left the shop, having bought {shopBuyer?.Summary ?? "nothing"}.");
     }
 
     private void Treasure()
@@ -899,6 +911,9 @@ public sealed class BoardRunner : IDisposable
 
         if (phase == Phase.Treasure)
             refusedOffers.Clear();
+
+        if (phase == Phase.Shop)
+            shopBuyer = null;
 
         if (phase is Phase.CallingFamiliars or Phase.Commencing)
         {

@@ -130,6 +130,12 @@ public class Configuration : IPluginConfiguration
     public bool ShopByHand { get; set; }
 
     /// <summary>
+    /// In a shop, buy the Beast Gear the tokens allow — the dearest first, never a piece already held —
+    /// before leaving.
+    /// </summary>
+    public bool ShopBuysGear { get; set; } = true;
+
+    /// <summary>
     /// At a campsite the run picks the most hurt familiars. Off: it rests alone — you recover 90%,
     /// the familiars keep watch.
     /// </summary>

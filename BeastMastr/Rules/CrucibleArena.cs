@@ -17,6 +17,7 @@ public static class CrucibleArena
     /// The arenas' middles, as x/z. (120, −420): Banemite, Ogre, Bone Bishop — enemy helpers stand
     /// there and the Bleeding started 20.5 yalms out. (120, 0): Piscodemon, which jumps back to it.
     /// (520, −420): the boss, its adds placed around it. (520, 0): seen once, taken by symmetry.
+    /// (920, −420): Borgny, the First Master's Board's boss — its breath and vomit are cast from there.
     /// </summary>
     public static readonly Vector2[] Centres =
     [
@@ -24,6 +25,7 @@ public static class CrucibleArena
         new(120f, 0f),
         new(520f, -420f),
         new(520f, 0f),
+        new(920f, -420f),
     ];
 
     /// <summary>How far from a middle an arena is still recognised — its spawn is at most 16 away.</summary>

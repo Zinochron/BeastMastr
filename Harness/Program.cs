@@ -695,6 +695,29 @@ Check("after the first swing, back through to its front",
 Check("and nothing is left to dodge once both have swung",
       SweepingEvisceration.Zones(dashed, dashFacing, 3f, null, 4.2f).Count == 0);
 
+// The Treant's Sludge, and Borgny's Toxic Breath.
+var treant = new Vector2(120f, -433f);
+var sludge = new Zone(ZoneKind.Circle, treant, 0f, GroundHazards.Radius(2010106)!.Value, 0f, "ground hazard", Lasting: true);
+Check("outside the Sludge with nothing cast, nothing to do",
+      Dodger.Plan(new Vector2(120f, -423f), treant, 10f, [sludge], arena, 18f) == null);
+var outOfSludge = Dodger.Plan(new Vector2(116.2f, -426f), treant, 10f, [sludge], arena, 18f)!;
+Check("standing in it, out of it", outOfSludge.Safe && Vector2.Distance(outOfSludge.Point, treant) > 8.5f,
+      $"to {outOfSludge.Point}");
+var breeze = CastShapes.Shape(2, 12, 0, "", 0f, treant, 0f, 4.5f, "Arboreal Storm")!;
+var sludgeAndStorm = Dodger.Plan(new Vector2(120f, -423f), treant, 10f, [sludge, breeze], arena, 18f)!;
+Check("a patch on the ground does not hide a hit to come",
+      sludgeAndStorm.Safe && Vector2.Distance(sludgeAndStorm.Point, treant) > 12f, $"to {sludgeAndStorm.Point}");
+
+var borgnyArena = new Vector2(920f, -420f);
+Check("Borgny's arena is known", CrucibleArena.CentreNear(new Vector2(920f, -404f)) == borgnyArena);
+var breathBefore = ToxicBreath.Zone(borgnyArena, 0f, false, 5f);
+var toWall = Dodger.Plan(new Vector2(920f, -421f), borgnyArena, 6f, [breathBefore], borgnyArena, 18f)!;
+Check("Toxic Breath: straight behind where Borgny will land, at the south wall",
+      MathF.Abs(toWall.Point.X - 920f) < 0.01f && toWall.Point.Y < -439.6f, $"to {toWall.Point}");
+var breathAfter = ToxicBreath.Zone(new Vector2(920f, -439.6f), 0f, true, 1f);
+Check("and the cleave is taken to cover the arena in front of it",
+      breathAfter.Contains(new Vector2(920f, -429f)) && breathAfter.Contains(new Vector2(930f, -435f)));
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);

@@ -2062,3 +2062,49 @@ seconds, the Gargoyle's own facing is used.
 
 Tethers are not recorded yet. If the swings turn out to be the other way round, swap the two cones
 in `SweepingEvisceration.Zones`.
+
+### Treant, shops and Borgny — 2026-09-16
+
+`captures/run-20260916-223448.txt`: the whole First Master's Board up to its boss. The Gargoyle was
+survived; Sweeping Evisceration logged its dash both times and was dodged in turn.
+
+**The Treant** keeps Sludge (3071) on the ground around its middle: an event object, base 2010106,
+sits under it. Sludge set in 8.0 yalms from the middle. Walking in went to 2.5 yalms of the middle,
+because `PathfindAndMoveCloseTo` was given melee reach from the middle rather than from the hitbox
+edge. The player died four seconds later, having entered with 937 of 6632 HP. Changes:
+- Walking in now stops at the hitbox's edge.
+- `GroundHazards` lists patches that hurt for as long as they are there: 2010106 at 8.5 yalms, and
+  Borgny's Poison Clouds (19674) at 6.5.
+- The dodger keeps such patches alongside whatever else is due (`Zone.Lasting`). When only patches
+  are around and none is underfoot, it does nothing.
+- The route now counts the player's own HP share next to the familiars' when choosing a campsite.
+
+**Shops buy Beast Gear** by default (`ShopBuysGear`). No full dump of the shop's values was ever taken,
+so the layout comes from diffs and hovers:
+
+| Value | Meaning |
+|---|---|
+| [1] | tokens, as text |
+| [2] | number of offers |
+| from [3], blocks of five | a Bool, the `XBMItem` row, the price as text, a Bool, and "bought" |
+
+- Hovering offer 13 showed row 14 (Ice Shield), and buying `[2, 13]` bought the Ice Shield.
+- Prices are five times `XBMItem` column 2: 140 → 700 and 91 → 455.
+- Rows 1–76 are gear (kind 1). Feed and potions are kinds 2 and 3.
+- `ShopBuyer` buys the dearest piece the tokens allow that is neither bought nor held. It answers the
+  game's "Purchase the ice shield?" only when the question names the piece (`XBMItem` column 3), and
+  answers no otherwise.
+- Gear held is found as any value that is a gear piece's `Item` id (243001–243076). Both the shop and
+  the coffer list what is held that way.
+- The recorder now writes a window's values out whole once they change by 40 or more after opening,
+  so the next shop leaves a full dump to check this against.
+
+**Borgny the Venomous**, the board's boss, fights in a fifth arena at (920, −420).
+- Toxic Breath (48807, 3 s) is followed by a leap back to the south wall (z −439.6), then a cleave
+  2.8–2.9 s after the cast ends. 48808 is a donut of 60 with no omen.
+- The player died standing 10 yalms in front of it. By the player's account, the one safe spot is
+  right behind Borgny, against the wall.
+- `ToxicBreath` gives the dodger a refuge: 6 yalms past where Borgny lands, straight back. It is
+  outside the safe circle, and the walk ends at the wall.
+- Fuming Vomit (48812) places circles of 6 that leave Poison Clouds behind; the clouds are ground
+  hazards now.

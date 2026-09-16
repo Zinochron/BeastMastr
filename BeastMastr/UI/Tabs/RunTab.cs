@@ -220,8 +220,17 @@ public sealed class RunTab : ITab
                            "gear, the offer set here (the first one if that slot is empty), or hands the choice to you. " +
                            "The spoils after a fight are always taken whole.");
 
-        Toggle("Let me shop (otherwise the run leaves without buying)", configuration.ShopByHand,
+        Toggle("Let me shop myself", configuration.ShopByHand,
                value => configuration.ShopByHand = value);
+
+        using (Dalamud.Interface.Utility.Raii.ImRaii.Disabled(configuration.ShopByHand))
+        {
+            Toggle("Buy Beast Gear in shops", configuration.ShopBuysGear,
+                   value => configuration.ShopBuysGear = value);
+        }
+
+        Widgets.HelpMarker("The dearest piece the tokens allow first, then the next, never a piece already held. " +
+                           "Each purchase is only confirmed when the game's question names the piece meant.");
         Toggle("Rest the most hurt familiars at a campsite (otherwise rest alone)",
                configuration.CampsiteRestFamiliars, value => configuration.CampsiteRestFamiliars = value);
     }

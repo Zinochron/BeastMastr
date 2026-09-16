@@ -28,9 +28,14 @@ public enum ZoneKind
 /// Around a cone's origin, everything counts as hit. Standing inside the Morbol, 0.6 yalms behind its
 /// middle, was taken for safe from its breath and was not.
 /// </param>
+/// <param name="Lasting">A patch on the ground that hurts for as long as it is there, not a hit to come.</param>
+/// <param name="Refuge">
+/// Where to go instead of searching: for a hit whose one safe spot the arena search cannot find — behind
+/// Borgny, against the wall, outside the safe circle.
+/// </param>
 public sealed record Zone(ZoneKind Kind, Vector2 Origin, float Rotation, float Radius, float ActivatesIn, string Name,
                           float Inner = 0f, float HalfWidth = 0f, float HalfAngle = 0f, float Behind = 0f,
-                          float Apex = 0f)
+                          float Apex = 0f, bool Lasting = false, Vector2? Refuge = null)
 {
     public bool Contains(Vector2 point)
     {
@@ -117,6 +122,16 @@ public static class Dodger
         var active = Soonest(zones);
         var outside = Vector2.Distance(player, arenaCentre) > arenaRadius;
 
+        foreach (var zone in active)
+        {
+            if (zone.Refuge is { } refuge)
+                return new DodgePlan(refuge, true, zone.Name);
+        }
+
+        // Only lasting patches, and none underfoot: nothing to do but not walk into them.
+        if (active.Count > 0 && active.TrueForAll(zone => zone.Lasting) && !outside && Hits(active, player, Margin) == 0)
+            return null;
+
         if (active.Count == 0)
         {
             if (!outside)
@@ -159,17 +174,20 @@ public static class Dodger
         return best;
     }
 
-    /// <summary>The hits that land within <see cref="Window"/> of the first.</summary>
+    /// <summary>The hits that land within <see cref="Window"/> of the first, and every lasting patch.</summary>
     public static List<Zone> Soonest(IReadOnlyList<Zone> zones)
     {
         var first = float.MaxValue;
         foreach (var zone in zones)
-            first = MathF.Min(first, zone.ActivatesIn);
+        {
+            if (!zone.Lasting)
+                first = MathF.Min(first, zone.ActivatesIn);
+        }
 
         var soonest = new List<Zone>();
         foreach (var zone in zones)
         {
-            if (zone.ActivatesIn <= first + Window)
+            if (zone.Lasting || zone.ActivatesIn <= first + Window)
                 soonest.Add(zone);
         }
 

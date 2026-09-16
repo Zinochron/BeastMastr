@@ -117,8 +117,11 @@ public sealed class RouteKeeper : IDisposable
         if (board.Graph is not { IsValid: true } graph)
             return new RoutePlan([], new HashSet<int>(), [board.Status]);
 
+        // Your own HP counts as much as a familiar's: the Treant fight began at 937 of 6632 HP.
+        var player = Services.Objects.LocalPlayer;
+        var playerShare = player is { MaxHp: > 0 } ? (float)player.CurrentHp / player.MaxHp : 1f;
         return RoutePlanner.Plan(graph, eventIndex, Chosen, configuration.BuildRoutePreferences(),
-                                 LowestFamiliarHpShare, terrain.UnsafeEdges);
+                                 Math.Min(LowestFamiliarHpShare, playerShare), terrain.UnsafeEdges);
     }
 
     /// <summary>

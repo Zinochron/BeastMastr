@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BeastMastr.Data;
 using FFXIVClientStructs.FFXIV.Component.GUI;
 
@@ -66,6 +67,109 @@ public static unsafe class RoomActions
     /// <summary>"Yes" in a <c>SelectYesno</c>.</summary>
     public static readonly Command Yes =
         new("Yes", YesnoAddon, [Value.Int(XbmColumns.RunWindows.Yes)], true, false);
+
+    /// <summary>"No" in a <c>SelectYesno</c>.</summary>
+    public static readonly Command No =
+        new("No", YesnoAddon, [Value.Int(XbmColumns.RunWindows.No)], true, false);
+
+    /// <summary>Buying offer <paramref name="index"/> of a shop, counted from 0. Answered by <see cref="ShopBuyer"/>.</summary>
+    public static Command BuyItem(int index) =>
+        new($"buy shop offer {index + 1}", XbmColumns.RunWindows.ItemShop,
+            [Value.Int(XbmColumns.RunWindows.BuyItemCommand), Value.Int(index)], true, false);
+
+    /// <summary>What a <c>SelectYesno</c> asks, or empty.</summary>
+    public static string YesnoText() =>
+        AddonReader.IsOpen(YesnoAddon) && AddonReader.Values(YesnoAddon) is { Count: > 0 } values
+            ? values[0].Text
+            : string.Empty;
+
+    /// <param name="Singular">The name as a question uses it, "ice shield".</param>
+    /// <param name="Bought">The shop marks it bought.</param>
+    /// <param name="Held">Beast Gear already held.</param>
+    public sealed record ShopOffer(int Index, uint Row, string Name, string Singular, bool IsGear, int Price,
+                                   bool Bought, bool Held);
+
+    /// <summary>The tokens the shop says are held; 0 when it does not say.</summary>
+    public static int ShopTokens()
+    {
+        var values = AddonReader.Values(XbmColumns.RunWindows.ItemShop);
+        return values.Count > XbmColumns.RunWindows.ShopTokens ? Digits(values[XbmColumns.RunWindows.ShopTokens].Text) : 0;
+    }
+
+    /// <summary>The shop's offers, with their names from the sheet. Empty when the shop is not up.</summary>
+    public static List<ShopOffer> ShopOffers()
+    {
+        var offers = new List<ShopOffer>();
+        if (!AddonReader.IsOpen(XbmColumns.RunWindows.ItemShop))
+            return offers;
+
+        var values = AddonReader.Values(XbmColumns.RunWindows.ItemShop);
+        if (values.Count <= XbmColumns.RunWindows.ShopOfferCount ||
+            !int.TryParse(values[XbmColumns.RunWindows.ShopOfferCount].Text, out var count))
+            return offers;
+
+        var held = HeldGear(values);
+        for (var i = 0; i < count; i++)
+        {
+            var start = XbmColumns.RunWindows.ShopFirstOffer + (i * XbmColumns.RunWindows.ShopOfferStride);
+            if (start + XbmColumns.RunWindows.ShopOfferBought >= values.Count ||
+                !uint.TryParse(values[start + XbmColumns.RunWindows.ShopOfferRow].Text, out var row) || row == 0)
+                continue;
+
+            var item = Item(row);
+            offers.Add(new ShopOffer(i, row, item.Name, item.Singular, item.IsGear,
+                                     Digits(values[start + XbmColumns.RunWindows.ShopOfferPrice].Text),
+                                     values[start + XbmColumns.RunWindows.ShopOfferBought].Text == "True",
+                                     item.IsGear && held.Contains(row)));
+        }
+
+        return offers;
+    }
+
+    /// <summary>
+    /// The Beast Gear held, as <c>XBMItem</c> rows: every value that is a gear piece's <c>Item</c> row.
+    /// The shop and the coffer both list what is held in blocks after their offers; only the list holds
+    /// item ids, while offers hold <c>XBMItem</c> rows.
+    /// </summary>
+    private static HashSet<uint> HeldGear(List<AddonReader.Value> values)
+    {
+        var held = new HashSet<uint>();
+        foreach (var value in values)
+        {
+            if (value.Type == "UInt" && uint.TryParse(value.Text, out var id) &&
+                id > XbmColumns.RunWindows.GearItemBase &&
+                id <= XbmColumns.RunWindows.GearItemBase + XbmColumns.RunWindows.LastGearRow)
+                held.Add(id - XbmColumns.RunWindows.GearItemBase);
+        }
+
+        return held;
+    }
+
+    private static (string Name, string Singular, bool IsGear) Item(uint row)
+    {
+        try
+        {
+            var sheet = Services.Data.Excel.GetSheet<Lumina.Excel.RawRow>(null, XbmColumns.XbmItem.Sheet);
+            if (sheet.TryGetRow(row, out var item))
+            {
+                return (item.ReadStringColumn(XbmColumns.XbmItem.DisplayName).ExtractText(),
+                        item.ReadStringColumn(XbmColumns.XbmItem.Singular).ExtractText(),
+                        Convert.ToInt32(item.ReadColumn(XbmColumns.XbmItem.Kind)) == XbmColumns.XbmItem.GearKind);
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning($"Could not read item {row}: {ex.Message}");
+        }
+
+        return ($"item {row}", $"item {row}", false);
+    }
+
+    private static int Digits(string text)
+    {
+        var digits = new string(text.Where(char.IsAsciiDigit).ToArray());
+        return int.TryParse(digits, out var number) ? number : 0;
+    }
 
     /// <summary>"OK" in a <c>SelectOk</c>, as recorded after picking gear already held.</summary>
     public static readonly Command Ok =
