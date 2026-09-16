@@ -229,6 +229,30 @@ public sealed class RunTab : ITab
                    value => configuration.ShopBuysGear = value);
         }
 
+        Toggle("Drink Beast Potions and Crucible Ash", configuration.UsePotions,
+               value => configuration.UsePotions = value);
+        if (configuration.UsePotions)
+        {
+            ImGui.Indent();
+            var inFight = configuration.PotionInFightBelow * 100f;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("In a fight, the strongest at or below", ref inFight, 10f, 80f, "%.0f%% HP"))
+            {
+                configuration.PotionInFightBelow = inFight / 100f;
+                configuration.Save();
+            }
+
+            var onBoard = configuration.PotionOnBoardBelow * 100f;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("On the board, up to", ref onBoard, 10f, 100f, "%.0f%% HP"))
+            {
+                configuration.PotionOnBoardBelow = onBoard / 100f;
+                configuration.Save();
+            }
+
+            ImGui.Unindent();
+        }
+
         Widgets.HelpMarker("The dearest piece the tokens allow first, then the next, never a piece already held. " +
                            "Each purchase is only confirmed when the game's question names the piece meant.");
         Toggle("Rest the most hurt familiars at a campsite (otherwise rest alone)",

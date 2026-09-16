@@ -387,6 +387,13 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
+        // The Strix left the player at a fifth of their HP twice, and the next fight killed them.
+        if (configuration.UsePotions && ItemUser.Tick(configuration.PotionOnBoardBelow, false))
+        {
+            Status = "Drinking before the next room.";
+            return;
+        }
+
         // Where the player stands is the room last finished — whatever the run thought. Someone may have
         // walked on by hand while it was paused or waiting.
         if (board.PositionEvent is >= 0 and var standing && standing != DoneEvent)

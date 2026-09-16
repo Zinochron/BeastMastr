@@ -2132,3 +2132,33 @@ draw-in and knockback effects".
 - Refuges are walked to as soon as they are known, not only once they are the next hit.
 
 A run started after a death no longer says "Revived" at its start.
+
+### Drinking potions — 2026-09-16
+
+`captures/run-20260916-231237.txt` ends with a G3 Beast Potion drunk by hand, at 23:17:43. The first try, at
+23:16:33, came a moment too late: the player died with the menu open.
+
+The run's HUD, `XBMContentsMainHUD`, lists ten item slots in blocks of five from value 9: a Bool, a Bool
+while the slot holds something, the `Item` row, the `XBMItem` row and the name. Drinking goes like this:
+- The HUD sends `[Int 6, Int slot, Undefined]` with the window closing.
+- A `ContextMenu` opens offering "Use" and "Discard" (values 8 and 9, both managed strings).
+- `[Int 0, Int 0, UInt 0, Undefined, Undefined]` on the menu uses the item.
+- The slot's Bool turns false, and its name becomes "Crucible Item 1".
+
+`Automation/ItemUser.cs` does the same, looking for "Use" among the menu's strings. It only drinks
+healing items, by `XBMItem` row:
+
+| Rows | Item | Heals |
+|---|---|---|
+| 76–79 | G1–G4 Beast Potion | 10 / 23 / 36 / 50% |
+| 80–82 | G1–G3 Crucible Ash | 10 / 25 / 40%, familiars too |
+
+- In a fight it drinks the strongest item at 40% HP or below.
+- On the board, before walking on, it drinks up to 60%, using the smallest item that gets there.
+- Both thresholds are settings. After a failed try it waits ten seconds.
+
+Beast Gear is rows 1–75, not 1–76 as first assumed: row 76 is the G1 Beast Potion.
+
+The recording also holds a board being entered from the entrance (23:17:05): the board window's
+`[8]`, a `SelectYesno`, the duty finder's `ContentsFinderConfirm` `[8]`, and the load. That is what the
+re-entry for more than one board (M6) needs.

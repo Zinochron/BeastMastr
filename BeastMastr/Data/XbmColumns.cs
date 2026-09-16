@@ -777,10 +777,10 @@ public static class XbmColumns
         public const int ShopOfferBought = 4;
         public const int BuyItemCommand = 2;
 
-        /// <summary>The <c>Item</c> rows of Beast Gear: 243000 plus the <c>XBMItem</c> row, rows 1 to 76.</summary>
+        /// <summary>The <c>Item</c> rows of Beast Gear: 243000 plus the <c>XBMItem</c> row, rows 1 to 75 (76 is a potion).</summary>
         public const uint GearItemBase = 243000;
 
-        public const uint LastGearRow = 76;
+        public const uint LastGearRow = 75;
     }
 
     /// <summary>

@@ -135,6 +135,15 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShopBuysGear { get; set; } = true;
 
+    /// <summary>Drink the Crucible's healing items: Beast Potions and Crucible Ash.</summary>
+    public bool UsePotions { get; set; } = true;
+
+    /// <summary>In a fight, drink the strongest at or below this share of HP.</summary>
+    public float PotionInFightBelow { get; set; } = 0.4f;
+
+    /// <summary>On the board, drink until above this share of HP, the smallest item that gets there first.</summary>
+    public float PotionOnBoardBelow { get; set; } = 0.6f;
+
     /// <summary>
     /// At a campsite the run picks the most hurt familiars. Off: it rests alone — you recover 90%,
     /// the familiars keep watch.

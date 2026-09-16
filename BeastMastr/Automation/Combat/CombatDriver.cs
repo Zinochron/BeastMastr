@@ -225,6 +225,13 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
+        // HP does not come back on its own in the Crucible.
+        if (configuration.UsePotions && inCombat && ItemUser.Tick(configuration.PotionInFightBelow, true))
+        {
+            Status = "Drinking.";
+            return;
+        }
+
         if (pausedBossMod)
         {
             pausedBossMod = false;
