@@ -8,8 +8,11 @@ namespace BeastMastr;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    /// <summary>2: Parting Blow on by default, since that is how the job was played in the first recording.</summary>
-    public const int CurrentVersion = 2;
+    /// <summary>
+    /// 2: Parting Blow on by default, since that is how the job was played in the first recording.
+    /// 3: treasure takes a random piece of gear by default.
+    /// </summary>
+    public const int CurrentVersion = 3;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -107,11 +110,18 @@ public class Configuration : IPluginConfiguration
     /// <summary>Mark the route on the game's board window, with a pin on every fork to pick a room.</summary>
     public bool ShowRouteOnBoard { get; set; } = true;
 
+    /// <summary>Draw the route's next step on the board itself: the room to go to and the way there.</summary>
+    public bool ShowRouteInWorld { get; set; } = true;
+
+    public const int TreasureByHand = -1;
+    public const int TreasureRandomGear = -2;
+
     /// <summary>
-    /// Which of a treasure coffer's four offers the run takes, counted from 0. -1 hands the choice to
-    /// you, and the run carries on once you have picked.
+    /// Which of a treasure coffer's four offers the run takes: 0..3 by position,
+    /// <see cref="TreasureRandomGear"/> for a random piece of gear, <see cref="TreasureByHand"/> to hand
+    /// the choice to you.
     /// </summary>
-    public int TreasurePick { get; set; }
+    public int TreasurePick { get; set; } = TreasureRandomGear;
 
     /// <summary>
     /// At a shop the run buys nothing and leaves. On: it hands the shop to you instead, and carries on
@@ -179,6 +189,12 @@ public class Configuration : IPluginConfiguration
     public bool UsePartingBlow { get; set; } = true;
 
     public bool UseShieldCharge { get; set; } = true;
+
+    /// <summary>Parting Blow only while another Battlehorn is ready within this many seconds.</summary>
+    public float PartingBlowHornWithin { get; set; } = 10f;
+
+    /// <summary>…or when the target is down to this share of its HP.</summary>
+    public float PartingBlowFinisherShare { get; set; } = 0.1f;
 
     /// <summary>Walk into melee range with vnavmesh when BossMod is not doing the moving.</summary>
     public bool KeepRangeWithNavmesh { get; set; } = true;
@@ -251,6 +267,9 @@ public class Configuration : IPluginConfiguration
 
         if (Version < 2)
             UsePartingBlow = true;
+
+        if (Version < 3 && TreasurePick == 0)
+            TreasurePick = TreasureRandomGear;
 
         Version = CurrentVersion;
         return true;

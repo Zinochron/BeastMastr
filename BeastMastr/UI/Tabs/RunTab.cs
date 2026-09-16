@@ -190,14 +190,23 @@ public sealed class RunTab : ITab
             return;
 
         var pick = configuration.TreasurePick;
-        var label = pick < 0 ? "Let me choose" : $"Offer {pick + 1}";
+        var label = pick switch
+        {
+            Configuration.TreasureRandomGear => "Random gear",
+            Configuration.TreasureByHand => "Let me choose",
+            _ => $"Offer {pick + 1}",
+        };
+
         ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
         using (var combo = ImRaii.Combo("Treasure", label))
         {
             if (combo.Success)
             {
-                if (ImGui.Selectable("Let me choose", pick < 0))
-                    SetTreasure(-1);
+                if (ImGui.Selectable("Random gear", pick == Configuration.TreasureRandomGear))
+                    SetTreasure(Configuration.TreasureRandomGear);
+
+                if (ImGui.Selectable("Let me choose", pick == Configuration.TreasureByHand))
+                    SetTreasure(Configuration.TreasureByHand);
 
                 for (var offer = 0; offer < XbmColumns.RunWindows.TreasureOffers; offer++)
                 {
@@ -207,8 +216,9 @@ public sealed class RunTab : ITab
             }
         }
 
-        Widgets.HelpMarker("A treasure coffer offers four items, left to right. The run takes the one set here " +
-                           "(the first one offered if that slot is empty), or hands the choice to you.");
+        Widgets.HelpMarker("A treasure coffer offers four items, left to right. The run takes a random piece of " +
+                           "gear, the offer set here (the first one if that slot is empty), or hands the choice to you. " +
+                           "The spoils after a fight are always taken whole.");
 
         Toggle("Let me shop (otherwise the run leaves without buying)", configuration.ShopByHand,
                value => configuration.ShopByHand = value);
@@ -421,6 +431,30 @@ public sealed class RunTab : ITab
                value => configuration.UseBattlehorns = value);
         Toggle("Send a spent familiar off with Parting Blow", configuration.UsePartingBlow,
                value => configuration.UsePartingBlow = value);
+
+        using (ImRaii.Disabled(!configuration.UsePartingBlow))
+        {
+            ImGui.Indent();
+            var within = configuration.PartingBlowHornWithin;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("…only if another Battlehorn is ready within", ref within, 0f, 30f, "%.0f s"))
+            {
+                configuration.PartingBlowHornWithin = within;
+                configuration.Save();
+            }
+
+            var finisher = configuration.PartingBlowFinisherShare * 100f;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("…or the target is below", ref finisher, 0f, 50f, "%.0f%% HP"))
+            {
+                configuration.PartingBlowFinisherShare = finisher / 100f;
+                configuration.Save();
+            }
+
+            Widgets.HelpMarker("The last familiar of a cycle is only sent off when the next one can follow soon, " +
+                               "or when the blow will finish the target.");
+            ImGui.Unindent();
+        }
         Toggle("Close gaps with Shield Charge", configuration.UseShieldCharge,
                value => configuration.UseShieldCharge = value);
         Toggle("Walk into reach with vnavmesh when BossMod is off", configuration.KeepRangeWithNavmesh,
@@ -549,8 +583,20 @@ public sealed class RunTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker("Puts an arrow on every room the route takes and a star on every room you picked, " +
-                           "and a pin in the corner of every room on a fork: click the pin to pick that room.");
+        Widgets.HelpMarker("In the game's Board Layout window: an arrow on every room the route takes, a star on " +
+                           "every room you picked, and a + in the corner of every room on a fork — click it to pick " +
+                           "that room.");
+
+        var world = configuration.ShowRouteInWorld;
+        if (ImGui.Checkbox("Show the next step on the board", ref world))
+        {
+            configuration.ShowRouteInWorld = world;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker("On the board itself: a green ring on the room the route takes next, red rings on the " +
+                           "other rooms of that move, and the way there on the ground. The ring turns yellow while " +
+                           "walking. The map further down is this window's own; the game's map is not drawn on.");
 
         ImGui.SameLine();
         ImGui.TextDisabled(overlay.Status);

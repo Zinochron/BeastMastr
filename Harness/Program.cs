@@ -356,11 +356,13 @@ Check("a choice already behind the run is ignored", fromMiddle.Events.Count == 5
 // is about the priority and nothing else.
 BstState Fight(int level = 50, uint combo = 0, float comboTimer = 0f, int tp = 0, int familiarTp = 0,
                uint[]? statuses = null, uint[]? notReady = null, bool inCombat = true, float distance = 1f,
-               bool casting = false, bool familiarOut = true, bool leaving = false)
+               bool casting = false, bool familiarOut = true, bool leaving = false, bool prePull = false,
+               int horns = 2, float otherHornIn = 0f, float hpShare = 1f)
 {
     var blocked = new HashSet<uint>(notReady ?? []);
     return new BstState(level, combo, comboTimer, tp, familiarTp, new HashSet<uint>(statuses ?? []),
-                        id => !blocked.Contains(id), inCombat, true, distance, casting, familiarOut, leaving);
+                        id => !blocked.Contains(id), inCombat, true, distance, casting, familiarOut, leaving,
+                        prePull, horns, otherHornIn, hpShare);
 }
 
 // Everything but the ability under test is on cooldown, so the check is about that ability alone.
@@ -478,8 +480,42 @@ Check("a familiar sent off is replaced at once", nextHorn.Ogcd == Bst.SecondBatt
 var noBorrowLeaving = BstRotation.Next(Fight(leaving: true, notReady: AllBut(Bst.Borrow)), plain);
 Check("nothing is borrowed from a familiar on its way out", noBorrowLeaving.Ogcd == 0, noBorrowLeaving.Why);
 
-var prePull = BstRotation.Next(Fight(familiarOut: false, distance: 12f), plain);
+var prePull = BstRotation.Next(Fight(familiarOut: false, distance: 12f, prePull: true, horns: 0), plain);
 Check("a familiar is summoned before the pull, out of reach", prePull.Ogcd == Bst.FirstBattlehorn, prePull.Why);
+Check("and nothing is engaged while it is", !prePull.Engage && prePull.Gcd == 0, prePull.Why);
+
+// The opener as it is played: a horn, Borrow from that familiar, then a second horn — all before the pull.
+var openBorrow = BstRotation.Next(Fight(prePull: true, horns: 1, notReady: [Bst.FirstBattlehorn]), plain);
+Check("the opener borrows from the first familiar", openBorrow.Ogcd == Bst.Borrow && !openBorrow.Engage,
+      openBorrow.Why);
+
+var openSecond = BstRotation.Next(Fight(prePull: true, horns: 1, statuses: [4602],
+                                        notReady: [Bst.FirstBattlehorn, Bst.Borrow]), plain);
+Check("then summons a second familiar", openSecond.Ogcd == Bst.SecondBattlehorn && !openSecond.Engage,
+      openSecond.Why);
+
+var openDone = BstRotation.Next(Fight(prePull: true, horns: 2, statuses: [4602], distance: 1f,
+                                      notReady: [Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn,
+                                                 Bst.Borrow, Bst.TemperedRelease, Bst.Trick, Bst.Rally]), plain);
+Check("and only then goes in", openDone.Engage, openDone.Why);
+
+var openLow = BstRotation.Next(Fight(level: 15, prePull: true, horns: 1, notReady: [Bst.FirstBattlehorn]), plain);
+Check("below Borrow's level the second horn follows at once", openLow.Ogcd == Bst.SecondBattlehorn, openLow.Why);
+
+var noThirdEarly = BstRotation.Next(Fight(horns: 2, statuses: [4602],
+                                          notReady: AllBut(Bst.ThirdBattlehorn)), plain);
+Check("no third horn while two familiars are working", noThirdEarly.Ogcd != Bst.ThirdBattlehorn, noThirdEarly.Why);
+
+// Parting Blow for the last familiar of a cycle.
+var lastWaits = BstRotation.Next(Fight(otherHornIn: 25f, notReady: AllBut(Bst.PartingBlow)), plain);
+Check("the last familiar stays while no horn is near ready", lastWaits.Ogcd == 0, lastWaits.Why);
+
+var lastGoes = BstRotation.Next(Fight(otherHornIn: 8f, notReady: AllBut(Bst.PartingBlow)), plain);
+Check("it goes once the first horn is ready within ten seconds", lastGoes.Ogcd == Bst.PartingBlow, lastGoes.Why);
+
+var finisher = BstRotation.Next(Fight(otherHornIn: float.PositiveInfinity, hpShare: 0.05f,
+                                      notReady: AllBut(Bst.PartingBlow)), plain);
+Check("or when the blow finishes the target", finisher.Ogcd == Bst.PartingBlow, finisher.Why);
 
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");

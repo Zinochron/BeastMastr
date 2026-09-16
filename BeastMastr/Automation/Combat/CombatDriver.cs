@@ -53,6 +53,16 @@ public sealed unsafe class CombatDriver : IDisposable
     /// <summary>How long a familiar sent off still counts as leaving, if no new one is summoned first.</summary>
     private static readonly TimeSpan LeavingFor = TimeSpan.FromSeconds(8);
 
+    /// <summary>
+    /// How long after a Battlehorn its familiar counts as there before it shows up: the cast ends about
+    /// half a second before the familiar appears, and in that gap the opener would summon again
+    /// instead of borrowing.
+    /// </summary>
+    private static readonly TimeSpan ArrivingFor = TimeSpan.FromSeconds(2.5);
+
+    /// <summary>Battlehorns used since this fight began.</summary>
+    private int hornsThisFight;
+
     private DateTime nextAttempt;
     private DateTime nextRangeCheck;
     private DateTime lastInCombat;
@@ -77,9 +87,15 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
 
         if (use.ActionId == Bst.PartingBlow)
+        {
             lastPartingBlow = use.At;
-        else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0)
+        }
+        else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0 && use.At - lastBattlehorn > TimeSpan.FromSeconds(1))
+        {
+            // The game reports a cast twice — pressed, then queued — so a second report within the cast is the same horn.
             lastBattlehorn = use.At;
+            hornsThisFight++;
+        }
     }
 
     /// <summary>Parting Blow went off after the last summon, and not long ago.</summary>
@@ -108,6 +124,9 @@ public sealed unsafe class CombatDriver : IDisposable
 
     public void Start()
     {
+        if (!Enabled)
+            hornsThisFight = FamiliarOut(Services.Objects.LocalPlayer) ? 1 : 0;
+
         Enabled = true;
         input.Reset();
         Status = "On — waiting for a fight.";
@@ -173,9 +192,18 @@ public sealed unsafe class CombatDriver : IDisposable
         }
 
         if (inCombat)
+        {
             bossMod.Engage(player.Position);
-        else if (bossMod.Engaged && DateTime.Now - lastInCombat > CombatEndGrace)
-            bossMod.Disengage();
+        }
+        else if (DateTime.Now - lastInCombat > CombatEndGrace && lastInCombat != DateTime.MinValue)
+        {
+            // A fight has ended: the next one opens again from the first horn.
+            if (bossMod.Engaged)
+                bossMod.Disengage();
+
+            if (!MayPull)
+                hornsThisFight = 0;
+        }
 
         var target = Target(player, inCombat);
         if (target == null)
@@ -188,9 +216,6 @@ public sealed unsafe class CombatDriver : IDisposable
         var distance = MathF.Max(0f, Vector3.Distance(player.Position, target.Position) - target.HitboxRadius -
                                      player.HitboxRadius);
 
-        if (!bossMod.Moves && configuration.KeepRangeWithNavmesh)
-            KeepInReach(target, distance);
-
         var manager = ActionManager.Instance();
         if (manager == null)
             return;
@@ -198,7 +223,14 @@ public sealed unsafe class CombatDriver : IDisposable
         var state = Snapshot(manager, player, target, distance, inCombat);
         var decision = BstRotation.Next(state, Options());
         LastDecision = $"{Name(decision.Gcd)} / {Name(decision.Ogcd)} — {decision.Why}";
-        Status = $"Fighting {target.Name.TextValue} at {distance:0.0} y. TP {state.PlayerTp}, familiar TP {state.FamiliarTp}.";
+        Status = $"Fighting {target.Name.TextValue} at {distance:0.0} y. TP {state.PlayerTp}, familiar TP {state.FamiliarTp}." +
+                 (decision.Engage ? string.Empty : " Setting up the opener.");
+
+        // Moving breaks a cast, and walking in before the opener is set up starts the fight early.
+        if (!bossMod.Moves && configuration.KeepRangeWithNavmesh && decision.Engage && !player.IsCasting)
+            KeepInReach(target, distance);
+        else if (!decision.Engage || player.IsCasting)
+            StopApproaching();
 
         if (manager->AnimationLock > 0f || player.IsCasting || DateTime.Now < nextAttempt)
             return;
@@ -238,7 +270,9 @@ public sealed unsafe class CombatDriver : IDisposable
                               SpendTpAt: configuration.SpendTpAt,
                               UseBattlehorns: configuration.UseBattlehorns,
                               UsePartingBlow: configuration.UsePartingBlow,
-                              UseShieldCharge: configuration.UseShieldCharge);
+                              UseShieldCharge: configuration.UseShieldCharge,
+                              PartingBlowHornWithin: configuration.PartingBlowHornWithin,
+                              PartingBlowFinisherShare: configuration.PartingBlowFinisherShare);
     }
 
     private BstState Snapshot(ActionManager* manager, IPlayerCharacter player, IBattleChara target, float distance,
@@ -260,14 +294,56 @@ public sealed unsafe class CombatDriver : IDisposable
             HasTarget: true,
             TargetDistance: distance,
             TargetCasting: target.IsCasting && target.IsCastInterruptible,
-            FamiliarOut: FamiliarOut(player),
-            FamiliarLeaving: FamiliarLeaving);
+            FamiliarOut: FamiliarOut(player) || FamiliarArriving,
+            FamiliarLeaving: FamiliarLeaving,
+            PrePull: MayPull && !inCombat,
+            HornsThisFight: hornsThisFight,
+            OtherHornReadyIn: OtherHornReadyIn(manager, player),
+            TargetHpShare: target.MaxHp > 0 ? (float)target.CurrentHp / target.MaxHp : 1f);
     }
 
+    private bool FamiliarArriving =>
+        lastBattlehorn > lastPartingBlow && DateTime.Now - lastBattlehorn < ArrivingFor;
+
+    /// <summary>
+    /// Seconds until a Battlehorn other than the one whose familiar is out can be used. A horn's recast
+    /// only starts once its familiar has retreated, so one that is neither usable nor counting down is
+    /// not coming back soon.
+    /// </summary>
+    private float OtherHornReadyIn(ActionManager* manager, IPlayerCharacter player)
+    {
+        var summoned = GaugeReader.Read()?.SummonedBeast ?? 0;
+        var best = float.PositiveInfinity;
+
+        for (var slot = 0; slot < Bst.Battlehorns.Length; slot++)
+        {
+            var horn = Bst.Battlehorns[slot];
+            if (slot + 1 == summoned || player.Level < Bst.Levels[horn])
+                continue;
+
+            if (manager->GetActionStatus(ActionType.Action, horn, player.GameObjectId, true, false) == 0)
+                return 0f;
+
+            if (manager->IsRecastTimerActive(ActionType.Action, horn))
+            {
+                var left = manager->GetRecastTime(ActionType.Action, horn) -
+                           manager->GetRecastTimeElapsed(ActionType.Action, horn);
+                best = MathF.Min(best, MathF.Max(0f, left));
+            }
+        }
+
+        return best;
+    }
+
+    /// <summary>
+    /// Whether an action could be used — ignoring a cast under way, so that what comes after a
+    /// Battlehorn's cast is already decided during it. <see cref="Use"/> still waits for the cast.
+    /// </summary>
     private bool Ready(ActionManager* manager, IGameObject player, IGameObject target, uint id)
     {
         var adjusted = manager->GetAdjustedActionId(id);
-        return manager->GetActionStatus(ActionType.Action, adjusted, TargetFor(adjusted, player, target)) == 0;
+        return manager->GetActionStatus(ActionType.Action, adjusted, TargetFor(adjusted, player, target), true,
+                                        false) == 0;
     }
 
     private bool Use(ActionManager* manager, IGameObject player, IGameObject target, uint id)
@@ -325,7 +401,8 @@ public sealed unsafe class CombatDriver : IDisposable
     /// A familiar is a battle NPC of the pet kind — "Opo-opo", "Squirrel", "Cu Sith" in the recording —
     /// and one that has retreated lingers as dead for a moment, so the dead are not counted.
     /// </summary>
-    private static bool FamiliarOut(IGameObject player) =>
+    private static bool FamiliarOut(IGameObject? player) =>
+        player != null &&
         Services.Objects.Any(obj => obj.ObjectKind == ObjectKind.BattleNpc && obj.SubKind == (byte)BattleNpcSubKind.Pet &&
                                     obj.OwnerId == player.EntityId && !obj.IsDead);
 

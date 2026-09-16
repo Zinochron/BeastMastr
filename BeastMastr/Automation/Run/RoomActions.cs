@@ -88,13 +88,16 @@ public static unsafe class RoomActions
         return true;
     }
 
+    /// <summary>One offer of a treasure coffer.</summary>
+    public sealed record Offer(int Index, uint Item, string Name, bool IsGear);
+
     /// <summary>
     /// The treasure coffer's offers: position and <c>XBMItem</c> row, for the ones the window marks as
     /// offered. Empty when the window is not up.
     /// </summary>
-    public static List<(int Index, uint Item)> TreasureOffers()
+    public static List<Offer> TreasureOffers()
     {
-        var offers = new List<(int, uint)>();
+        var offers = new List<Offer>();
         if (!AddonReader.IsOpen(XbmColumns.RunWindows.Treasure) ||
             !AddonReader.TryGet(XbmColumns.RunWindows.Treasure, out var addon))
             return offers;
@@ -109,10 +112,29 @@ public static unsafe class RoomActions
             var offered = addon->AtkValues[start];
             var id = addon->AtkValues[item];
             if (offered.Type == AtkValueType.Bool && offered.Byte != 0 && id.Type == AtkValueType.UInt && id.UInt != 0)
-                offers.Add((i, id.UInt));
+                offers.Add(Describe(i, id.UInt));
         }
 
         return offers;
+    }
+
+    private static Offer Describe(int index, uint item)
+    {
+        try
+        {
+            var sheet = Services.Data.Excel.GetSheet<Lumina.Excel.RawRow>(null, XbmColumns.XbmItem.Sheet);
+            if (sheet.TryGetRow(item, out var row))
+            {
+                return new Offer(index, item, row.ReadStringColumn(XbmColumns.XbmItem.DisplayName).ExtractText(),
+                                 Convert.ToInt32(row.ReadColumn(XbmColumns.XbmItem.Kind)) == XbmColumns.XbmItem.GearKind);
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning($"Could not read item {item}: {ex.Message}");
+        }
+
+        return new Offer(index, item, $"item {item}", false);
     }
 }
 

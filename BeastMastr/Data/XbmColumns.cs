@@ -741,6 +741,21 @@ public static class XbmColumns
     }
 
     /// <summary>
+    /// The run's items, <c>XBMItem</c>: 206 rows, 14 columns. Column 0 is the kind — 1 Beast Gear,
+    /// 2 Crucible Item, 3 Feed, as <c>XBMItemType</c> names them — and column 11 the name as shown.
+    /// </summary>
+    public static class XbmItem
+    {
+        public const string Sheet = "XBMItem";
+        public const int ColumnCount = 14;
+
+        public const int Kind = 0;
+        public const int DisplayName = 11;
+
+        public const int GearKind = 1;
+    }
+
+    /// <summary>
     /// A board. 6 rows, 37 columns. Columns 4..36 are 33 wide and line up one for one with
     /// <c>XBMScoreBonus</c>'s 33 rows: the points that board pays for each bonus, 0 when it does not
     /// offer it.

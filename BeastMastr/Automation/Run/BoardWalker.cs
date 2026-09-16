@@ -96,6 +96,16 @@ public sealed class BoardWalker : IDisposable
         if (board.Join is not { IsComplete: true })
             return Fail("The rooms are not placed in the world: " + board.Status);
 
+        // A walk is planned from one room's centre to the next. Started from anywhere else, its first
+        // leg can cut across a gap between platforms — which is how the first test got stuck on a wall.
+        var standing = board.PositionEvent;
+        if (standing != current)
+        {
+            return Fail(standing < 0
+                            ? $"You are not standing on a room, so the walk from event {current} cannot start. Step onto it first."
+                            : $"You are standing on event {standing}, not on event {current} where the walk starts.");
+        }
+
         from = current;
         Target = eventIndex;
         startedAt = DateTime.Now;
@@ -172,20 +182,19 @@ public sealed class BoardWalker : IDisposable
             return null;
         }
 
+        // Always over the room's own centre: the link starts there, and the way from anywhere else on
+        // the platform to the centre stays on the platform.
         var here = player.Position;
-        var direct = new List<Vector3> { here };
-        direct.AddRange(edgePath.Skip(1));
+        var path = new List<Vector3> { here };
+        if (Vector2.Distance(Flat(here), Flat(edgePath[0])) > 0.8f)
+            path.Add(edgePath[0]);
 
-        if (Clearance(direct) >= Keep())
-            return direct;
+        path.AddRange(edgePath.Skip(1));
 
-        var viaRoom = new List<Vector3> { here };
-        viaRoom.AddRange(edgePath);
+        if (Clearance(path) >= Keep())
+            return path;
 
-        if (Clearance(viaRoom) >= Keep())
-            return viaRoom;
-
-        Status = "Even going back over the current room comes too close to another room — walk there by hand once.";
+        Status = "The way from where you stand comes too close to another room — step to the room's centre first.";
         return null;
     }
 

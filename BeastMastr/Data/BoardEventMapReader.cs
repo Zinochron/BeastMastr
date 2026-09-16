@@ -35,10 +35,31 @@ public static unsafe class BoardEventMapReader
     }
 
     /// <param name="BoardRowId">Which board, as the row of <c>XBMContentStageEventMap</c>. The board's signature.</param>
-    /// <param name="CurrentEventIndex">The event the board marks. Only meaningful in a run; 0 at its start.</param>
+    /// <param name="CurrentEventIndex">
+    /// The event the window has selected — it follows clicks on the tiles, so it is **not** where the
+    /// run stands. <see cref="MarkedEvent"/> is.
+    /// </param>
     public sealed record Snapshot(string Addon, uint BoardRowId, int GridSize, int GridHalfSize, bool Loaded,
                                   int CurrentEventIndex, IReadOnlyList<Cell> Cells, IReadOnlyList<Tile> Tiles)
     {
+        /// <summary>
+        /// The event of the room tile flagged as current, or -1. Unlike <see cref="CurrentEventIndex"/>
+        /// this does not follow the selection.
+        /// </summary>
+        public int MarkedEvent
+        {
+            get
+            {
+                foreach (var tile in Tiles)
+                {
+                    if (tile.IsCurrent && tile.CellIndex >= 0 && tile.CellIndex < Cells.Count && Cells[tile.CellIndex].IsRoom)
+                        return Cells[tile.CellIndex].EventIndex;
+                }
+
+                return -1;
+            }
+        }
+
         /// <summary>Whether any drawn tile is marked current — which only ever happens inside a run.</summary>
         public bool MarksCurrent
         {

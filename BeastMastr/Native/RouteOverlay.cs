@@ -30,7 +30,19 @@ public sealed unsafe class RouteOverlay : IDisposable
     private const uint NodeIdBase = 0x42480000;
 
     private const int RecheckInterval = 10;
-    private const float PinSize = 20f;
+    private const float PinSize = 16f;
+
+    /// <summary>
+    /// The game font's own arrow. "▶" and "☆" are not in it — the first test showed them as bars and
+    /// as empty buttons — while "★" is.
+    /// </summary>
+    private static readonly string PlannedGlyph = ((char)Dalamud.Game.Text.SeIconChar.ArrowRight).ToString();
+
+    private const string ChosenGlyph = "★";
+    private const string PinGlyph = "+";
+
+    /// <summary>A tile's size in screen pixels when the board's grid has not been fitted yet.</summary>
+    private const float FallbackTile = 30f;
 
     private static readonly Vector4 Chosen = new(1f, 0.85f, 0.2f, 1f);
     private static readonly Vector4 Planned = new(0.45f, 0.95f, 0.45f, 1f);
@@ -137,20 +149,22 @@ public sealed unsafe class RouteOverlay : IDisposable
             var mark = MarkFor(tile.NodeId, root);
             mark.EventIndex = node.EventIndex;
 
-            var local = (tile.ScreenPosition - rootScreen) / scale;
-            var size = tile.Size / scale;
+            // The tile's drawn size is the grid's cell size on screen; its node size is in the component's
+            // own units, which the first version mixed up with the window's.
+            var side = (board.Projection?.CellSize ?? FallbackTile) / scale;
+            var local = (tile.Centre - rootScreen) / scale - new Vector2(side / 2f);
 
             var chosen = route.IsChosen(node.EventIndex);
             var planned = route.IsPlanned(node.EventIndex);
 
-            mark.Label.Position = local + new Vector2(2f, size.Y - 16f);
-            mark.Label.String = chosen ? "★" : planned ? "▶" : string.Empty;
+            mark.Label.Position = local + new Vector2(-4f, side - 12f);
+            mark.Label.String = chosen ? ChosenGlyph : planned ? PlannedGlyph : string.Empty;
             mark.Label.TextColor = chosen ? Chosen : Planned;
             mark.Label.IsVisible = chosen || planned;
 
             var fork = graph.OnMove(node.Move).Count > 1;
-            mark.Pin.Position = local + new Vector2(size.X - PinSize + 2f, -2f);
-            mark.Pin.String = chosen ? "★" : "☆";
+            mark.Pin.Position = local + new Vector2(side - (PinSize / 2f), -(PinSize / 2f));
+            mark.Pin.String = chosen ? ChosenGlyph : PinGlyph;
             mark.Pin.IsVisible = fork;
         }
 
@@ -183,7 +197,7 @@ public sealed unsafe class RouteOverlay : IDisposable
         {
             NodeId = nextNodeId++,
             Size = new Vector2(PinSize, PinSize),
-            String = "☆",
+            String = PinGlyph,
             IsVisible = false,
             OnClick = () =>
             {

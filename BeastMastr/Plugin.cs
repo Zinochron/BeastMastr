@@ -42,6 +42,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly BossModBridge bossMod;
     private readonly CombatDriver combat;
     private readonly BoardRunner runner;
+    private readonly WorldRouteOverlay worldRoute;
     private readonly TeamSelector teamSelector;
     private readonly HealthSelector healthSelector;
     private readonly DifficultySelector difficultySelector;
@@ -102,6 +103,7 @@ public sealed class Plugin : IDalamudPlugin
         combat = new CombatDriver(Configuration, job, inputGuard, bossMod, actionWatcher);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
+        worldRoute = new WorldRouteOverlay(Configuration, boardModel, boardTerrain, routeKeeper, walker);
         runner = new BoardRunner(Configuration, boardModel, boardTerrain, routeKeeper, walker, combat, fightSelector,
                                  healthSelector, Catalog);
         difficultySelector = new DifficultySelector(Configuration);
@@ -149,6 +151,7 @@ public sealed class Plugin : IDalamudPlugin
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
+        Services.PluginInterface.UiBuilder.Draw += worldRoute.Draw;
         Services.PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
         Services.PluginInterface.UiBuilder.OpenConfigUi += OpenSettings;
     }
@@ -253,6 +256,7 @@ public sealed class Plugin : IDalamudPlugin
     public void Dispose()
     {
         Services.PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
+        Services.PluginInterface.UiBuilder.Draw -= worldRoute.Draw;
         Services.PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
         Services.PluginInterface.UiBuilder.OpenConfigUi -= OpenSettings;
 

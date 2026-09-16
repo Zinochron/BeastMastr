@@ -1695,3 +1695,49 @@ Run tab's map now draws platforms and ground apart. vnavmesh's own bitmap
 middle column's three rooms and their bridges there — and agrees on the widths and the nine-yalm rows.
 
 The recorder now leaves unset values out of its dumps; they were 93% of this file.
+
+### The first automated test — 2026-09-16
+
+Played with the Debug build of 17:03, not the Release build with the recorded buttons: Dalamud has both
+folders registered, and the Debug one was loaded. Both are built from now on.
+
+**The board window's "current event" follows the selection.** Opening the Board Layout at the start
+logged "marks event 1", then "event 2" as tiles were clicked — `CurrentEventIndex` is the selected
+room, not where the run stands. Walking "from event 2" while standing on the start sent the character
+straight across a gap into a wall. Three things follow:
+
+- The window's mark is now the tile flagged `IsCurrentEvent`, not the selected event.
+- `BoardModel.PositionEvent` — the room (or the start) the player stands within three yalms of — is
+  asked first. After a fight the player is put back on the room just finished, so standing on a room
+  means having entered it.
+- A walk only starts from the room the player is standing on, and always goes over that room's centre,
+  where the checked link begins. The run takes where the player stands as the room last finished,
+  whatever it thought — someone may have walked on by hand.
+
+**A fight was declared over before it began**: the arena had loaded and nothing was in combat yet. A
+fight now ends only after combat has been seen and has stopped, when the spoils open, or when the run
+is back on the board after the arena. Hostiles seen from the board no longer count as the fight
+beginning. The room that opens is taken as the one stood on, even when it is not the one walked to.
+
+**The opener**, as the player plays it: a Battlehorn, Borrow from that familiar, a second Battlehorn —
+all before the pull, and nothing is walked to or attacked until it is done. The second summon grants
+One with Nature, so the first familiar's Tempered Release and the borrowed Beast Mode are ready as the
+fight starts. The familiar only appears about half a second after the cast; for two and a half seconds
+after a Battlehorn it counts as there, or the opener would summon twice instead of borrowing.
+`GetActionStatus` is asked without the casting check, so what follows a cast is already decided during
+it; the use itself still waits.
+
+**Parting Blow** now needs a familiar to follow: another Battlehorn usable within ten seconds (a horn's
+recast only starts once its familiar has retreated; the one out, per gauge byte 3, is left out) — or
+the target at 10% HP or less, where the blow finishes it. Both are settings.
+
+**Treasure** takes a random piece of gear by default (`XBMItem` column 0 is the kind, 1 Beast Gear);
+the spoils are always taken whole.
+
+**On the board window**, "▶" and "☆" are not in the game's font and showed as bars and empty buttons.
+The arrow is now the game's own glyph (`SeIconChar.ArrowRight`), the pin a "+", the star stays. Marks
+are placed by the grid's cell size on screen rather than the tile node's own size.
+
+**On the board itself**, `UI/WorldRouteOverlay.cs` draws the next step: a green ring on the room the
+route takes next (yellow while walking), red rings on the other rooms of that move, and the checked
+way there on the ground. Nothing is drawn on the game's map; the map in the Run tab is the plugin's.

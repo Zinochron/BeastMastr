@@ -31,6 +31,13 @@ public sealed class BoardModel : IDisposable
     private const float TriggerMatchRadius = 3f;
 
     /// <summary>
+    /// Standing this close to a room's centre is standing on that room. The platforms are about five
+    /// yalms long and a room starts within 1.8 of its centre, so whoever is this close has entered it —
+    /// or is on the start.
+    /// </summary>
+    private const float OnRoomRadius = 3f;
+
+    /// <summary>
     /// Where the start sits relative to the first room, in world Z, when it has not been measured. The
     /// start has no icon. A recorded run began at (-700, 0, 0) with move 1 at Z -9: one row spacing.
     /// </summary>
@@ -81,10 +88,44 @@ public sealed class BoardModel : IDisposable
     /// -1 when neither has said anything.
     /// </summary>
     public int CurrentEvent =>
-        TriggerEvent >= 0 && (MarkedEvent < 0 || TriggerMovedAt >= MarkedAt) ? TriggerEvent
+        PositionEvent >= 0 ? PositionEvent
+        : TriggerEvent >= 0 && (MarkedEvent < 0 || TriggerMovedAt >= MarkedAt) ? TriggerEvent
         : MarkedEvent >= 0 ? MarkedEvent
         : AtStart && Graph?.Start is { } start ? start.EventIndex
         : -1;
+
+    /// <summary>
+    /// The room — or the start — the player is standing on, or -1 between rooms and off the board.
+    /// The first thing asked: the board window's marks and the trigger object both lag or wander, and
+    /// the window's selection follows clicks, while the player's own position is where the run is.
+    /// </summary>
+    public int PositionEvent
+    {
+        get
+        {
+            if (!OnBoard || Graph == null || Services.Objects.LocalPlayer is not { } player)
+                return -1;
+
+            var here = new Vector2(player.Position.X, player.Position.Z);
+            var best = -1;
+            var bestDistance = OnRoomRadius;
+
+            foreach (var node in Graph.Nodes)
+            {
+                if (WorldOf(node.EventIndex) is not { } centre)
+                    continue;
+
+                var distance = Vector2.Distance(here, new Vector2(centre.X, centre.Z));
+                if (distance < bestDistance)
+                {
+                    bestDistance = distance;
+                    best = node.EventIndex;
+                }
+            }
+
+            return best;
+        }
+    }
 
     /// <summary>On the start platform of a run that has not entered a room yet.</summary>
     public bool AtStart { get; private set; }
@@ -192,12 +233,12 @@ public sealed class BoardModel : IDisposable
 
         Graph = BuildGraph();
 
-        if (Window is { MarksCurrent: true } && InRun)
+        if (Window is { MarkedEvent: >= 0 } && InRun)
         {
-            if (Window.CurrentEventIndex != MarkedEvent)
-                Services.Log.Information($"The board marks event {Window.CurrentEventIndex}.");
+            if (Window.MarkedEvent != MarkedEvent)
+                Services.Log.Information($"The board marks event {Window.MarkedEvent} (selected {Window.CurrentEventIndex}).");
 
-            MarkedEvent = Window.CurrentEventIndex;
+            MarkedEvent = Window.MarkedEvent;
             MarkedAt = DateTime.Now;
 
             if (MarkedEvent == 0 && Services.Objects.LocalPlayer is { } player)

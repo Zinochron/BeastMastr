@@ -78,8 +78,14 @@ public static class Bst
 /// <param name="SpendTpAt">With no Heart to pair with, an axe is used once TP reaches this, not before.</param>
 /// <param name="UsePartingBlow">Send the familiar off with Parting Blow to summon the next one — its cooldowns reset.</param>
 /// <param name="UseShieldCharge">Close a gap with Shield Charge.</param>
+/// <param name="PartingBlowHornWithin">
+/// Parting Blow only while another Battlehorn is ready within this many seconds — so the last familiar
+/// is not sent off with nothing to follow it.
+/// </param>
+/// <param name="PartingBlowFinisherShare">…or when the target is down to this share of its HP, where the blow finishes it.</param>
 public sealed record BstOptions(bool Combo, bool Resources, int SpendTpAt, bool UseBattlehorns, bool UsePartingBlow,
-                                bool UseShieldCharge)
+                                bool UseShieldCharge, float PartingBlowHornWithin = 10f,
+                                float PartingBlowFinisherShare = 0.1f)
 {
     public static BstOptions Default => new(true, true, 200, true, true, true);
 }
@@ -88,6 +94,13 @@ public sealed record BstOptions(bool Combo, bool Resources, int SpendTpAt, bool 
 /// <param name="Ready">Whether an action can be used right now — the game's own answer, cooldown and all.</param>
 /// <param name="TargetDistance">To the target's edge, in yalms; infinity without a target.</param>
 /// <param name="InCombat">A fight is on — or the run has started one, which is when a familiar is summoned before the pull.</param>
+/// <param name="PrePull">The run has started the fight but nothing is fighting yet: the time for the opener.</param>
+/// <param name="HornsThisFight">How many Battlehorns this fight has seen.</param>
+/// <param name="OtherHornReadyIn">
+/// Seconds until a Battlehorn other than the summoned one can be used: 0 when one can now, infinity
+/// when none will.
+/// </param>
+/// <param name="TargetHpShare">The target's share of HP left, 1 when not known.</param>
 /// <param name="FamiliarLeaving">
 /// Parting Blow has sent the familiar off and no new one has come yet. It stays on the field for a few
 /// seconds, but the next Battlehorn is already usable, and that is when it was pressed in the recording.
@@ -105,11 +118,19 @@ public sealed record BstState(
     float TargetDistance,
     bool TargetCasting,
     bool FamiliarOut,
-    bool FamiliarLeaving = false);
+    bool FamiliarLeaving = false,
+    bool PrePull = false,
+    int HornsThisFight = 0,
+    float OtherHornReadyIn = 0f,
+    float TargetHpShare = 1f);
 
 /// <param name="Gcd">The weaponskill to press, or 0.</param>
 /// <param name="Ogcd">The ability to press alongside it, or 0.</param>
-public sealed record BstDecision(uint Gcd, uint Ogcd, string Why);
+/// <param name="Engage">
+/// Whether to go for the target. False while the opener is still being set up before the pull —
+/// walking in or attacking would start the fight before the familiars are ready.
+/// </param>
+public sealed record BstDecision(uint Gcd, uint Ogcd, string Why, bool Engage = true);
 
 /// <summary>
 /// What a Beastmaster presses next. Pure: it is handed a snapshot and says two ids.
@@ -124,12 +145,25 @@ public static class BstRotation
 {
     private const float MeleeRange = 3f;
 
+    /// <summary>
+    /// The opener, as the job is played: a Battlehorn, Borrow from that familiar, then a second
+    /// Battlehorn. The second summon grants One with Nature, so the first familiar's Tempered Release and
+    /// the borrowed Beast Mode are both there when the fight starts.
+    /// </summary>
     public static BstDecision Next(BstState state, BstOptions options)
     {
         var why = new List<string>();
         var ogcd = options.Resources ? Ability(state, options, why) : 0u;
-        var gcd = options.Combo && state.HasTarget && state.TargetDistance <= MeleeRange ? Combo(state, why) : 0u;
-        return new BstDecision(gcd, ogcd, string.Join("; ", why));
+
+        var opening = state.PrePull && (Array.IndexOf(Bst.Battlehorns, ogcd) >= 0 || ogcd == Bst.Borrow);
+        if (opening)
+            why.Add("opener before the pull");
+
+        var gcd = !opening && options.Combo && state.HasTarget && state.TargetDistance <= MeleeRange
+                      ? Combo(state, why)
+                      : 0u;
+
+        return new BstDecision(gcd, ogcd, string.Join("; ", why), !opening);
     }
 
     private static uint Combo(BstState state, List<string> why)
@@ -185,6 +219,21 @@ public static class BstRotation
             return Bst.Borrow;
         }
 
+        // The opener's second summon: after Borrow has taken from the first familiar — or straight
+        // away below the level Borrow is learned at.
+        if (options.UseBattlehorns && familiar && state.HornsThisFight == 1 &&
+            (HasKinship(state) || state.Level < Bst.Levels[Bst.Borrow]))
+        {
+            foreach (var horn in Bst.Battlehorns)
+            {
+                if (Usable(state, horn))
+                {
+                    why.Add("second familiar of the opener");
+                    return horn;
+                }
+            }
+        }
+
         var axe = Axe(state, options, why);
         if (axe != 0)
             return axe;
@@ -219,8 +268,19 @@ public static class BstRotation
         if (options.UsePartingBlow && familiar && state.Level >= 30 &&
             !Usable(state, Bst.TemperedRelease) && !Usable(state, Bst.Borrow) && Usable(state, Bst.PartingBlow))
         {
-            why.Add("Parting Blow, to summon the next familiar");
-            return Bst.PartingBlow;
+            // Only with a familiar to follow: another Battlehorn ready soon. The last familiar of a
+            // cycle goes only when the blow finishes the target.
+            if (state.OtherHornReadyIn <= options.PartingBlowHornWithin)
+            {
+                why.Add("Parting Blow, to summon the next familiar");
+                return Bst.PartingBlow;
+            }
+
+            if (state.TargetHpShare <= options.PartingBlowFinisherShare)
+            {
+                why.Add("Parting Blow to finish the target");
+                return Bst.PartingBlow;
+            }
         }
 
         if (options.UseShieldCharge && state.TargetDistance > MeleeRange + 1f && state.TargetDistance <= 20f &&

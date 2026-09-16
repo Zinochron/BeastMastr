@@ -541,14 +541,14 @@ public sealed unsafe class RunRecorder : IDisposable
     private void PollBoard()
     {
         var board = BoardEventMapReader.Read();
-        var now = board == null ? -1 : board.MarksCurrent ? board.CurrentEventIndex : -1;
+        var now = board == null ? -1 : (board.MarkedEvent * 100) + board.CurrentEventIndex;
         if (now == currentEvent)
             return;
 
         currentEvent = now;
         Line("event", board == null
                           ? "no board window"
-                          : $"current={board.CurrentEventIndex} marked={board.MarksCurrent} row={board.BoardRowId} in {board.Addon}");
+                          : $"selected={board.CurrentEventIndex} marked={board.MarkedEvent} row={board.BoardRowId} in {board.Addon}");
     }
 
     private void PollPosition()

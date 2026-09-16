@@ -88,6 +88,11 @@ public sealed class BoardRunner : IDisposable
 
     private int treasureChoice;
 
+    /// <summary>Whether the fight in hand has been seen in combat, and away from the board.</summary>
+    private bool sawCombat;
+
+    private bool leftBoard;
+
     public BoardRunner(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
                        BoardWalker walker, CombatDriver combat, FightSelector fightSelector,
                        HealthSelector healthSelector, BeastCatalog catalog)
@@ -286,7 +291,7 @@ public sealed class BoardRunner : IDisposable
         // A room already in hand is finished first, whatever else is true.
         if (RoomOpened() is { } phase)
         {
-            Target = board.CurrentEvent;
+            Target = board.PositionEvent >= 0 ? board.PositionEvent : board.CurrentEvent;
             Enter(phase, "Picking up the room already under way.");
             return;
         }
@@ -330,6 +335,8 @@ public sealed class BoardRunner : IDisposable
     private void Deciding()
     {
         reentries = 0;
+        sawCombat = false;
+        leftBoard = false;
 
         // After a fight the run is still in the arena for a moment before it loads back to the board.
         if (!board.OnBoard)
@@ -347,6 +354,14 @@ public sealed class BoardRunner : IDisposable
         {
             Enter(Phase.Finishing, "The boss is done.");
             return;
+        }
+
+        // Where the player stands is the room last finished — whatever the run thought. Someone may have
+        // walked on by hand while it was paused or waiting.
+        if (board.PositionEvent is >= 0 and var standing && standing != DoneEvent)
+        {
+            Note($"Standing on event {standing}, not on {DoneEvent}; going on from there.");
+            DoneEvent = standing;
         }
 
         var plan = route.PlanFrom(DoneEvent);
@@ -395,6 +410,13 @@ public sealed class BoardRunner : IDisposable
     {
         if (RoomOpened() is { } phase)
         {
+            // The room that opened is the one stood on, even if it is not the one walked to.
+            if (board.PositionEvent is >= 0 and var standing && standing != Target)
+            {
+                Note($"The room that opened is event {standing}, not {Target}.");
+                Target = standing;
+            }
+
             Enter(phase, "The room opened.");
             return;
         }
@@ -444,7 +466,9 @@ public sealed class BoardRunner : IDisposable
 
     private void Commencing()
     {
-        if (Services.Condition[ConditionFlag.InCombat] || Hostiles().Any())
+        // The enemies are in the arena, not on the board: anything hostile seen from the board is not
+        // this fight beginning.
+        if (Services.Condition[ConditionFlag.InCombat] || (!board.OnBoard && Hostiles().Any()))
         {
             Enter(Phase.Fighting, "The fight began.");
             return;
@@ -496,8 +520,16 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        var over = !Services.Condition[ConditionFlag.InCombat] && DateTime.Now - lastInCombat > FightEndGrace &&
-                   !Hostiles().Any();
+        var inCombat = Services.Condition[ConditionFlag.InCombat];
+        sawCombat |= inCombat;
+        leftBoard |= !board.OnBoard;
+
+        // Over once there has been a fight and it has stopped, once the spoils are up, or once the run
+        // is back on the board after the arena. Not merely because nothing is fighting yet: right after
+        // the arena loads, nothing is.
+        var over = (sawCombat && !inCombat && DateTime.Now - lastInCombat > FightEndGrace && !Hostiles().Any())
+                   || AddonReader.IsOpen(XbmColumns.RunWindows.Booty)
+                   || (leftBoard && board.OnBoard && !inCombat);
 
         if (over || continueRequested)
         {
@@ -589,7 +621,7 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        if (configuration.TreasurePick < 0)
+        if (configuration.TreasurePick == Configuration.TreasureByHand)
         {
             Ask("Pick your treasure — the run carries on when the window closes.");
             return;
@@ -608,13 +640,23 @@ public sealed class BoardRunner : IDisposable
                 return;
             }
 
-            var pick = offers.FirstOrDefault(offer => offer.Index == configuration.TreasurePick, offers[0]);
+            var pick = configuration.TreasurePick == Configuration.TreasureRandomGear
+                           ? RandomGear(offers)
+                           : offers.FirstOrDefault(offer => offer.Index == configuration.TreasurePick) ?? offers[0];
             treasureChoice = pick.Index;
-            Note($"Taking treasure offer {pick.Index + 1} (item {pick.Item}).");
+            Note($"Taking treasure offer {pick.Index + 1}: {pick.Name}.");
         }
 
         if (Carry(RoomActions.ChooseTreasure(treasureChoice), "Pick your treasure — the run carries on when the window closes."))
             RoomDone("Took the treasure.");
+    }
+
+    /// <summary>A random piece of gear among the offers; any offer when none is gear.</summary>
+    private static RoomActions.Offer RandomGear(IReadOnlyList<RoomActions.Offer> offers)
+    {
+        var gear = offers.Where(offer => offer.IsGear).ToList();
+        var pool = gear.Count > 0 ? gear : offers;
+        return pool[Random.Shared.Next(pool.Count)];
     }
 
     /// <summary>
@@ -783,6 +825,12 @@ public sealed class BoardRunner : IDisposable
         phaseSince = DateTime.Now;
         acted = false;
         step = null;
+
+        if (phase is Phase.CallingFamiliars or Phase.Commencing)
+        {
+            sawCombat = false;
+            leftBoard = false;
+        }
         HandOff = string.Empty;
         Status = status;
         Note($"{phase}: {status}");
