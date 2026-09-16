@@ -84,6 +84,23 @@ public sealed unsafe class CombatDriver : IDisposable
     private DateTime lastMovedAt;
     private DateTime lastDodgeAt;
 
+    /// <summary>How often the dodge is planned: a grid over the arena against every hit under way.</summary>
+    private static readonly TimeSpan DodgePlanInterval = TimeSpan.FromMilliseconds(150);
+
+    /// <summary>A new order to walk only when the spot moved this far, or this long after the last.</summary>
+    private const float DodgeRegoal = 1f;
+
+    private static readonly TimeSpan DodgeReorder = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Off an arena, BeastMastr's own dodging stays this close to where it started.</summary>
+    private const float OffArenaRadius = 25f;
+
+    private DodgePlan? dodge;
+    private DateTime nextDodgePlan;
+    private Vector2 dodgeGoal;
+    private DateTime nextDodgeOrder;
+    private string lastDodgeWhy = string.Empty;
+
     public CombatDriver(Configuration configuration, BeastmasterJob job, ManualInputGuard input, BossModBridge bossMod,
                         ActionWatcher actions)
     {
@@ -153,6 +170,8 @@ public sealed unsafe class CombatDriver : IDisposable
             NavmeshIpc.Stop();
 
         approaching = false;
+        dodge = null;
+        lastDodgeWhy = string.Empty;
         Enabled = false;
         MayPull = false;
         pausedBossMod = false;
@@ -251,18 +270,39 @@ public sealed unsafe class CombatDriver : IDisposable
         // BossMod never closes in for a Beastmaster — it takes the job for a ranged one — so while no
         // enemy casts anything to dodge, its moving is held back and vnavmesh walks in; the moment a
         // cast with a shape starts, BossMod is let go again.
-        if (EnemyCasts.Dodging(player))
+        //
+        // With BossMod off, BeastMastr dodges itself — see Rules/Dodger.cs — and walks in only once
+        // nothing is being dodged.
+        var ownDodging = OwnDodging;
+        if (ownDodging && DateTime.Now >= nextDodgePlan)
+        {
+            nextDodgePlan = DateTime.Now + DodgePlanInterval;
+            dodge = PlanDodge(player, target);
+        }
+        else if (!ownDodging)
+        {
+            dodge = null;
+        }
+
+        if (dodge != null || (!ownDodging && EnemyCasts.Dodging(player)))
             lastDodgeAt = DateTime.Now;
 
-        var casting = player.IsCasting || job.IsCast(decision.Ogcd);
-        var walkIn = configuration.KeepRangeWithNavmesh && decision.Engage && !casting && distance > MeleeReach &&
-                     DateTime.Now - lastDodgeAt > DodgeSettles;
-        bossMod.HoldMovement(walkIn);
-
-        if (walkIn && !bossMod.Moves)
-            KeepInReach(target, distance);
+        if (dodge != null)
+        {
+            FollowDodge(player, dodge);
+        }
         else
-            StopApproaching();
+        {
+            var casting = player.IsCasting || job.IsCast(decision.Ogcd);
+            var walkIn = configuration.KeepRangeWithNavmesh && decision.Engage && !casting &&
+                         distance > MeleeReach && DateTime.Now - lastDodgeAt > DodgeSettles;
+            bossMod.HoldMovement(walkIn);
+
+            if (walkIn && !bossMod.Moves)
+                KeepInReach(target, distance);
+            else
+                StopApproaching();
+        }
 
         if (manager->AnimationLock > 0f || player.IsCasting || DateTime.Now < nextAttempt)
             return;
@@ -396,12 +436,56 @@ public sealed unsafe class CombatDriver : IDisposable
                                         false) == 0;
     }
 
+    private bool OwnDodging => bossMod.Role == BossModRole.Off && configuration.DodgeWithBeastMastr;
+
+    private DodgePlan? PlanDodge(IPlayerCharacter player, IGameObject target)
+    {
+        var here = new Vector2(player.Position.X, player.Position.Z);
+        var arena = CrucibleArena.CentreNear(here);
+        var zones = EnemyCasts.Zones(player);
+        if (arena == null && zones.Count == 0)
+            return null;
+
+        return Dodger.Plan(here, new Vector2(target.Position.X, target.Position.Z), MeleeReach + target.HitboxRadius,
+                           zones, arena ?? here,
+                           arena != null ? Math.Clamp(configuration.ArenaSafeRadius, 5f, 20f) : OffArenaRadius);
+    }
+
+    /// <summary>Walks to the dodge's spot in a straight line — the arenas are flat — or stands on it.</summary>
+    private void FollowDodge(IGameObject player, DodgePlan plan)
+    {
+        if (plan.Why != lastDodgeWhy)
+        {
+            lastDodgeWhy = plan.Why;
+            Services.Log.Information($"Dodging {plan.Why}: to ({plan.Point.X:0.0}, {plan.Point.Y:0.0})" +
+                                     (plan.Safe ? "." : "; nowhere is clear, so the least bad spot."));
+        }
+
+        var here = new Vector2(player.Position.X, player.Position.Z);
+        if (Vector2.Distance(here, plan.Point) <= 0.5f)
+        {
+            StopApproaching();
+            dodgeGoal = plan.Point;
+            return;
+        }
+
+        if (approaching && Vector2.Distance(plan.Point, dodgeGoal) < DodgeRegoal && DateTime.Now < nextDodgeOrder)
+            return;
+
+        dodgeGoal = plan.Point;
+        nextDodgeOrder = DateTime.Now + DodgeReorder;
+        if (NavmeshIpc.MoveTo([new Vector3(plan.Point.X, player.Position.Y, plan.Point.Y)]))
+            approaching = true;
+    }
+
     private bool Use(ActionManager* manager, IGameObject player, IGameObject target, uint id)
     {
         nextAttempt = DateTime.Now + AttemptInterval;
 
         var adjusted = manager->GetAdjustedActionId(id);
-        if (job.IsCast(adjusted) && DateTime.Now - lastMovedAt < StillFor)
+        // Moving breaks a cast; so does a dodge that has somewhere to go.
+        if (job.IsCast(adjusted) && (DateTime.Now - lastMovedAt < StillFor || dodge is { } plan &&
+                                     Vector2.Distance(plan.Point, new Vector2(player.Position.X, player.Position.Z)) > 0.5f))
             return false;
 
         var targetId = TargetFor(adjusted, player, target);

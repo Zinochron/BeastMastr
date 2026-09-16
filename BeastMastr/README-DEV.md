@@ -1916,3 +1916,45 @@ The duty actions worked as intended:
 - Challenge twice, once the covering familiar dropped below 35%.
 
 A familiar that comes in hurt, like Opo-opo at 308/667, still loses a lot to a single Snarl.
+
+### The fourth automated test — 2026-09-16: dying to Bleeding, and dodging of its own
+
+Board 1, 21:17–21:21 (`captures/run-20260916-211658.txt`). The run ended in the Banemite fight (event 6)
+when the player died.
+
+**What killed the player.** Bedrock Uplift was cast at 21:20:11. BossMod ran the player out: 13.4
+yalms from the middle at 12.6 s, 21.8 at 14.7 s, then along x = 138.5, 18.5 yalms out. Bleeding
+(3077/3078) set in at 14.5 s, and it ended only with death. It took about 95 HP every three seconds,
+from 1098 HP to 0 in 33 seconds. Snarl covered for Deadly Thrust, but the Diremite came in at 290/667
+and died at 21:20:47, the same moment as the player.
+
+**The arena square did not hold BossMod.** `AIHintsBuilder.CalculateAutoHints` only uses an obstacle
+map while the player stands inside its box (`ObstacleMapManager.Find`). One step out, and BossMod's
+bounds are its default 30-yalm square around the player again. On top of that, the second fight
+logged `ObstacleMap.Generate failed`: `GenerateMap` rethrows the fault of the previous generation, so
+the first fight's map had failed too.
+
+**BossMod runs the wrong way.** In the first recording, where the fight was played by hand, the player
+stayed within 5–13 yalms of the Banemite through two Bedrock Uplifts and lost no HP. BossMod dodges
+all four hits at once. Every spot within 24 yalms is in one of them, so it runs out of the arena.
+
+**So BeastMastr dodges now, and BossMod is off by default** (config version 4 sets it off once; it can
+be turned back on in the Run tab).
+- `Rules/CastShapes.cs` reads a cast's shape the way BossMod does. From its IL: `CastType` 2 and 5 are
+  circles (5 adds the hitbox), 3 and 13 are cones (angle from the omen's "fanNNN"), 4 and 12 are lines,
+  10 is a donut (hole from the omen's "sircle_OOII"), 11 is a cross.
+- `Data/EnemyCasts.Zones` takes each cast's own shape. A placed hit is centred on
+  `BattleChara.CastInfo.TargetLocation`, and the facing comes from `CastInfo.Rotation`. It leaves out
+  single-target hits, hits placed on you (they follow you), and circles over the whole arena.
+- `Rules/Dodger.cs` dodges only the hits that land within 1.5 s of the first. It searches a 1-yalm
+  grid inside the safe circle (18 yalms, a setting) for a spot outside those hits with a yalm to spare.
+  Each spot is scored by the distance to walk plus half the distance past melee reach.
+  - Against Bedrock Uplift this steps 7 yalms out of the circle, then back to 4 yalms once the circle
+    has hit, and stays there through the rings. This is the hand-played line, and the harness checks it.
+- Outside the safe circle with nothing cast, it walks back in.
+- `CombatDriver` plans every 150 ms and walks straight to the spot with `Path.MoveTo`. It starts no
+  Battlehorn while it has somewhere to go, and walks in to the target only 1.5 s after the last dodge.
+  Each dodge is logged: "Dodging Bedrock Uplift: to (x, z)".
+
+**Still open:** the Void Blizzard III exaflare rows are dodged cast by cast. Their next steps are not
+known ahead of time.

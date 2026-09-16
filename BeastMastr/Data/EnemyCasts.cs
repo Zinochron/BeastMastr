@@ -4,6 +4,7 @@ using BeastMastr.Rules;
 using Dalamud.Game.ClientState.Objects.Enums;
 using Dalamud.Game.ClientState.Objects.SubKinds;
 using Dalamud.Game.ClientState.Objects.Types;
+using FFXIVClientStructs.FFXIV.Client.Game.Character;
 using LuminaAction = Lumina.Excel.Sheets.Action;
 
 namespace BeastMastr.Data;
@@ -64,6 +65,50 @@ public static class EnemyCasts
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Where the casts under way will hit, for dodging. Only the cast's own shape counts here: the
+    /// helpers cast the real hits, and the visible enemy's shapeless half is left out. Hits no position
+    /// avoids, and ones placed on you — they follow you — are left out too.
+    /// </summary>
+    public static unsafe List<Zone> Zones(IPlayerCharacter player)
+    {
+        var zones = new List<Zone>();
+        var sheet = Services.Data.GetExcelSheet<LuminaAction>();
+
+        foreach (var caster in Casting(player))
+        {
+            if (sheet.GetRowOrDefault(caster.CastActionId) is not { } row)
+                continue;
+
+            var target = caster.CastTargetObjectId;
+            var onPlayer = target == player.GameObjectId;
+            if (row.CastType <= IncomingHits.SingleTarget ||
+                IncomingHits.Unavoidable(row.CastType, row.EffectRange, row.TargetArea, onPlayer) ||
+                (onPlayer && !row.TargetArea))
+                continue;
+
+            var info = &((BattleChara*)caster.Address)->CastInfo;
+            var origin = new Vector2(caster.Position.X, caster.Position.Z);
+            if (row.TargetArea)
+            {
+                origin = new Vector2(info->TargetLocation.X, info->TargetLocation.Z);
+            }
+            else if (target != caster.GameObjectId && Services.Objects.SearchById(target) is { } aimed)
+            {
+                origin = new Vector2(aimed.Position.X, aimed.Position.Z);
+            }
+
+            var omen = row.Omen.ValueNullable?.Path.ExtractText() ?? string.Empty;
+            var zone = CastShapes.Shape(row.CastType, row.EffectRange, row.XAxisModifier, omen, caster.HitboxRadius,
+                                        origin, info->Rotation, caster.TotalCastTime - caster.CurrentCastTime,
+                                        row.Name.ExtractText());
+            if (zone != null)
+                zones.Add(zone);
+        }
+
+        return zones;
     }
 
     /// <summary>Every battle NPC in reach that is casting, familiars left out.</summary>

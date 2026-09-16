@@ -377,7 +377,7 @@ public sealed class RunTab : ITab
             }
         }
 
-        Widgets.HelpMarker("Off: BeastMastr presses everything and walks into reach itself.\n" +
+        Widgets.HelpMarker("Off: BeastMastr presses everything, dodges and walks into reach itself.\n" +
                            "Dodging only: BossMod moves — out of AoEs and into range — and BeastMastr presses everything.\n" +
                            "Dodging and rotation: BossMod also presses the combo; BeastMastr keeps the resources.\n" +
                            "Whatever BossMod had active is put back after each fight.");
@@ -458,6 +458,25 @@ public sealed class RunTab : ITab
         Toggle("Close gaps with Shield Charge", configuration.UseShieldCharge,
                value => configuration.UseShieldCharge = value);
         DutyActionSettings();
+        Toggle("With BossMod off, dodge with BeastMastr", configuration.DodgeWithBeastMastr,
+               value => configuration.DodgeWithBeastMastr = value);
+        Widgets.HelpMarker("Reads every enemy cast's shape from the game data, the way BossMod does, and steps " +
+                           "out of what hits soonest — circles and rings in turn, as Bedrock Uplift needs — " +
+                           "without leaving the arena's safe circle. Each dodge is written to the log.");
+
+        if (configuration.DodgeWithBeastMastr)
+        {
+            var radius = configuration.ArenaSafeRadius;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("Dodge no further from the arena's middle than", ref radius, 10f, 20f, "%.1f y"))
+            {
+                configuration.ArenaSafeRadius = radius;
+                configuration.Save();
+            }
+
+            Widgets.HelpMarker("Bleeding started about 20.5 yalms from the middle.");
+        }
+
         Toggle("Walk into reach with vnavmesh", configuration.KeepRangeWithNavmesh,
                value => configuration.KeepRangeWithNavmesh = value);
         Widgets.HelpMarker("BossMod takes a Beastmaster for a ranged job and never walks in. While no enemy casts " +
@@ -555,7 +574,7 @@ public sealed class RunTab : ITab
 
     private static string RoleName(BossModRole role) => role switch
     {
-        BossModRole.Off => "Off",
+        BossModRole.Off => "Off (BeastMastr dodges)",
         BossModRole.DodgeOnly => "Dodging only",
         BossModRole.DodgeAndRotation => "Dodging and rotation",
         _ => role.ToString(),

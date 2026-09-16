@@ -1,3 +1,4 @@
+using System.Numerics;
 using BeastMastr.Rules;
 using Lumina;
 using Lumina.Data;
@@ -592,6 +593,66 @@ Check("the Piscodemon spawn is on the arena at (120, 0)",
 Check("the boss spawn is on the arena at (520, -420)",
       CrucibleArena.CentreNear(new System.Numerics.Vector2(520f, -404.05f)) == new System.Numerics.Vector2(520f, -420f));
 Check("the board is on no arena", CrucibleArena.CentreNear(new System.Numerics.Vector2(-700f, -33f)) == null);
+// Dodging by the sheet's shapes, against what the recordings cast.
+Check("Bedrock Uplift's first ring has a hole of 6", MathF.Abs(CastShapes.DonutInner("gl_sircle_1005bf", 12) - 6f) < 0.01f);
+Check("its last ring has a hole of 18", MathF.Abs(CastShapes.DonutInner("gl_sircle_4836_o0v", 24) - 18f) < 0.01f);
+Check("Blood Rain has a hole of 8", MathF.Abs(CastShapes.DonutInner("gl_sircle_4008ah1", 40) - 8f) < 0.01f);
+Check("a 120 degree fan is 60 degrees each side",
+      MathF.Abs(CastShapes.ConeHalfAngle("gl_fan120_1bf") - (MathF.PI / 3f)) < 0.001f);
+Check("a hit on one target is not on the ground",
+      CastShapes.Shape(1, 0, 0, "", 1f, Vector2.Zero, 0f, 1f, "x") == null);
+
+var cone = CastShapes.Shape(13, 60, 0, "gl_fan090_1bf", 0f, Vector2.Zero, 0f, 3f, "cone")!;
+Check("a cone facing +z holds a point ahead", cone.Contains(new Vector2(0f, 10f)));
+Check("but not one behind", !cone.Contains(new Vector2(0f, -10f)));
+var line = CastShapes.Shape(12, 60, 8, "", 0f, Vector2.Zero, MathF.PI / 2f, 3f, "line")!;
+Check("a line facing +x holds a point ahead within its width", line.Contains(new Vector2(30f, 3.5f)));
+Check("but not beside it", !line.Contains(new Vector2(30f, 5f)));
+
+// Bedrock Uplift as the third test saw it: a circle and three rings around the Banemite, cast together.
+var arena = new Vector2(120f, -420f);
+var mite = new Vector2(120f, -424f);
+List<Zone> Uplift(float elapsed)
+{
+    var zones = new List<Zone>();
+    void Add(Zone? zone) { if (zone != null && zone.ActivatesIn > 0f) zones.Add(zone); }
+    Add(CastShapes.Shape(2, 6, 0, "", 0f, mite, 0f, 4.7f - elapsed, "Bedrock Uplift"));
+    Add(CastShapes.Shape(10, 12, 0, "gl_sircle_1005bf", 0f, mite, 0f, 6.7f - elapsed, "Bedrock Uplift"));
+    Add(CastShapes.Shape(10, 18, 0, "gl_sircle_3020bf", 0f, mite, 0f, 8.7f - elapsed, "Bedrock Uplift"));
+    Add(CastShapes.Shape(10, 24, 0, "gl_sircle_4836_o0v", 0f, mite, 0f, 10.7f - elapsed, "Bedrock Uplift"));
+    return zones;
+}
+
+var standing = new Vector2(120f, -426f);
+var early = Dodger.Plan(standing, mite, 3f, Uplift(0f), arena, 18f)!;
+var earlyDistance = Vector2.Distance(early.Point, mite);
+Check("first the player steps just out of the circle", early.Safe && earlyDistance > 6f && earlyDistance < 9f,
+      $"{earlyDistance:0.0} y from the Banemite");
+Check("and stays in the arena", Vector2.Distance(early.Point, arena) <= 18f);
+
+var afterCircle = Dodger.Plan(early.Point, mite, 3f, Uplift(4.8f), arena, 18f)!;
+Check("once the circle has hit, back into its middle",
+      afterCircle.Safe && Vector2.Distance(afterCircle.Point, mite) < 6f,
+      $"{Vector2.Distance(afterCircle.Point, mite):0.0} y from the Banemite");
+
+var later = Dodger.Plan(afterCircle.Point, mite, 3f, Uplift(6.8f), arena, 18f)!;
+Check("and it stays there for the outer rings", later.Safe && Vector2.Distance(later.Point, mite) < 6f,
+      later.Why);
+
+var edgeMite = new Vector2(129.9f, -416.6f);
+var edge = Dodger.Plan(new Vector2(131f, -414f), edgeMite, 3f,
+                       [CastShapes.Shape(2, 6, 0, "", 0f, edgeMite, 0f, 4.7f, "Bedrock Uplift")!], arena, 18f)!;
+Check("near the edge the step out stays inside", Vector2.Distance(edge.Point, arena) <= 18f,
+      $"{Vector2.Distance(edge.Point, arena):0.0} y from the middle");
+
+var outside = Dodger.Plan(new Vector2(139f, -411f), null, 3f, [], arena, 18f);
+Check("outside the safe circle with nothing cast, back in",
+      outside != null && Vector2.Distance(outside.Point, arena) < 18f);
+Check("inside with nothing cast, nothing to do", Dodger.Plan(standing, mite, 3f, [], arena, 18f) == null);
+
+var clear = Dodger.Plan(new Vector2(120f, -410f), mite, 3f, Uplift(0f), arena, 18f)!;
+Check("already clear of what hits first: stay put", clear.Point == new Vector2(120f, -410f), clear.Why);
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);

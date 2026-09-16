@@ -12,7 +12,7 @@ public class Configuration : IPluginConfiguration
     /// 2: Parting Blow on by default, since that is how the job was played in the first recording.
     /// 3: treasure takes a random piece of gear by default.
     /// </summary>
-    public const int CurrentVersion = 3;
+    public const int CurrentVersion = 4;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -163,7 +163,16 @@ public class Configuration : IPluginConfiguration
     // ---- Fighting ---------------------------------------------------------
 
     /// <summary>What BossMod does in a fight the run plays. Nothing, if it is not loaded.</summary>
-    public BossModRole BossModRole { get; set; } = BossModRole.DodgeOnly;
+    public BossModRole BossModRole { get; set; } = BossModRole.Off;
+
+    /// <summary>
+    /// With BossMod off, BeastMastr dodges itself: out of what the enemies cast, and never out of the
+    /// arena's safe circle.
+    /// </summary>
+    public bool DodgeWithBeastMastr { get; set; } = true;
+
+    /// <summary>How far from an arena's middle BeastMastr's own dodging may go. Bleeding starts at about 20.5.</summary>
+    public float ArenaSafeRadius { get; set; } = 18f;
 
     /// <summary>The preset that only moves: dodging and staying in range.</summary>
     public string BossModDodgePreset { get; set; } = "BeastMastr Dodge";
@@ -297,6 +306,10 @@ public class Configuration : IPluginConfiguration
 
         if (Version < 3 && TreasurePick == 0)
             TreasurePick = TreasureRandomGear;
+
+        // BossMod dodged out of the arena into Bleeding twice, and the third test died of it.
+        if (Version < 4)
+            BossModRole = BossModRole.Off;
 
         Version = CurrentVersion;
         return true;
