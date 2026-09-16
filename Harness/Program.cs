@@ -352,6 +352,117 @@ var fromMiddle = RoutePlanner.Plan(first, 6, chosenLeft, RoutePreferences.Defaul
 Check("a choice already behind the run is ignored", fromMiddle.Events.Count == 5 && fromMiddle.Notes.Count == 0,
       string.Join(",", fromMiddle.Events) + " " + string.Join(" | ", fromMiddle.Notes));
 
+// The rotation, against snapshots. Every action is ready unless a test says otherwise, so each check
+// is about the priority and nothing else.
+BstState Fight(int level = 50, uint combo = 0, float comboTimer = 0f, int tp = 0, int familiarTp = 0,
+               uint[]? statuses = null, uint[]? notReady = null, bool inCombat = true, float distance = 1f,
+               bool casting = false, bool familiarOut = true)
+{
+    var blocked = new HashSet<uint>(notReady ?? []);
+    return new BstState(level, combo, comboTimer, tp, familiarTp, new HashSet<uint>(statuses ?? []),
+                        id => !blocked.Contains(id), inCombat, true, distance, casting, familiarOut);
+}
+
+// Everything but the ability under test is on cooldown, so the check is about that ability alone.
+uint[] AllBut(params uint[] keep) =>
+    new[]
+    {
+        Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn, Bst.TemperedRelease, Bst.Borrow,
+        Bst.AvalancheAxe, Bst.MistralAxe, Bst.SpinningAxe, Bst.GaleAxe, Bst.Trick, Bst.Rally, Bst.RallyingCheer,
+        Bst.BeastMode, Bst.PartingBlow, Bst.ShieldCharge,
+    }.Where(id => !keep.Contains(id)).ToArray();
+
+var plain = BstOptions.Default;
+
+var opening = BstRotation.Next(Fight(familiarOut: false), plain);
+Check("a fight opens by summoning a familiar", opening.Ogcd == Bst.FirstBattlehorn, opening.Why);
+Check("and with the first step of the combo", opening.Gcd == Bst.SmashAxe, opening.Why);
+
+var secondStep = BstRotation.Next(Fight(combo: Bst.SmashAxe, comboTimer: 20f), plain);
+Check("the combo goes on to Axeblade Bite", secondStep.Gcd == Bst.AxebladeBite, secondStep.Why);
+
+var third = BstRotation.Next(Fight(combo: Bst.AxebladeBite, comboTimer: 20f), plain);
+Check("and ends with Shieldsplitter", third.Gcd == Bst.Shieldsplitter, third.Why);
+
+var low = BstRotation.Next(Fight(level: 10, combo: Bst.AxebladeBite, comboTimer: 20f), plain);
+Check("below level 12 the combo starts over", low.Gcd == Bst.SmashAxe, low.Why);
+
+var lapsed = BstRotation.Next(Fight(combo: Bst.SmashAxe, comboTimer: 0f), plain);
+Check("a lapsed combo starts over", lapsed.Gcd == Bst.SmashAxe, lapsed.Why);
+
+var released = BstRotation.Next(Fight(statuses: [Bst.OneWithNature], notReady: AllBut(Bst.TemperedRelease)), plain);
+Check("One with Nature means Tempered Release", released.Ogcd == Bst.TemperedRelease, released.Why);
+
+var withoutNature = BstRotation.Next(Fight(notReady: AllBut(Bst.TemperedRelease)), plain);
+Check("no Tempered Release without One with Nature", withoutNature.Ogcd == 0, withoutNature.Why);
+
+(uint Heart, uint Axe)[] pairs =
+[
+    (Bst.VolantHeart, Bst.AvalancheAxe),
+    (Bst.RampantHeart, Bst.MistralAxe),
+    (Bst.DurantHeart, Bst.SpinningAxe),
+    (Bst.EldritchHeart, Bst.GaleAxe),
+];
+
+foreach (var (heart, axe) in pairs)
+{
+    var paired = BstRotation.Next(Fight(tp: 120, statuses: [heart], notReady: [Bst.TemperedRelease, Bst.Borrow]), plain);
+    Check($"heart {heart} is answered with axe {axe}", paired.Ogcd == axe, paired.Why);
+}
+
+var tooLow = BstRotation.Next(Fight(level: 10, tp: 120, statuses: [Bst.DurantHeart],
+                                    notReady: [Bst.TemperedRelease, Bst.Borrow, Bst.Rally]), plain);
+Check("an axe not learned yet is not pressed, and TP is kept",
+      tooLow.Ogcd is not (Bst.SpinningAxe or Bst.AvalancheAxe or Bst.MistralAxe or Bst.GaleAxe), tooLow.Why);
+
+var strider = BstRotation.Next(Fight(tp: 250, statuses: [Bst.Sunstrider], notReady: [Bst.TemperedRelease, Bst.Borrow]),
+                               plain);
+Check("Sunstrider is answered with a Moonstalker skill",
+      strider.Ogcd is Bst.MistralAxe or Bst.GaleAxe, strider.Why);
+
+var saving = BstRotation.Next(Fight(tp: 150, notReady: AllBut(Bst.AvalancheAxe, Bst.GaleAxe)), plain);
+Check("without a Heart, TP below the threshold is kept", saving.Ogcd == 0, saving.Why);
+
+var spending = BstRotation.Next(Fight(tp: 220, notReady: AllBut(Bst.AvalancheAxe, Bst.GaleAxe)), plain);
+Check("without a Heart, TP above the threshold goes into the highest axe", spending.Ogcd == Bst.GaleAxe,
+      spending.Why);
+
+var trick = BstRotation.Next(Fight(familiarTp: 100, notReady: AllBut(Bst.Trick)), plain);
+Check("familiar TP with no Heart up means Trick", trick.Ogcd == Bst.Trick, trick.Why);
+
+var noTrick = BstRotation.Next(Fight(familiarTp: 100, statuses: [Bst.VolantHeart], notReady: AllBut(Bst.Trick)), plain);
+Check("a Heart already up is not overwritten by Trick", noTrick.Ogcd == 0, noTrick.Why);
+
+var wavering = BstRotation.Next(Fight(familiarTp: 100, statuses: [Bst.WaveringHeart], notReady: AllBut(Bst.Trick)),
+                                plain);
+Check("no Trick while Wavering Heart blocks combos", wavering.Ogcd == 0, wavering.Why);
+
+var soulQuiet = BstRotation.Next(Fight(statuses: [4608], notReady: AllBut(Bst.BeastMode)), plain);
+Check("Soul Kinship's Beast Mode waits for a cast", soulQuiet.Ogcd == 0, soulQuiet.Why);
+
+var soulCast = BstRotation.Next(Fight(statuses: [4608], casting: true, notReady: AllBut(Bst.BeastMode)), plain);
+Check("and interrupts it", soulCast.Ogcd == Bst.BeastMode, soulCast.Why);
+
+var beastKin = BstRotation.Next(Fight(statuses: [4602], notReady: AllBut(Bst.BeastMode)), plain);
+Check("any other Kinship's Beast Mode goes out on cooldown", beastKin.Ogcd == Bst.BeastMode, beastKin.Why);
+
+var bossModCombo = BstRotation.Next(Fight(statuses: [Bst.OneWithNature]), plain with { Combo = false });
+Check("while BossMod plays the combo, only resources are pressed",
+      bossModCombo.Gcd == 0 && bossModCombo.Ogcd == Bst.TemperedRelease, bossModCombo.Why);
+
+var calm = BstRotation.Next(Fight(inCombat: false, familiarOut: false), plain);
+Check("out of combat no ability is pressed", calm.Ogcd == 0, calm.Why);
+
+var far = BstRotation.Next(Fight(distance: 8f, notReady: AllBut(Bst.ShieldCharge)), plain);
+Check("out of reach the combo waits and Shield Charge closes in",
+      far.Gcd == 0 && far.Ogcd == Bst.ShieldCharge, far.Why);
+
+var noParting = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow)), plain);
+Check("Parting Blow stays off unless asked for", noParting.Ogcd == 0, noParting.Why);
+
+var parting = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow)), plain with { UsePartingBlow = true });
+Check("asked for, it sends a spent familiar off", parting.Ogcd == Bst.PartingBlow, parting.Why);
+
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");
 foreach (var b in beasts.Where(b => b.Inflicts(BeastStatus.Interruption)))

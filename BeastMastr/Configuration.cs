@@ -128,6 +128,42 @@ public class Configuration : IPluginConfiguration
     /// <summary>How far the left stick has to be pushed to count, 0 to 1.</summary>
     public float StickDeadzone { get; set; } = 0.3f;
 
+    // ---- Fighting ---------------------------------------------------------
+
+    /// <summary>What BossMod does in a fight the run plays. Nothing, if it is not loaded.</summary>
+    public BossModRole BossModRole { get; set; } = BossModRole.DodgeOnly;
+
+    /// <summary>The preset that only moves: dodging and staying in range.</summary>
+    public string BossModDodgePreset { get; set; } = "BeastMastr Dodge";
+
+    /// <summary>The preset that moves and presses the combo.</summary>
+    public string BossModFullPreset { get; set; } = "BeastMastr Full";
+
+    /// <summary>
+    /// While BossMod plays the combo, BeastMastr still spends TP and cooldowns — BossMod's Beastmaster
+    /// module does not.
+    /// </summary>
+    public bool BeastMastrHandlesResources { get; set; } = true;
+
+    /// <summary>With no Heart to pair an axe with, TP is spent from here on.</summary>
+    public int SpendTpAt { get; set; } = 200;
+
+    public bool UseBattlehorns { get; set; } = true;
+
+    /// <summary>
+    /// Send the familiar off with Parting Blow when its cooldowns are spent, to summon the next one and
+    /// have them reset. Off until a recording shows it pays.
+    /// </summary>
+    public bool UsePartingBlow { get; set; }
+
+    public bool UseShieldCharge { get; set; } = true;
+
+    /// <summary>Walk into melee range with vnavmesh when BossMod is not doing the moving.</summary>
+    public bool KeepRangeWithNavmesh { get; set; } = true;
+
+    /// <summary>While you have taken over, BossMod keeps dodging. Off hands it back until you let go.</summary>
+    public bool KeepBossModWhilePaused { get; set; } = true;
+
     /// <summary>A method rather than a property, so the saved config does not carry a copy of it.</summary>
     public Rules.RoutePreferences BuildRoutePreferences() =>
         new(RouteOrder.Count == 0
@@ -204,4 +240,17 @@ public class SavedRoom
     public int Kind { get; set; }
     public string Label { get; set; } = string.Empty;
     public string Detail { get; set; } = string.Empty;
+}
+
+/// <summary>How much of a fight BossMod plays.</summary>
+public enum BossModRole
+{
+    /// <summary>BossMod stays out of it; BeastMastr presses everything and walks into range itself.</summary>
+    Off,
+
+    /// <summary>BossMod moves — dodging and keeping range — and BeastMastr presses everything.</summary>
+    DodgeOnly,
+
+    /// <summary>BossMod moves and presses the combo; BeastMastr spends the resources.</summary>
+    DodgeAndRotation,
 }

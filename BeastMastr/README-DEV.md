@@ -1529,3 +1529,61 @@ gauge read is commented out. The gauge layout it declares — counted from the g
 bytes: player TP, familiar TP, the last familiar action's TP, the summoned beast — is what
 `Data/GaugeReader.cs` reads raw, since neither ClientStructs nor Dalamud has a struct for it. What each
 byte does in a fight is for the first run recording to show.
+
+### Walking one room
+
+`Automation/Run/BoardWalker.cs` walks to one room and never further — a path over several rows is one
+more chance to cross a platform on the way. It follows the link the ground scan checked, starting from
+wherever the player stands; if the straight way from there comes too close to another room, it goes
+back over the current room first. It stops as the room starts (the board marking it, the trigger object
+moving onto it, the team list switching to a fight or a campsite, a shop or treasure window, combat)
+and stops hard if the player comes within the trigger radius of a room it was not heading for.
+`/beastmastr step`, the Run tab and the next-room window's Walk button all walk to the route's next room.
+
+### Taking over
+
+`Automation/Run/ManualInputGuard.cs` reads manual input from the game's own input ids
+(`UIInputData.IsInputIdDown`) — movement 321–327, autorun, jump, the targeting ids 362–393 — plus the
+left stick, a left click on a world object, and a hotbar press from `ActionWatcher`. Input ids follow
+the player's own bindings, and vnavmesh and BossMod move the character underneath that layer, so
+neither is mistaken for the player. While a game text field or a Dalamud window has the keyboard,
+keys do not count (a setting).
+
+Whatever is running lets go the moment input is seen: the walk stops vnavmesh, the fight stops
+pressing and moving. It carries on after the set time without input — three seconds by default — or
+stops for good, if that is the setting. Which inputs count is a setting too.
+
+### Fighting
+
+`Rules/BstRotation.cs` is the rotation, pure and covered by the harness. Given a snapshot — level,
+combo, both TP values, statuses, what the game says is usable, target distance and cast, whether a
+familiar is out — it names one weaponskill and one ability:
+
+1. no familiar in the fight: the first Battlehorn that is ready;
+2. One with Nature: Tempered Release; a familiar out: Borrow;
+3. an axe that completes a combo with the Heart or star that is up; without one, the highest axe
+   once TP reaches the set threshold (200 by default) — the axes grow stronger with TP and spend all
+   of it, so spending early wastes potency;
+4. Trick when familiar TP allows and no Heart is up to be overwritten, and not under Wavering Heart;
+5. Rally and Rallying Cheer when their gauge is low;
+6. Beast Mode under a Kinship — except Soul Kinship, whose Beast Mode interrupts and is kept for a cast;
+7. Parting Blow, only if switched on, once Tempered Release and Borrow are spent (a new familiar
+   resets them from 30 and 34); Shield Charge to close a gap;
+8. the combo, in melee reach.
+
+`Data/BeastmasterJob.cs` holds the assumed levels and combo links against the `Action` sheet as the
+plugin loads and reports any difference in the Run tab.
+
+`Automation/Combat/CombatDriver.cs` plays it: the current target if it is a living enemy, else the
+nearest one — but a new target only while a fight is under way, or once the run has started one.
+It asks `GetActionStatus` for the adjusted id before every `UseAction`, waits out the animation lock,
+and walks into reach with vnavmesh when BossMod is not moving. `/beastmastr combat` switches it on
+by hand.
+
+`Automation/Combat/BossModBridge.cs` hands the moving — and, if set, the combo — to BossMod for the
+length of a fight, by preset: "BeastMastr Dodge" is `MiscAI.NormalMovement` (Destination Pathfind,
+Range MaxRange); "BeastMastr Full" adds `MiscAI.AutoTarget` and `xan.BST`. They are created over IPC
+when missing. Whatever BossMod had active is noted and put back when the fight ends, when fighting
+stops, and on unload. vnavmesh is stopped first, so only one thing moves the character, and an
+obstacle map is generated around the fight, since BossMod has none for the Crucible. BossMod's IPC
+signatures were read off the installed 7.5.6.5 with reflection; every call returns a value.

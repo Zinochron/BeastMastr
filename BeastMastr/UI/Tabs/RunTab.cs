@@ -28,13 +28,22 @@ public sealed class RunTab : ITab
     private readonly RunRecorder recorder;
     private readonly Automation.Run.BoardWalker walker;
     private readonly Automation.Run.ManualInputGuard input;
+    private readonly Automation.Combat.CombatDriver combat;
+    private readonly Automation.Combat.BossModBridge bossMod;
+    private readonly BeastmasterJob job;
+
+    private string presetResult = string.Empty;
 
     private string imageResult = string.Empty;
 
     public RunTab(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
                   Native.RouteOverlay overlay, RunRecorder recorder, Automation.Run.BoardWalker walker,
-                  Automation.Run.ManualInputGuard input)
+                  Automation.Run.ManualInputGuard input, Automation.Combat.CombatDriver combat,
+                  Automation.Combat.BossModBridge bossMod, BeastmasterJob job)
     {
+        this.combat = combat;
+        this.bossMod = bossMod;
+        this.job = job;
         this.walker = walker;
         this.input = input;
         this.configuration = configuration;
@@ -53,6 +62,8 @@ public sealed class RunTab : ITab
         DrawHelpers();
         ImGuiHelpers.ScaledDummy(4f);
         DrawControls();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawFighting();
         ImGuiHelpers.ScaledDummy(4f);
         DrawBoard();
         ImGuiHelpers.ScaledDummy(4f);
@@ -197,6 +208,136 @@ public sealed class RunTab : ITab
             configuration.Save();
         }
     }
+
+    /// <summary>The rotation and who plays which part of it.</summary>
+    private void DrawFighting()
+    {
+        if (!ImGui.CollapsingHeader("Fighting", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        if (ImGui.Button(combat.Enabled ? "Stop fighting" : "Fight"))
+            combat.Toggle();
+
+        Widgets.HelpMarker("Plays the fight: the three-step combo, the axes against the Heart your familiar's " +
+                           "Trick leaves, Tempered Release, Borrow, Rally and the rest. Switched on by hand it only " +
+                           "acts once a fight is under way. Same as /beastmastr combat.");
+
+        ImGui.SameLine();
+        ImGui.TextColored(combat.Enabled ? Good : Muted, combat.Status);
+
+        if (combat.LastDecision.Length > 0)
+            ImGui.TextDisabled($"Next: {combat.LastDecision}");
+
+        if (combat.LastUsed.Length > 0)
+            ImGui.TextDisabled($"Last pressed: {combat.LastUsed}");
+
+        var gauge = GaugeReader.Read();
+        ImGui.TextDisabled(gauge == null
+                               ? "Not on Beastmaster."
+                               : $"Gauge: TP {gauge.PlayerTp}, familiar TP {gauge.PetTp}, last familiar action " +
+                                 $"{gauge.LastPetActionTp}, summoned {gauge.SummonedBeast}");
+
+        foreach (var problem in job.Problems)
+            ImGui.TextColored(Bad, problem);
+
+        using var node = ImRaii.TreeNode("How to fight");
+        if (!node.Success)
+            return;
+
+        ImGui.SetNextItemWidth(200f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("BossMod", RoleName(configuration.BossModRole)))
+        {
+            if (combo.Success)
+            {
+                foreach (var role in Enum.GetValues<BossModRole>())
+                {
+                    if (ImGui.Selectable(RoleName(role), role == configuration.BossModRole))
+                    {
+                        configuration.BossModRole = role;
+                        configuration.Save();
+                    }
+                }
+            }
+        }
+
+        Widgets.HelpMarker("Off: BeastMastr presses everything and walks into reach itself.\n" +
+                           "Dodging only: BossMod moves — out of AoEs and into range — and BeastMastr presses everything.\n" +
+                           "Dodging and rotation: BossMod also presses the combo; BeastMastr keeps the resources.\n" +
+                           "Whatever BossMod had active is put back after each fight.");
+
+        ImGui.SameLine();
+        ImGui.TextDisabled(BossModIpc.IsLoaded ? bossMod.Status : "BossMod is not loaded, so this is Off.");
+
+        var dodge = configuration.BossModDodgePreset;
+        ImGui.SetNextItemWidth(200f * ImGuiHelpers.GlobalScale);
+        if (ImGui.InputText("Dodging preset", ref dodge, 64))
+        {
+            configuration.BossModDodgePreset = dodge;
+            configuration.Save();
+        }
+
+        var full = configuration.BossModFullPreset;
+        ImGui.SetNextItemWidth(200f * ImGuiHelpers.GlobalScale);
+        if (ImGui.InputText("Dodging and rotation preset", ref full, 64))
+        {
+            configuration.BossModFullPreset = full;
+            configuration.Save();
+        }
+
+        using (ImRaii.Disabled(!BossModIpc.IsLoaded))
+        {
+            if (ImGui.Button("Write both presets to BossMod"))
+                presetResult = bossMod.CreatePresets();
+        }
+
+        Widgets.HelpMarker("Creates or replaces the two presets in BossMod. They are also created on their own the " +
+                           "first time a fight needs one. Edit them in BossMod afterwards if you like.");
+
+        if (presetResult.Length > 0)
+        {
+            ImGui.SameLine();
+            ImGui.TextDisabled(presetResult);
+        }
+
+        Toggle("BeastMastr spends the resources while BossMod plays the combo",
+               configuration.BeastMastrHandlesResources, value => configuration.BeastMastrHandlesResources = value);
+
+        var spend = configuration.SpendTpAt;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderInt("Spend TP without a Heart from", ref spend, Bst.AxeMinimumTp, 255))
+        {
+            configuration.SpendTpAt = spend;
+            configuration.Save();
+        }
+
+        Toggle("Summon familiars with the Battlehorns", configuration.UseBattlehorns,
+               value => configuration.UseBattlehorns = value);
+        Toggle("Send a spent familiar off with Parting Blow", configuration.UsePartingBlow,
+               value => configuration.UsePartingBlow = value);
+        Toggle("Close gaps with Shield Charge", configuration.UseShieldCharge,
+               value => configuration.UseShieldCharge = value);
+        Toggle("Walk into reach with vnavmesh when BossMod is off", configuration.KeepRangeWithNavmesh,
+               value => configuration.KeepRangeWithNavmesh = value);
+        Toggle("Let BossMod keep dodging while you have taken over", configuration.KeepBossModWhilePaused,
+               value => configuration.KeepBossModWhilePaused = value);
+    }
+
+    private void Toggle(string label, bool value, Action<bool> set)
+    {
+        if (!ImGui.Checkbox(label, ref value))
+            return;
+
+        set(value);
+        configuration.Save();
+    }
+
+    private static string RoleName(BossModRole role) => role switch
+    {
+        BossModRole.Off => "Off",
+        BossModRole.DodgeOnly => "Dodging only",
+        BossModRole.DodgeAndRotation => "Dodging and rotation",
+        _ => role.ToString(),
+    };
 
     private void DrawBoard()
     {

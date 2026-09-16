@@ -7,6 +7,7 @@ using Dalamud.Plugin;
 using ECommons;
 using KamiToolKit;
 using BeastMastr.Automation;
+using BeastMastr.Automation.Combat;
 using BeastMastr.Automation.Run;
 using BeastMastr.Data;
 using BeastMastr.Native;
@@ -36,6 +37,9 @@ public sealed class Plugin : IDalamudPlugin
     private readonly RouteOverlay routeOverlay;
     private readonly ManualInputGuard inputGuard;
     private readonly BoardWalker walker;
+    private readonly BeastmasterJob job;
+    private readonly BossModBridge bossMod;
+    private readonly CombatDriver combat;
     private readonly TeamSelector teamSelector;
     private readonly HealthSelector healthSelector;
     private readonly DifficultySelector difficultySelector;
@@ -89,6 +93,9 @@ public sealed class Plugin : IDalamudPlugin
         routeKeeper = new RouteKeeper(Configuration, Catalog, boardModel, boardTerrain);
         inputGuard = new ManualInputGuard(Configuration, actionWatcher);
         walker = new BoardWalker(Configuration, boardModel, boardTerrain, inputGuard);
+        job = new BeastmasterJob();
+        bossMod = new BossModBridge(Configuration);
+        combat = new CombatDriver(Configuration, job, inputGuard, bossMod);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
         difficultySelector = new DifficultySelector(Configuration);
@@ -109,7 +116,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
             new RunTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder, walker,
-                       inputGuard),
+                       inputGuard, combat, bossMod, job),
         };
         if (Configuration.ShowDataTab)
         {
@@ -129,7 +136,8 @@ public sealed class Plugin : IDalamudPlugin
                           "/beastmastr room (open or close the next-room window), " +
                           "/beastmastr record (start or stop recording a run to a file), " +
                           "/beastmastr scan (scan the board's ground with vnavmesh), " +
-                          "/beastmastr step (walk to the next room of the route), /beastmastr stop (stop everything), " +
+                          "/beastmastr step (walk to the next room of the route), " +
+                          "/beastmastr combat (fight on or off), /beastmastr stop (stop everything), " +
                           "/beastmastr run (the Run tab).",
         });
 
@@ -176,6 +184,11 @@ public sealed class Plugin : IDalamudPlugin
                 StopEverything("Stopped by /beastmastr stop.");
                 break;
 
+            case "combat":
+                combat.Toggle();
+                Services.Chat.Print($"[BeastMastr] Fighting: {combat.Status}");
+                break;
+
             default:
                 ToggleMainUi();
                 break;
@@ -201,6 +214,7 @@ public sealed class Plugin : IDalamudPlugin
     private void StopEverything(string reason)
     {
         walker.Stop(null);
+        combat.Stop(reason);
         boardTerrain.Cancel();
         Services.Chat.Print($"[BeastMastr] {reason}");
     }
@@ -228,6 +242,7 @@ public sealed class Plugin : IDalamudPlugin
         rankWatcher.Dispose();
         enemies.Dispose();
         boardCache.Dispose();
+        combat.Dispose();
         walker.Dispose();
         inputGuard.Dispose();
         routeKeeper.Dispose();
