@@ -646,7 +646,7 @@ public sealed class BoardRunner : IDisposable
     {
         if (!AddonReader.IsOpen(XbmColumns.RunWindows.ItemShop) || continueRequested)
         {
-            RoomDone(step != null ? "Left the shop without buying." : "Left the shop.");
+            RoomDone(step != null ? $"Left the shop, having bought {shopBuyer?.Summary ?? "nothing"}." : "Left the shop.");
             return;
         }
 

@@ -118,7 +118,7 @@ public static unsafe class RoomActions
 
             var item = Item(row);
             offers.Add(new ShopOffer(i, row, item.Name, item.Singular, item.IsGear,
-                                     Digits(values[start + XbmColumns.RunWindows.ShopOfferPrice].Text),
+                                     Price(values[start + XbmColumns.RunWindows.ShopOfferPrice].Text),
                                      values[start + XbmColumns.RunWindows.ShopOfferBought].Text == "True",
                                      item.IsGear && held.Contains(row)));
         }
@@ -163,6 +163,13 @@ public static unsafe class RoomActions
         }
 
         return ($"item {row}", $"item {row}", false);
+    }
+
+    /// <summary>A shop price: the first number only — a sale reads "55 (-50%)".</summary>
+    private static int Price(string text)
+    {
+        var cut = text.IndexOfAny([' ', '(']);
+        return Digits(cut > 0 ? text[..cut] : text);
     }
 
     private static int Digits(string text)
