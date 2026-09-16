@@ -8,6 +8,8 @@ using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Types;
 using Dalamud.Game.Text;
 using Dalamud.Game.Chat;
+using Dalamud.Game.Gui.Dtr;
+using Dalamud.Interface.ImGuiNotification;
 using Dalamud.Plugin.Services;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Component.GUI;
@@ -78,10 +80,31 @@ public sealed unsafe class RunRecorder : IDisposable
     private DateTime lastValuesAt;
     private int framesUntilWindowScan;
 
+    /// <summary>
+    /// "REC" in the server info bar for as long as a recording runs, so there is no doubt whether one
+    /// is. The command toggles, and typing it twice without seeing anything stops what the first
+    /// started. Clicking the entry stops the recording.
+    /// </summary>
+    private readonly IDtrBarEntry? indicator;
+
+    private int lastIndicatorSecond = -1;
+
     public RunRecorder(EventRecorder events, ActionWatcher actions)
     {
         this.events = events;
         this.actions = actions;
+
+        try
+        {
+            indicator = Services.DtrBar.Get("BeastMastr recording");
+            indicator.Shown = false;
+            indicator.Tooltip = "BeastMastr is recording the run. Click to stop.";
+            indicator.OnClick = _ => Stop();
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning($"No server info bar entry for the recorder: {ex.Message}");
+        }
     }
 
     public bool Recording => writer != null;
@@ -116,6 +139,7 @@ public sealed unsafe class RunRecorder : IDisposable
         {
             Services.Log.Error(ex, "Could not start the run recording.");
             LastPath = "could not be written — see the log";
+            Tell($"The run recording could not be started: {ex.Message}", NotificationType.Error);
             return;
         }
 
@@ -132,9 +156,10 @@ public sealed unsafe class RunRecorder : IDisposable
         Services.Framework.Update += OnUpdate;
 
         WriteHeader();
+        ShowIndicator();
         Services.Log.Information($"Run recording started: {LastPath}");
-        Services.Chat.Print($"[BeastMastr] Recording the run to {Path.GetFileName(LastPath)}. " +
-                            "/beastmastr record again stops it.");
+        Tell($"Recording the run to {Path.GetFileName(LastPath)}. /beastmastr record again, or the REC entry " +
+             "in the server info bar, stops it.", NotificationType.Info);
     }
 
     public void Stop()
@@ -161,8 +186,46 @@ public sealed unsafe class RunRecorder : IDisposable
         }
 
         writer = null;
+        if (indicator != null)
+            indicator.Shown = false;
+
         Services.Log.Information($"Run recording written: {LastPath}");
-        Services.Chat.Print($"[BeastMastr] Run recording written: {Path.GetFileName(LastPath)}");
+        Tell($"Run recording written: {Path.GetFileName(LastPath)} ({LinesWritten} lines).", NotificationType.Success);
+    }
+
+    /// <summary>In chat and as a toast: whether a recording runs must never be a guess.</summary>
+    private static void Tell(string message, NotificationType type)
+    {
+        Services.Chat.Print($"[BeastMastr] {message}");
+
+        try
+        {
+            Services.Notifications.AddNotification(new Notification
+            {
+                Title = "BeastMastr",
+                Content = message,
+                Type = type,
+            });
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning($"Could not show a notification: {ex.Message}");
+        }
+    }
+
+    private void ShowIndicator()
+    {
+        if (indicator == null)
+            return;
+
+        var elapsed = Elapsed;
+        var second = (int)elapsed.TotalSeconds;
+        if (second == lastIndicatorSecond && indicator.Shown)
+            return;
+
+        lastIndicatorSecond = second;
+        indicator.Text = $"● REC {elapsed:mm\\:ss}";
+        indicator.Shown = true;
     }
 
     private void ResetState()
@@ -311,6 +374,7 @@ public sealed unsafe class RunRecorder : IDisposable
             {
                 lastFlush = now;
                 writer?.Flush();
+                ShowIndicator();
             }
         }
         catch (Exception ex)
@@ -585,5 +649,9 @@ public sealed unsafe class RunRecorder : IDisposable
             playerStatuses[id] = text;
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        indicator?.Remove();
+    }
 }

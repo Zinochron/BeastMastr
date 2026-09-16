@@ -29,4 +29,5 @@ public sealed class Services
     [PluginService] public static ITargetManager Targets { get; private set; } = null!;
     [PluginService] public static IKeyState Keys { get; private set; } = null!;
     [PluginService] public static IGamepadState Gamepad { get; private set; } = null!;
+    [PluginService] public static IDtrBar DtrBar { get; private set; } = null!;
 }

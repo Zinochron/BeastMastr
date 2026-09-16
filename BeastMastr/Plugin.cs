@@ -196,6 +196,10 @@ public sealed class Plugin : IDalamudPlugin
                 mainWindow.OpenAt("run");
                 break;
 
+            case "":
+                ToggleMainUi();
+                break;
+
             case "step":
                 StepToNextRoom();
                 break;
@@ -210,7 +214,7 @@ public sealed class Plugin : IDalamudPlugin
                 break;
 
             default:
-                ToggleMainUi();
+                Services.Chat.Print($"[BeastMastr] Unknown command \"{verb}\". /xlhelp lists what /beastmastr takes.");
                 break;
         }
     }
