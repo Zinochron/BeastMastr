@@ -1835,3 +1835,84 @@ generic shapes. Whether that holds needs the `ecast` and `hp` lines of the next 
 Auto-attack (`GeneralAction 1`) is asked for once a frame for about 13 frames at the pull, and 421 times
 after the boss, always refused. It is not from a hotbar and not from BeastMastr; BossMod is the likely
 source.
+
+### The third automated test — 2026-09-16
+
+Board 1 again, 19:05–19:14, recorded in `captures/run-20260916-190511.txt`. Every fight started on its
+own now. The user's notes and the recording showed the following.
+
+**The first spoils were never confirmed.** The `SelectYesno` opened in the same frame as the spoils
+callback. `AddonReader.IsOpen` saw it visible before it had loaded, so `RoomActions.Send` refused it.
+The step moved on anyway and waited for a window that stayed open. The step now moves on only once the
+answer has really been sent. A yes that has not closed the question is sent again after a second. A
+window that is visible but not yet loaded is waited out for two seconds before the step gives up.
+
+**A dead familiar stopped the call.** Opo-opo died in the Banemite fight. At the next fight the call
+"as last time" toggled it anyway, and the game answered "Incapacitated familiars cannot be assigned to
+battlehorns." `Commence Battle` then brought up "At least one battlehorn has not been assigned. Commence
+battle anyway?", which nothing answered.
+- `PetPartyReader.Slot.IsDown` is now true for a familiar with 0 HP.
+- The fight selector leaves such a familiar out and fills its place with the healthiest familiar not
+  already wanted.
+- `Commence Battle` now answers yes to that question when it comes, since by then every familiar that
+  can fight has been called.
+
+**Beast Gear already held is refused.** The coffer offered a Ninja Eyepatch that was already held. Taking
+it brought up a `SelectOk` instead of the confirmation, and the run waited. The treasure window lists
+the gear held: blocks of five from value 75, with a Bool while the block is used, the `Item` row at +2,
+the `XBMItem` row at +3 and the name at +4. All three recordings with a coffer showed eight such
+blocks.
+- Offers of held gear are no longer picked.
+- If the game refuses an offer anyway, the `SelectOk` is closed with `[0]`, as recorded, and another
+  offer is chosen.
+- Shops are always left without buying, so they cannot run into this.
+
+**BossMod never walks in for a Beastmaster.** In `MiscAI.NormalMovement` the range "MaxRange" is melee
+range only for the roles Tank and Melee; anything else gets 25 yalms. BossMod does not give the
+Beastmaster a melee role. So after every dodge, and when the Piscodemon jumped back to the middle, the
+character stood still.
+- While no enemy casts anything a position avoids (`EnemyCasts.Dodging`) for 1.5 s, BossMod's
+  movement is now held. This uses the transient strategy `Presets.AddTransientStrategy(preset,
+  NormalMovement, "Destination", "None")`, which leaves the preset itself unchanged.
+- During the hold, vnavmesh walks into reach.
+- A cast with a shape clears the hold, and BossMod dodges again.
+- The hold is also cleared when you take over and when the fight ends.
+
+**BossMod ran the character out of the arena.** In the Banemite fight the player ran along a circle
+about 20.5 yalms from (120, −420). There Bleeding (3077, then 3078) set in and stacked: 70–80% HP and
+Opo-opo were lost.
+- BossMod read Bedrock Uplift correctly. Its `GuessDonutInner` gets the rings 6–12, 12–18 and 18–24
+  from the omens `gl_sircle_1005`, `3020` and `4836`.
+- What BossMod lacks is the arena's edge. With no module, its pathfinding bounds are the obstacle map's
+  square (`AIHintsBuilder.CalculateAutoHints` builds an `ArenaBoundsRect` from the map's view, and
+  `ObstacleMapManager.GenerateMap` sizes it as centre ± radius, capped at 60).
+- The map is now generated around the arena's middle (`Rules/CrucibleArena.cs`) with a half-width of
+  13.5, a setting. The square's corners, at 19.1, stay inside the safe circle.
+
+The known middles, by where the fights put the player (12–16 yalms from the middle):
+
+| Middle | Fights | Evidence |
+|---|---|---|
+| (120, −420) | Banemite, Ogre, Bone Bishop | helpers placed there; Bleeding at 20.5 |
+| (120, 0) | Piscodemon | helpers cast from there; the Piscodemon jumps back to it |
+| (520, −420) | the boss | adds placed around it |
+| (520, 0) | seen once in the first recording | taken by symmetry, not confirmed |
+
+The map only applies once the player is inside the square. The spawn, 16 yalms out, is not, but the
+pull walks in.
+
+**Void Blizzard III** is the Piscodemon's line of exaflares. Helpers move to (120, 0), then cast
+circles of radius 5 in rows at z −17.5, x 102.5 to 137.5 in steps of 7, one after the other. BossMod
+sees only the circles being cast, not the next steps. The arena limit and the walking in should make
+this better. Whether the rows still hit needs the next recording.
+
+**The opener** is now Battlehorn II (or III, or I below level 10), then Borrow from that familiar, then
+Battlehorn I, which comes in with One with Nature and starts the fight with its Release. Summons after
+the pull still take Battlehorn I first.
+
+The duty actions worked as intended:
+- Snarl for Arcane Blast, Deadly Thrust and Cold Caress.
+- Snarl at low HP.
+- Challenge twice, once the covering familiar dropped below 35%.
+
+A familiar that comes in hurt, like Opo-opo at 308/667, still loses a lot to a single Snarl.

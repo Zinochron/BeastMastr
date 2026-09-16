@@ -482,17 +482,29 @@ var noBorrowLeaving = BstRotation.Next(Fight(leaving: true, notReady: AllBut(Bst
 Check("nothing is borrowed from a familiar on its way out", noBorrowLeaving.Ogcd == 0, noBorrowLeaving.Why);
 
 var prePull = BstRotation.Next(Fight(familiarOut: false, distance: 12f, prePull: true, horns: 0), plain);
-Check("a familiar is summoned before the pull, out of reach", prePull.Ogcd == Bst.FirstBattlehorn, prePull.Why);
+Check("the opener summons the second familiar first, out of reach", prePull.Ogcd == Bst.SecondBattlehorn,
+      prePull.Why);
+
+var prePullNoSecond = BstRotation.Next(Fight(familiarOut: false, prePull: true, horns: 0,
+                                             notReady: [Bst.SecondBattlehorn]), plain);
+Check("or the third, when the second is not ready", prePullNoSecond.Ogcd == Bst.ThirdBattlehorn, prePullNoSecond.Why);
+
+var prePullLow = BstRotation.Next(Fight(level: 5, familiarOut: false, prePull: true, horns: 0), plain);
+Check("or the first, below the second's level", prePullLow.Ogcd == Bst.FirstBattlehorn, prePullLow.Why);
+
+var inFightSummon = BstRotation.Next(Fight(familiarOut: false, horns: 2), plain);
+Check("in the fight the first familiar is summoned first again", inFightSummon.Ogcd == Bst.FirstBattlehorn,
+      inFightSummon.Why);
 Check("and nothing is engaged while it is", !prePull.Engage && prePull.Gcd == 0, prePull.Why);
 
-// The opener as it is played: a horn, Borrow from that familiar, then a second horn — all before the pull.
-var openBorrow = BstRotation.Next(Fight(prePull: true, horns: 1, notReady: [Bst.FirstBattlehorn]), plain);
-Check("the opener borrows from the first familiar", openBorrow.Ogcd == Bst.Borrow && !openBorrow.Engage,
+// The opener as it is played: horn II (or III), Borrow from that familiar, then horn I — all before the pull.
+var openBorrow = BstRotation.Next(Fight(prePull: true, horns: 1, notReady: [Bst.SecondBattlehorn]), plain);
+Check("the opener borrows from the familiar summoned first", openBorrow.Ogcd == Bst.Borrow && !openBorrow.Engage,
       openBorrow.Why);
 
 var openSecond = BstRotation.Next(Fight(prePull: true, horns: 1, statuses: [4602],
-                                        notReady: [Bst.FirstBattlehorn, Bst.Borrow]), plain);
-Check("then summons a second familiar", openSecond.Ogcd == Bst.SecondBattlehorn && !openSecond.Engage,
+                                        notReady: [Bst.SecondBattlehorn, Bst.Borrow]), plain);
+Check("then summons the first familiar", openSecond.Ogcd == Bst.FirstBattlehorn && !openSecond.Engage,
       openSecond.Why);
 
 var openDone = BstRotation.Next(Fight(prePull: true, horns: 2, statuses: [4602], distance: 1f,
@@ -571,6 +583,18 @@ Check("Void Blizzard III, radius 5, can", !IncomingHits.Unavoidable(2, 5, false,
 Check("Venom Web, placed radius 9, can", !IncomingHits.Unavoidable(2, 9, true, false));
 Check("Bedrock Uplift's ring can", !IncomingHits.Unavoidable(10, 24, false, false));
 Check("Void Aero II's line can", !IncomingHits.Unavoidable(12, 60, false, true));
+
+// The arenas, by where the recordings' fights put the player.
+Check("the Banemite spawn is on the arena at (120, -420)",
+      CrucibleArena.CentreNear(new System.Numerics.Vector2(120f, -404.1f)) == new System.Numerics.Vector2(120f, -420f));
+Check("the Piscodemon spawn is on the arena at (120, 0)",
+      CrucibleArena.CentreNear(new System.Numerics.Vector2(120f, 11.8f)) == new System.Numerics.Vector2(120f, 0f));
+Check("the boss spawn is on the arena at (520, -420)",
+      CrucibleArena.CentreNear(new System.Numerics.Vector2(520f, -404.05f)) == new System.Numerics.Vector2(520f, -420f));
+Check("the board is on no arena", CrucibleArena.CentreNear(new System.Numerics.Vector2(-700f, -33f)) == null);
+Check("where the Bleeding began is outside the default square",
+      CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
+      -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);
 
 Console.WriteLine();
 Console.WriteLine("Interruption, which is what the plugin exists for:");

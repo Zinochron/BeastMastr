@@ -54,6 +54,12 @@ public static class Bst
 
     public static readonly uint[] Battlehorns = [FirstBattlehorn, SecondBattlehorn, ThirdBattlehorn];
 
+    /// <summary>
+    /// The opener's first summon, as the player wants it: the second or third familiar, to borrow from,
+    /// so that the first familiar comes in second and starts the fight with its Release.
+    /// </summary>
+    public static readonly uint[] OpenerBattlehorns = [SecondBattlehorn, ThirdBattlehorn, FirstBattlehorn];
+
     /// <summary>Levels, from the sheet. The plugin checks them against the game data as it loads.</summary>
     public static readonly IReadOnlyDictionary<uint, int> Levels = new Dictionary<uint, int>
     {
@@ -233,7 +239,8 @@ public static class BstRotation
         var familiar = state.FamiliarOut && !state.FamiliarLeaving;
         if (options.UseBattlehorns && !familiar)
         {
-            foreach (var horn in Bst.Battlehorns)
+            var order = state.PrePull && state.HornsThisFight == 0 ? Bst.OpenerBattlehorns : Bst.Battlehorns;
+            foreach (var horn in order)
             {
                 if (Usable(state, horn))
                 {

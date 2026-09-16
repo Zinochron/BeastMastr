@@ -28,12 +28,20 @@ public static unsafe class RoomActions
 
     /// <param name="Label">What the button is called, for the log and for the player when the step is handed over.</param>
     /// <param name="AsksFirst">A <c>SelectYesno</c> follows, and has to be answered for the command to happen.</param>
-    public sealed record Command(string Label, string Addon, IReadOnlyList<Value> Values, bool Closes, bool AsksFirst);
+    /// <param name="MayAsk">
+    /// A <c>SelectYesno</c> may follow, and is answered yes if it does; otherwise the window closing is enough.
+    /// </param>
+    public sealed record Command(string Label, string Addon, IReadOnlyList<Value> Values, bool Closes, bool AsksFirst,
+                                 bool MayAsk = false);
 
-    /// <summary>"Commence Battle" in the board window, once the familiars are called.</summary>
+    /// <summary>
+    /// "Commence Battle" in the board window, once the familiars are called. With a Battlehorn left
+    /// empty the game asks "At least one battlehorn has not been assigned. Commence battle anyway?" —
+    /// by then every familiar that can fight is called, so the answer is yes.
+    /// </summary>
     public static readonly Command CommenceBattle =
         new("Commence Battle", XbmColumns.StageDetailList.Addon,
-            [Value.Int(XbmColumns.StageDetailList.CommenceBattleCommand)], true, false);
+            [Value.Int(XbmColumns.StageDetailList.CommenceBattleCommand)], true, false, MayAsk: true);
 
     /// <summary>Taking everything the spoils offer.</summary>
     public static readonly Command TakeSpoils =
@@ -58,6 +66,10 @@ public static unsafe class RoomActions
     /// <summary>"Yes" in a <c>SelectYesno</c>.</summary>
     public static readonly Command Yes =
         new("Yes", YesnoAddon, [Value.Int(XbmColumns.RunWindows.Yes)], true, false);
+
+    /// <summary>"OK" in a <c>SelectOk</c>, as recorded after picking gear already held.</summary>
+    public static readonly Command Ok =
+        new("OK", XbmColumns.RunWindows.SelectOk, [Value.Int(0)], true, false);
 
     /// <summary>
     /// Closing the board's result. Not recorded: in the recording no result window appeared — the
@@ -89,7 +101,8 @@ public static unsafe class RoomActions
     }
 
     /// <summary>One offer of a treasure coffer.</summary>
-    public sealed record Offer(int Index, uint Item, string Name, bool IsGear);
+    /// <param name="Held">Beast Gear already held; the game refuses to hand it out twice.</param>
+    public sealed record Offer(int Index, uint Item, string Name, bool IsGear, bool Held = false);
 
     /// <summary>
     /// The treasure coffer's offers: position and <c>XBMItem</c> row, for the ones the window marks as
@@ -102,6 +115,22 @@ public static unsafe class RoomActions
             !AddonReader.TryGet(XbmColumns.RunWindows.Treasure, out var addon))
             return offers;
 
+        var held = new HashSet<uint>();
+        for (var block = 0; block < XbmColumns.RunWindows.TreasureHeldGearMax; block++)
+        {
+            var start = XbmColumns.RunWindows.TreasureFirstHeldGear + (block * XbmColumns.RunWindows.TreasureHeldGearStride);
+            var item = start + XbmColumns.RunWindows.TreasureHeldGearItemOffset;
+            if (item >= addon->AtkValuesCount)
+                break;
+
+            var used = addon->AtkValues[start];
+            var id = addon->AtkValues[item];
+            if (used.Type != AtkValueType.Bool || used.Byte == 0 || id.Type != AtkValueType.UInt)
+                break;
+
+            held.Add(id.UInt);
+        }
+
         for (var i = 0; i < XbmColumns.RunWindows.TreasureOffers; i++)
         {
             var start = XbmColumns.RunWindows.TreasureFirstOffer + (i * XbmColumns.RunWindows.TreasureOfferStride);
@@ -112,7 +141,10 @@ public static unsafe class RoomActions
             var offered = addon->AtkValues[start];
             var id = addon->AtkValues[item];
             if (offered.Type == AtkValueType.Bool && offered.Byte != 0 && id.Type == AtkValueType.UInt && id.UInt != 0)
-                offers.Add(Describe(i, id.UInt));
+            {
+                var offer = Describe(i, id.UInt);
+                offers.Add(offer with { Held = offer.IsGear && held.Contains(id.UInt) });
+            }
         }
 
         return offers;
@@ -148,6 +180,12 @@ public sealed class ConfirmedStep
     private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(6);
     private static readonly TimeSpan FirstDelay = TimeSpan.FromMilliseconds(400);
 
+    /// <summary>How long a window may be up but not yet ready before the command counts as not sendable.</summary>
+    private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(2);
+
+    /// <summary>A yes that did not close the question is sent again after this long.</summary>
+    private static readonly TimeSpan RepeatYesAfter = TimeSpan.FromSeconds(1);
+
     private readonly RoomActions.Command command;
     private readonly DateTime created = DateTime.Now;
     private DateTime sentAt;
@@ -160,11 +198,14 @@ public sealed class ConfirmedStep
     /// <summary>Why the step could not be carried through, or null while it can.</summary>
     public string? Failure { get; private set; }
 
+    /// <summary>The game said no with a <c>SelectOk</c> — gear already held — and that notice is closed.</summary>
+    public bool Refused { get; private set; }
+
     public string Label => command.Label;
 
     public void Tick()
     {
-        if (Done || Failure != null)
+        if (Done || Failure != null || Refused)
             return;
 
         var now = DateTime.Now;
@@ -175,28 +216,54 @@ public sealed class ConfirmedStep
                 if (now - created < FirstDelay)
                     return;
 
+                // A window that is visible is not always loaded yet; that is waited out, not failed.
                 if (!RoomActions.Send(command))
                 {
-                    Failure = $"The window for \"{command.Label}\" is not up.";
+                    if (now - created > FirstDelay + ReadyTimeout)
+                        Failure = $"The window for \"{command.Label}\" is not up.";
+
                     return;
                 }
 
                 sentAt = now;
-                stage = command.AsksFirst ? 1 : 2;
+                stage = command.AsksFirst || command.MayAsk ? 1 : 2;
                 return;
 
-            // The question has to come from this command: only a SelectYesno that opens after it is answered.
+            // The question has to come from this command: only a SelectYesno that opens after it is
+            // answered. It can be visible a frame before it takes an answer, so the step only moves on
+            // once the answer was actually sent — the first run recording lost a spoils window that way.
             case 1:
+                if (AddonReader.IsOpen(XbmColumns.RunWindows.SelectOk))
+                {
+                    if (RoomActions.Send(RoomActions.Ok))
+                        Refused = true;
+
+                    return;
+                }
+
                 if (AddonReader.IsOpen(RoomActions.YesnoAddon))
                 {
-                    RoomActions.Send(RoomActions.Yes);
-                    sentAt = now;
-                    stage = 2;
+                    if (RoomActions.Send(RoomActions.Yes))
+                    {
+                        sentAt = now;
+                        stage = 2;
+                    }
+
+                    return;
+                }
+
+                if (command.MayAsk && !AddonReader.IsOpen(command.Addon))
+                {
+                    Done = true;
                     return;
                 }
 
                 if (now - sentAt > AskTimeout)
-                    Failure = $"\"{command.Label}\" was sent, but nothing asked to confirm it.";
+                {
+                    Failure = command.MayAsk
+                                  ? $"\"{command.Label}\" was sent, but its window stayed open."
+                                  : $"\"{command.Label}\" was sent, but nothing asked to confirm it.";
+                }
 
                 return;
 
@@ -206,6 +273,10 @@ public sealed class ConfirmedStep
                     Done = true;
                     return;
                 }
+
+                if (AddonReader.IsOpen(RoomActions.YesnoAddon) && now - sentAt > RepeatYesAfter &&
+                    RoomActions.Send(RoomActions.Yes))
+                    sentAt = now;
 
                 if (now - sentAt > CloseTimeout)
                     Failure = $"\"{command.Label}\" was sent and confirmed, but its window stayed open.";

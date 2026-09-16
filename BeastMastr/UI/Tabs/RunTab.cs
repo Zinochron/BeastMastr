@@ -458,8 +458,28 @@ public sealed class RunTab : ITab
         Toggle("Close gaps with Shield Charge", configuration.UseShieldCharge,
                value => configuration.UseShieldCharge = value);
         DutyActionSettings();
-        Toggle("Walk into reach with vnavmesh when BossMod is off", configuration.KeepRangeWithNavmesh,
+        Toggle("Walk into reach with vnavmesh", configuration.KeepRangeWithNavmesh,
                value => configuration.KeepRangeWithNavmesh = value);
+        Widgets.HelpMarker("BossMod takes a Beastmaster for a ranged job and never walks in. While no enemy casts " +
+                           "anything to dodge, BossMod's moving is held and vnavmesh walks in; any such cast hands " +
+                           "the moving back to BossMod.");
+
+        var half = configuration.ArenaHalfWidth;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderFloat("BossMod stays this close to the arena's middle", ref half, 8f, 20f, "%.1f y"))
+        {
+            configuration.ArenaHalfWidth = half;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker("BossMod does not know where a Crucible arena ends; about 20 yalms from the middle, " +
+                           "Bleeding stacks. It may move in a square of this half-width around the middle. " +
+                           "Above 14 the square's corners reach past the safe circle.");
+        if (!CrucibleArena.SquareIsSafe(half))
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(Bad, "Corners past the safe circle.");
+        }
         Toggle("Let BossMod keep dodging while you have taken over", configuration.KeepBossModWhilePaused,
                value => configuration.KeepBossModWhilePaused = value);
     }

@@ -214,8 +214,17 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public int BossModPresetVersion { get; set; }
 
-    /// <summary>Walk into melee range with vnavmesh when BossMod is not doing the moving.</summary>
+    /// <summary>
+    /// Walk into melee range with vnavmesh. While BossMod dodges it is held back only as long as no enemy
+    /// casts anything with a shape: BossMod takes a Beastmaster for a ranged job and never closes in.
+    /// </summary>
     public bool KeepRangeWithNavmesh { get; set; } = true;
+
+    /// <summary>
+    /// Half the width of the square around an arena's middle that BossMod may move in. The arena's safe
+    /// circle is about 20 yalms; outside it, Bleeding stacks.
+    /// </summary>
+    public float ArenaHalfWidth { get; set; } = Rules.CrucibleArena.DefaultHalfWidth;
 
     /// <summary>While you have taken over, BossMod keeps dodging. Off hands it back until you let go.</summary>
     public bool KeepBossModWhilePaused { get; set; } = true;

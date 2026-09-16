@@ -649,15 +649,36 @@ public sealed class BoardRunner : IDisposable
                 return;
             }
 
-            var pick = configuration.TreasurePick == Configuration.TreasureRandomGear
-                           ? RandomGear(offers)
-                           : offers.FirstOrDefault(offer => offer.Index == configuration.TreasurePick) ?? offers[0];
+            // Gear already held is refused by the game, and an offer it refused once is not asked again.
+            var open = offers.Where(offer => !offer.Held && !refusedOffers.Contains(offer.Index)).ToList();
+            if (open.Count == 0)
+            {
+                Ask("Every offer of this coffer is gear you already hold. Pick one, and the run carries on.");
+                return;
+            }
+
+            var chosen = open.FirstOrDefault(offer => offer.Index == configuration.TreasurePick);
+            var pick = configuration.TreasurePick == Configuration.TreasureRandomGear || chosen == null
+                           ? RandomGear(open)
+                           : chosen;
             treasureChoice = pick.Index;
-            Note($"Taking treasure offer {pick.Index + 1}: {pick.Name}.");
+            var held = offers.Where(offer => offer.Held).Select(offer => offer.Name).ToList();
+            Note($"Taking treasure offer {pick.Index + 1}: {pick.Name}." +
+                 (held.Count > 0 ? $" Already held: {string.Join(", ", held)}." : string.Empty));
         }
 
         if (Carry(RoomActions.ChooseTreasure(treasureChoice), "Pick your treasure — the run carries on when the window closes."))
+        {
             RoomDone("Took the treasure.");
+            return;
+        }
+
+        if (step is { Refused: true })
+        {
+            Note($"The game refused treasure offer {treasureChoice + 1}, which is already held; choosing another.");
+            refusedOffers.Add(treasureChoice);
+            step = null;
+        }
     }
 
     /// <summary>A random piece of gear among the offers; any offer when none is gear.</summary>
@@ -667,6 +688,9 @@ public sealed class BoardRunner : IDisposable
         var pool = gear.Count > 0 ? gear : offers;
         return pool[Random.Shared.Next(pool.Count)];
     }
+
+    /// <summary>Treasure offers the game refused in this room.</summary>
+    private readonly HashSet<int> refusedOffers = [];
 
     /// <summary>
     /// Carries a recorded command through, and hands it to the player if it cannot be. Returns true
@@ -834,6 +858,9 @@ public sealed class BoardRunner : IDisposable
         phaseSince = DateTime.Now;
         acted = false;
         step = null;
+
+        if (phase == Phase.Treasure)
+            refusedOffers.Clear();
 
         if (phase is Phase.CallingFamiliars or Phase.Commencing)
         {

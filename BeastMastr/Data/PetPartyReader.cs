@@ -29,6 +29,12 @@ public static class PetPartyReader
         /// <summary>Taken by the window in whichever job it is doing.</summary>
         public bool IsChosen => IsCalled || Picked;
 
+        /// <summary>
+        /// Incapacitated: no HP left. The game refuses to call it into a fight ("Incapacitated familiars
+        /// cannot be assigned to battlehorns.") until a campsite has healed it.
+        /// </summary>
+        public bool IsDown => MaxHp > 0 && Hp <= 0;
+
         /// <summary>Share of HP left. 1 when the window gave none, so an unknown is never the most hurt.</summary>
         public float HealthShare => MaxHp > 0 ? (float)Hp / MaxHp : 1f;
     }

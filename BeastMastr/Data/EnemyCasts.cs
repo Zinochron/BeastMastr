@@ -46,6 +46,26 @@ public static class EnemyCasts
         return null;
     }
 
+    /// <summary>
+    /// Whether an enemy is casting something that a position can avoid — what BossMod has to be free to
+    /// dodge. Hits aimed at you alone and circles over the whole arena are left out: no step helps.
+    /// </summary>
+    public static bool Dodging(IPlayerCharacter player)
+    {
+        foreach (var caster in Casting(player))
+        {
+            if (ShapeOf(caster.CastActionId) is not { } shape || shape.CastType <= IncomingHits.SingleTarget ||
+                shape.EffectRange <= 0)
+                continue;
+
+            if (!IncomingHits.Unavoidable(shape.CastType, shape.EffectRange, shape.TargetArea,
+                                          caster.CastTargetObjectId == player.GameObjectId))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Every battle NPC in reach that is casting, familiars left out.</summary>
     public static IEnumerable<IBattleChara> Casting(IPlayerCharacter player)
     {

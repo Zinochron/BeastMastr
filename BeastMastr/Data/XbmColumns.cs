@@ -730,6 +730,20 @@ public static class XbmColumns
         public const int TreasureItemOffset = 3;
 
         /// <summary>
+        /// The Beast Gear already held, listed by the treasure window: blocks of five from here — a Bool
+        /// while the block is used, the <c>Item</c> row at +2, the <c>XBMItem</c> row at +3, the name at
+        /// +4. Eight were held in the recordings. Taking one of these again brings up a
+        /// <c>SelectOk</c> instead of the confirmation, closed with <c>[0]</c>.
+        /// </summary>
+        public const int TreasureFirstHeldGear = 75;
+
+        public const int TreasureHeldGearStride = 5;
+        public const int TreasureHeldGearItemOffset = 3;
+        public const int TreasureHeldGearMax = 12;
+
+        public const string SelectOk = "SelectOk";
+
+        /// <summary>
         /// The shop's own close: <c>[0]</c>, with the window closing, then a <c>SelectYesno</c>
         /// ("Conclude purchasing and leave the shop?"). <c>[2, n]</c> buys or feeds item n, and the
         /// window sends itself <c>[8]</c> after every change.

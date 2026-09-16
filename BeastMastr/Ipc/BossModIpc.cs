@@ -48,6 +48,16 @@ public static class BossModIpc
         Call(() => Services.PluginInterface.GetIpcSubscriber<Vector3, float, bool, bool>(Prefix + "ObstacleMap.Generate")
                            .InvokeFunc(centre, radius, false), "ObstacleMap.Generate", false);
 
+    /// <summary>Sets one track of a module in a preset for now, without saving it to the preset.</summary>
+    public static bool AddTransientStrategy(string preset, string module, string track, string value) =>
+        Call(() => Services.PluginInterface.GetIpcSubscriber<string, string, string, string, bool>(Prefix + "Presets.AddTransientStrategy")
+                           .InvokeFunc(preset, module, track, value), "Presets.AddTransientStrategy", false);
+
+    /// <summary>Takes back what <see cref="AddTransientStrategy"/> set.</summary>
+    public static bool ClearTransientStrategy(string preset, string module, string track) =>
+        Call(() => Services.PluginInterface.GetIpcSubscriber<string, string, string, bool>(Prefix + "Presets.ClearTransientStrategy")
+                           .InvokeFunc(preset, module, track), "Presets.ClearTransientStrategy", false);
+
     /// <summary>Whether BossMod has actions of its own queued.</summary>
     public static bool HasQueuedActions() =>
         Call(() => Services.PluginInterface.GetIpcSubscriber<bool>(Prefix + "Rotation.ActionQueue.HasEntries")

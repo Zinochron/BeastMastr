@@ -169,11 +169,32 @@ public sealed unsafe class FightSelector : IDisposable
             return;
         }
 
+        // An incapacitated familiar cannot be called, and trying stopped the whole call. Its place goes
+        // to the healthiest familiar that is not already wanted.
+        var able = slots.Where(slot => slot.Beast != null && !slot.IsDown).ToList();
+        var count = configuration.LastFightBeasts.Count;
         var wanted = TeamPlanner.RepeatLast(
-            slots.Where(slot => slot.Beast != null)
-                 .Select(slot => new TeamPlanner.Candidate(slot.Beast!.Number, slot.Name, slot.Rank)),
-            configuration.LastFightBeasts,
-            configuration.LastFightBeasts.Count);
+                                 able.Select(slot => new TeamPlanner.Candidate(slot.Beast!.Number, slot.Name, slot.Rank)),
+                                 configuration.LastFightBeasts,
+                                 count)
+                             .ToList();
+
+        var down = slots.Where(slot => slot.IsDown && slot.Beast != null &&
+                                       configuration.LastFightBeasts.Contains(slot.Beast.Number))
+                        .Select(slot => slot.Name)
+                        .ToList();
+
+        foreach (var spare in able.Where(slot => !wanted.Contains(slot.Beast!.Number))
+                                  .OrderByDescending(slot => slot.IsCalled)
+                                  .ThenByDescending(slot => slot.HealthShare)
+                                  .ThenByDescending(slot => slot.Rank))
+        {
+            if (wanted.Count >= count)
+                break;
+
+            wanted.Add(spare.Beast!.Number);
+            Services.Log.Information($"Calling {spare.Name} in place of {(down.Count > 0 ? string.Join(", ", down) : "a familiar that is not here")}.");
+        }
 
         if (wanted.Count == 0)
         {

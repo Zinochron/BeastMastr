@@ -29,8 +29,12 @@ public sealed class BossModBridge
     /// <summary>After a refusal, how long before asking again. Engaging is asked every frame of a fight.</summary>
     private static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(10);
 
+    private const string MovementModule = "BossMod.Autorotation.MiscAI.NormalMovement";
+
     private readonly Configuration configuration;
     private List<string>? before;
+    private string? preset;
+    private bool held;
     private DateTime retryAt = DateTime.MinValue;
 
     public BossModBridge(Configuration configuration) => this.configuration = configuration;
@@ -43,8 +47,8 @@ public sealed class BossModBridge
     /// <summary>What BossMod will be asked to do, given the setting and whether it is loaded.</summary>
     public BossModRole Role => BossModIpc.IsLoaded ? configuration.BossModRole : BossModRole.Off;
 
-    /// <summary>BossMod moves the character during the fight.</summary>
-    public bool Moves => Engaged && Role != BossModRole.Off;
+    /// <summary>BossMod moves the character during the fight, and is not held back just now.</summary>
+    public bool Moves => Engaged && Role != BossModRole.Off && !held;
 
     /// <summary>BossMod presses the combo during the fight.</summary>
     public bool PlaysCombo => Engaged && Role == BossModRole.DodgeAndRotation;
@@ -69,28 +73,71 @@ public sealed class BossModBridge
         if (configuration.BossModPresetVersion < PresetVersion && CreatePresets() == PresetsWritten)
             Services.Log.Information($"BossMod's presets are written again, as version {PresetVersion}.");
 
-        var preset = role == BossModRole.DodgeAndRotation ? configuration.BossModFullPreset : configuration.BossModDodgePreset;
-        if (BossModIpc.GetPreset(preset) == null && !CreatePreset(role, preset))
+        var name = role == BossModRole.DodgeAndRotation ? configuration.BossModFullPreset : configuration.BossModDodgePreset;
+        if (BossModIpc.GetPreset(name) == null && !CreatePreset(role, name))
         {
-            Status = $"BossMod has no preset \"{preset}\" and would not take one: {BossModIpc.LastError}";
+            Status = $"BossMod has no preset \"{name}\" and would not take one: {BossModIpc.LastError}";
             return false;
         }
 
         before = BossModIpc.GetActiveList() ?? [];
         NavmeshIpc.Stop();
-        BossModIpc.GenerateObstacleMap(around, ObstacleRadius);
+        GenerateMap(around);
 
-        if (!BossModIpc.SetActiveList([preset]))
+        if (!BossModIpc.SetActiveList([name]))
         {
-            Status = $"BossMod would not switch to \"{preset}\": {BossModIpc.LastError}";
+            Status = $"BossMod would not switch to \"{name}\": {BossModIpc.LastError}";
             return false;
         }
 
+        // A hold left over from a fight that ended while held.
+        BossModIpc.ClearTransientStrategy(name, MovementModule, "Destination");
+        preset = name;
+        held = false;
         Engaged = true;
         retryAt = DateTime.MinValue;
-        Status = $"BossMod is playing \"{preset}\".";
+        Status = $"BossMod is playing \"{name}\"{arenaNote}.";
         Services.Log.Information(Status);
         return true;
+    }
+
+    private string arenaNote = string.Empty;
+
+    /// <summary>
+    /// The obstacle map BossMod pathfinds in, which is also where it may go: its bounds are the map's
+    /// square. On an arena that square is kept inside the safe circle around the arena's middle;
+    /// elsewhere it is the old 30 yalms around the player.
+    /// </summary>
+    private void GenerateMap(Vector3 around)
+    {
+        var half = Math.Clamp(configuration.ArenaHalfWidth, 5f, ObstacleRadius);
+        if (Rules.CrucibleArena.CentreNear(new Vector2(around.X, around.Z)) is { } centre)
+        {
+            BossModIpc.GenerateObstacleMap(new Vector3(centre.X, around.Y, centre.Y), half);
+            arenaNote = $", kept within {half:0.#} yalms of the arena's middle ({centre.X:0}, {centre.Y:0})";
+        }
+        else
+        {
+            BossModIpc.GenerateObstacleMap(around, ObstacleRadius);
+            arenaNote = string.Empty;
+        }
+    }
+
+    /// <summary>
+    /// Holds BossMod's movement back — its destination set to none, by a transient strategy that leaves
+    /// the preset itself alone — or lets it go again.
+    /// </summary>
+    public void HoldMovement(bool hold)
+    {
+        if (!Engaged || preset == null || hold == held || Role == BossModRole.Off)
+            return;
+
+        var done = hold
+                       ? BossModIpc.AddTransientStrategy(preset, MovementModule, "Destination", "None")
+                       : BossModIpc.ClearTransientStrategy(preset, MovementModule, "Destination");
+
+        if (done || !hold)
+            held = hold;
     }
 
     public void Disengage()
@@ -99,6 +146,12 @@ public sealed class BossModBridge
 
         if (!Engaged)
             return;
+
+        if (held && preset != null)
+            BossModIpc.ClearTransientStrategy(preset, MovementModule, "Destination");
+
+        held = false;
+        preset = null;
 
         BossModIpc.SetActiveList(before ?? []);
         Engaged = false;

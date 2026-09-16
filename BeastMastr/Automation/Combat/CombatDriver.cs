@@ -42,6 +42,9 @@ public sealed unsafe class CombatDriver : IDisposable
     /// </summary>
     private const float PullSearchRange = 45f;
 
+    /// <summary>After an enemy cast with a shape ends, BossMod keeps the moving this long before walking in again.</summary>
+    private static readonly TimeSpan DodgeSettles = TimeSpan.FromSeconds(1.5);
+
     /// <summary>A cast is only started once you have stood still this long; moving breaks it.</summary>
     private static readonly TimeSpan StillFor = TimeSpan.FromMilliseconds(300);
     private const float MeleeReach = 2.5f;
@@ -79,6 +82,7 @@ public sealed unsafe class CombatDriver : IDisposable
     private bool pausedBossMod;
     private Vector3 lastPosition;
     private DateTime lastMovedAt;
+    private DateTime lastDodgeAt;
 
     public CombatDriver(Configuration configuration, BeastmasterJob job, ManualInputGuard input, BossModBridge bossMod,
                         ActionWatcher actions)
@@ -244,10 +248,20 @@ public sealed unsafe class CombatDriver : IDisposable
                  (decision.Engage ? string.Empty : " Setting up the opener.");
 
         // Moving breaks a cast, and walking in before the opener is set up starts the fight early.
+        // BossMod never closes in for a Beastmaster — it takes the job for a ranged one — so while no
+        // enemy casts anything to dodge, its moving is held back and vnavmesh walks in; the moment a
+        // cast with a shape starts, BossMod is let go again.
+        if (EnemyCasts.Dodging(player))
+            lastDodgeAt = DateTime.Now;
+
         var casting = player.IsCasting || job.IsCast(decision.Ogcd);
-        if (!bossMod.Moves && configuration.KeepRangeWithNavmesh && decision.Engage && !casting)
+        var walkIn = configuration.KeepRangeWithNavmesh && decision.Engage && !casting && distance > MeleeReach &&
+                     DateTime.Now - lastDodgeAt > DodgeSettles;
+        bossMod.HoldMovement(walkIn);
+
+        if (walkIn && !bossMod.Moves)
             KeepInReach(target, distance);
-        else if (!decision.Engage || casting)
+        else
             StopApproaching();
 
         if (manager->AnimationLock > 0f || player.IsCasting || DateTime.Now < nextAttempt)
@@ -269,6 +283,7 @@ public sealed unsafe class CombatDriver : IDisposable
     private void Hold(IGameObject player)
     {
         StopApproaching();
+        bossMod.HoldMovement(false);
 
         if (configuration.AbortOnManualInput)
         {
