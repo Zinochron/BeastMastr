@@ -2260,3 +2260,29 @@ the adds first.
 - A throw happens once `AreaItemAtAdds` (3) enemies attack the player or a familiar within 8 yalms,
   as the Treant's Slug Pieces do.
 - The strongest enemy, the boss, is not counted as an add.
+
+### Borgny again: its back, the opener, tornadoes — 2026-09-17
+
+`captures/run-20260917-012255.txt`.
+
+**Toxic Breath with the player on top of Borgny.** At 01:30:21 the player stood half a yalm from Borgny.
+The "towards the player" rule gave south, so the player ran north. Borgny had walked in from the south,
+still faced north, and leapt south, towards its back, as the player put it. Closer than 3 yalms, Borgny's
+own facing is now taken, snapped to an axis and followed until it leaps. Farther away, the axis towards
+the player still decides, which fits both earlier leaps. The "facing" lines were never written: the
+first comparison was against NaN. That is fixed.
+
+**The opener at the boss.** Shield Charge followed the first Battlehorn and pulled Borgny with one familiar
+out. Before the pull, only horns and Borrow go out now, and nothing is engaged until two horns are out,
+or one below the second horn's level, or no horn can still be used.
+
+**The tornadoes** are event objects named "Magitek Armor" (2012932). Four rise, three seconds apart, where
+Toxic Vomit (48809, a circle of 6 on the player) landed, and they stay until the next Toxic Vomit. One
+rose under the player at 01:32:18 (2527 → 1113 → 598 → dead).
+- They are ground hazards of 6.5 now.
+- While Toxic Vomit is cast on the player, the player carries it to the arena's edge on the far side
+  from Borgny (`ToxicVomit`, 15 yalms out).
+
+**The Fang was refused.** It was thrown 0.1 s after Shieldsplitter, and the menu's "Use" did nothing. Items
+are now only used without an animation lock and not while casting. If Fangs still fail, a recording of
+one thrown by hand will show whether they need a target picked on the ground.

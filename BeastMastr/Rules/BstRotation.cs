@@ -204,16 +204,44 @@ public static class BstRotation
     {
         var why = new List<string>();
         var ogcd = options.Resources ? Ability(state, options, why) : 0u;
+        var isOpener = Array.IndexOf(Bst.Battlehorns, ogcd) >= 0 || ogcd == Bst.Borrow;
 
-        var opening = state.PrePull && (Array.IndexOf(Bst.Battlehorns, ogcd) >= 0 || ogcd == Bst.Borrow);
+        // Before the pull nothing but the opener goes out, and nothing is engaged until it is done: at
+        // Borgny, Shield Charge followed the first horn and started the fight with one familiar.
+        var opening = state.PrePull && (isOpener || !OpenerDone(state, options));
         if (opening)
+        {
+            if (!isOpener)
+                ogcd = 0;
+
             why.Add("opener before the pull");
+        }
 
         var gcd = !opening && options.Combo && state.HasTarget && state.TargetDistance <= MeleeRange
                       ? Combo(state, why)
                       : 0u;
 
         return new BstDecision(gcd, ogcd, string.Join("; ", why), !opening);
+    }
+
+    /// <summary>Two familiars summoned — one below the second Battlehorn's level — or no horns to use.</summary>
+    private static bool OpenerDone(BstState state, BstOptions options)
+    {
+        if (!options.UseBattlehorns || !options.Resources)
+            return true;
+
+        var wanted = state.Level >= Bst.Levels[Bst.SecondBattlehorn] ? 2 : 1;
+        if (state.HornsThisFight >= wanted)
+            return true;
+
+        // Nothing left that could still be summoned: the opener cannot finish, so it does not hold the pull.
+        foreach (var horn in Bst.Battlehorns)
+        {
+            if (Usable(state, horn))
+                return false;
+        }
+
+        return !state.FamiliarOut || state.HornsThisFight > 0;
     }
 
     private static uint Combo(BstState state, List<string> why)

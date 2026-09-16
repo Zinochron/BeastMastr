@@ -552,7 +552,7 @@ public sealed unsafe class RunRecorder : IDisposable
             Line("target", targetText);
         }
 
-        if (current != null && MathF.Abs(current.Rotation - targetFacing) > 0.2f)
+        if (current != null && (float.IsNaN(targetFacing) || MathF.Abs(current.Rotation - targetFacing) > 0.2f))
         {
             targetFacing = current.Rotation;
             Line("facing", $"\"{current.Name.TextValue}\" {current.Rotation:0.00} at " +

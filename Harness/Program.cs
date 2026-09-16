@@ -498,6 +498,11 @@ Check("in the fight the first familiar is summoned first again", inFightSummon.O
       inFightSummon.Why);
 Check("and nothing is engaged while it is", !prePull.Engage && prePull.Gcd == 0, prePull.Why);
 
+var openerWaits = BstRotation.Next(Fight(prePull: true, horns: 1, distance: 10f,
+                                         notReady: [Bst.SecondBattlehorn, Bst.Borrow]), plain);
+Check("while the opener waits for Borrow, no Shield Charge and no pull",
+      openerWaits.Ogcd != Bst.ShieldCharge && !openerWaits.Engage, openerWaits.Why);
+
 // The opener as it is played: horn II (or III), Borrow from that familiar, then horn I — all before the pull.
 var openBorrow = BstRotation.Next(Fight(prePull: true, horns: 1, notReady: [Bst.SecondBattlehorn]), plain);
 Check("the opener borrows from the familiar summoned first", openBorrow.Ogcd == Bst.Borrow && !openBorrow.Engage,
@@ -722,6 +727,11 @@ var eastRefuge = Dodger.Plan(new Vector2(904.35f, -413.9f), borgnyArena, 6f,
                              [ToxicBreath.Zone(borgnyArena, westFacing, false, 5f)], borgnyArena, 18f)!;
 Check("the refuge is at the east wall", eastRefuge.Point.X > 939f && MathF.Abs(eastRefuge.Point.Y + 420f) < 0.1f,
       $"to {eastRefuge.Point}");
+Check("a facing snaps to the nearer axis", MathF.Abs(ToxicBreath.Snap(0.74f)) < 0.01f &&
+      MathF.Abs(ToxicBreath.Snap(-3.12f) + MathF.PI) < 0.01f);
+var vomit = ToxicVomit.Zone(borgnyArena, new Vector2(920f, -439.6f), new Vector2(920f, -430f), 4f);
+Check("Toxic Vomit is carried to the edge away from Borgny",
+      vomit.Refuge is { } vomitEdge && vomitEdge.Y > -420f && Vector2.Distance(vomitEdge, borgnyArena) <= 18f, $"{vomit.Refuge}");
 var breathAfter = ToxicBreath.Zone(new Vector2(920f, -439.6f), 0f, true, 1f);
 Check("and the cleave is taken to cover the arena in front of it",
       breathAfter.Contains(new Vector2(920f, -429f)) && breathAfter.Contains(new Vector2(930f, -435f)));

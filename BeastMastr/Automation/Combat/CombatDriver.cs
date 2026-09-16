@@ -228,15 +228,21 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
+        // Items are refused during an action's lock: a Fang thrown a tenth of a second after Shieldsplitter
+        // was not used.
+        var itemsFree = ItemUser.Busy || (!player.IsCasting && ActionManager.Instance() is var locks && locks != null &&
+                                          locks->AnimationLock <= 0f);
+
         // HP does not come back on its own in the Crucible.
-        if (configuration.UsePotions && inCombat && ItemUser.Tick(configuration.PotionInFightBelow, true))
+        if (configuration.UsePotions && inCombat && itemsFree && ItemUser.Tick(configuration.PotionInFightBelow, true))
         {
             Status = "Drinking.";
             return;
         }
 
         // Adds on the player — the Treant's Slug Pieces — get an area item thrown at them.
-        if (configuration.UseAreaItems && inCombat && AddsOnPlayer(player) is { } add && ItemUser.TickAttack(add))
+        if (configuration.UseAreaItems && inCombat && itemsFree && AddsOnPlayer(player) is { } add &&
+            ItemUser.TickAttack(add))
         {
             Status = "Throwing an area item at the adds.";
             return;

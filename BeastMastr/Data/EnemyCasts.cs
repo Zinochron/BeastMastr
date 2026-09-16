@@ -109,15 +109,19 @@ public static class EnemyCasts
             if (caster.CastActionId == ToxicBreath.Cast && !Breaths.ContainsKey(caster.GameObjectId))
             {
                 var from = new Vector2(caster.Position.X, caster.Position.Z);
-                var facing = ToxicBreath.FacingFor(from, new Vector2(player.Position.X, player.Position.Z));
+                var here = new Vector2(player.Position.X, player.Position.Z);
+                var follows = Vector2.Distance(from, here) < ToxicBreath.TurnsToPlayerBeyond;
+                var facing = follows ? ToxicBreath.Snap(caster.Rotation) : ToxicBreath.FacingFor(from, here);
                 Breaths[caster.GameObjectId] = new Breath
                 {
                     CastEnd = now + TimeSpan.FromSeconds(caster.TotalCastTime - caster.CurrentCastTime),
                     From = from,
                     Facing = facing,
+                    FollowsBorgny = follows,
                 };
-                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} towards the player; " +
-                                         "behind it is the wall to go to.");
+                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} " +
+                                         (follows ? "(its own way; the player stands on it)" : "towards the player") +
+                                         "; behind it is the wall to go to.");
             }
 
             if (caster.CastActionId == SweepingEvisceration.Cast)
@@ -195,6 +199,7 @@ public static class EnemyCasts
         AddBreaths(zones, now);
         AddHazards(zones, player);
         AddTraps(zones, player);
+        AddVomit(zones, player);
         return zones;
     }
 
@@ -213,6 +218,26 @@ public static class EnemyCasts
         }
 
         return largest;
+    }
+
+    /// <summary>
+    /// Toxic Vomit on the player leaves tornadoes where it lands: it is carried to the arena's edge, on the
+    /// far side from Borgny, so they rise out of the way.
+    /// </summary>
+    private static void AddVomit(List<Zone> zones, IPlayerCharacter player)
+    {
+        foreach (var borgny in Casting(player))
+        {
+            if (borgny.CastActionId != ToxicVomit.Cast || borgny.CastTargetObjectId != player.GameObjectId)
+                continue;
+
+            var here = new Vector2(player.Position.X, player.Position.Z);
+            if (CrucibleArena.CentreNear(here) is not { } centre)
+                continue;
+
+            zones.Add(ToxicVomit.Zone(centre, new Vector2(borgny.Position.X, borgny.Position.Z), here,
+                                      borgny.TotalCastTime - borgny.CurrentCastTime));
+        }
     }
 
     /// <summary>Floral Trap: into the nearest briar patch before it resolves.</summary>
@@ -265,6 +290,9 @@ public static class EnemyCasts
         public DateTime CastEnd;
         public Vector2 From;
         public float Facing;
+
+        /// <summary>The player stood too close to turn Borgny: its own facing counts, followed until it leaps.</summary>
+        public bool FollowsBorgny;
     }
 
     private static readonly Dictionary<ulong, Breath> Breaths = [];
@@ -284,9 +312,12 @@ public static class EnemyCasts
             var here = new Vector2(borgny.Position.X, borgny.Position.Z);
             var landed = Vector2.Distance(here, breath.From) > ToxicBreath.LeapSeenAt;
 
-            // Once it leaps, its way is known for certain: straight back.
+            // Once it leaps, its way is known for certain: straight back. Before that, with the player on
+            // top of it, its own facing is followed as it settles.
             if (landed)
                 breath.Facing = SweepingEvisceration.Facing(breath.From - here);
+            else if (breath.FollowsBorgny)
+                breath.Facing = ToxicBreath.Snap(borgny.Rotation);
             zones.Add(ToxicBreath.Zone(landed ? here : breath.From, breath.Facing, landed, MathF.Max(0f, untilCleave)));
         }
     }

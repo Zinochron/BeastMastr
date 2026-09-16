@@ -94,6 +94,16 @@ public static class ToxicBreath
     /// </summary>
     public const float PastBy = 6f;
 
+    /// <summary>
+    /// Closer than this to Borgny as the cast begins, the player gives no direction to turn to — on
+    /// 2026-09-17 01:30 the player stood half a yalm from it, Borgny kept the way it had walked in, and
+    /// leapt towards its back.
+    /// </summary>
+    public const float TurnsToPlayerBeyond = 3f;
+
+    /// <summary>A facing along the nearer axis.</summary>
+    public static float Snap(float facing) => MathF.Round(facing / (MathF.PI / 2f)) * (MathF.PI / 2f);
+
     /// <summary>The way Borgny will face: towards the player, along the nearer axis.</summary>
     public static float FacingFor(Vector2 borgny, Vector2 player)
     {
@@ -101,8 +111,7 @@ public static class ToxicBreath
         if (towards.LengthSquared() < 0.0001f)
             return 0f;
 
-        var angle = MathF.Atan2(towards.X, towards.Y);
-        return MathF.Round(angle / (MathF.PI / 2f)) * (MathF.PI / 2f);
+        return Snap(MathF.Atan2(towards.X, towards.Y));
     }
 
     /// <param name="facing">The way Borgny faces as it leaps: it leaps backwards and keeps it.</param>
@@ -123,12 +132,16 @@ public static class ToxicBreath
 ///   8.4–8.7 walking in on 2026-09-17 00:03 — with the status arriving a moment after the step.
 /// - 19674, Poison Cloud: left by Borgny's Fuming Vomit, placed circles of 6. The clouds drift, and on
 ///   2026-09-17 00:40 two hits of about 850 came 6.4 yalms from one.
+/// - 2012932, "Magitek Armor": the tornadoes. Four of them rise, three seconds apart, where Borgny's Toxic
+///   Vomit (48809, a circle of 6 on the player) landed, and stay until the next Toxic Vomit. One rose
+///   under the player at 01:32:18 and the player died.
 /// </summary>
 public static class GroundHazards
 {
     public static float? Radius(uint baseId) => baseId switch
     {
         2010106 => 9.5f,
+        2012932 => 6.5f,
         19674 => 7.5f,
         _ => null,
     };
@@ -179,5 +192,31 @@ public static class TurningHits
             step += 2f * MathF.PI;
 
         return step;
+    }
+}
+
+/// <summary>
+/// Borgny's Toxic Vomit (48809): a circle of 6 on the player, after which four tornadoes rise where it landed
+/// and stay. They are best left at the arena's edge, away from Borgny and from where the fight goes on.
+/// </summary>
+public static class ToxicVomit
+{
+    public const uint Cast = 48809;
+    public const string Name = "Toxic Vomit";
+
+    /// <summary>How far out from the middle to leave the tornadoes: inside the safe circle, clear of the middle.</summary>
+    public const float EdgeRadius = 15f;
+
+    public static Zone Zone(Vector2 centre, Vector2 borgny, Vector2 player, float castLeft)
+    {
+        var away = player - borgny;
+        if (away.LengthSquared() < 0.01f)
+            away = player - centre;
+        if (away.LengthSquared() < 0.01f)
+            away = new Vector2(0f, 1f);
+
+        var refuge = centre + (Vector2.Normalize(away) * EdgeRadius);
+        return new Zone(ZoneKind.Circle, player, 0f, 6f, castLeft, Name + " (to the edge, away from Borgny)",
+                        Refuge: refuge);
     }
 }
