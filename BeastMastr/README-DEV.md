@@ -2189,3 +2189,21 @@ itself as on the board, and after Commence Battle "the fight had not begun" (bot
 23:53 and 23:54). An arena shows another map of the same zone, with its own offsets. Markers now only
 get a world position while the map shown is the zone's own map (TerritoryType's `Map`, 1219 for the
 First Master's Board). Without any world positions the join keeps what it has.
+
+### Out of potions at the Treant — 2026-09-17
+
+`captures/run-20260917-235916.txt` (started 23:59): the fight started again. The recording shows:
+- shop purchases (Thunder Armor, Thief's Boots);
+- a campsite resting with one familiar ("you are missing 6%, the most hurt Cu Sith 13%");
+- the Gargoyle survived, with Sweeping Evisceration dodged in turn;
+- a G1 Crucible Ash drunk on the board.
+
+The run reached the Treant at 1654 of 6199 HP, with nothing left to drink.
+- Sludge set in at 8.4–8.7 yalms from the Treant while walking in. The patch is now 9.5.
+- Walking in to a target stops outside any lasting patch centred on it (`EnemyCasts.HazardAround`).
+
+**Healing is scarce, so it is bought and taken.**
+- With the gear bought, the shop spends the tokens left on healing items, strongest first
+  (`ShopBuysPotions`).
+- At or below half HP, a coffer's strongest healing item is taken instead of gear
+  (`TreasureHealBelow`).

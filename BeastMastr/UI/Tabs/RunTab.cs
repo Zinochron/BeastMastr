@@ -237,6 +237,8 @@ public sealed class RunTab : ITab
         {
             Toggle("Buy Beast Gear in shops", configuration.ShopBuysGear,
                    value => configuration.ShopBuysGear = value);
+            Toggle("…then healing items with the tokens left", configuration.ShopBuysPotions,
+                   value => configuration.ShopBuysPotions = value);
         }
 
         Toggle("Drink Beast Potions and Crucible Ash", configuration.UsePotions,
@@ -261,6 +263,14 @@ public sealed class RunTab : ITab
             }
 
             ImGui.Unindent();
+        }
+
+        var healBelow = configuration.TreasureHealBelow * 100f;
+        ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+        if (ImGui.SliderFloat("Coffers: a healing item instead of gear at or below", ref healBelow, 0f, 100f, "%.0f%% HP"))
+        {
+            configuration.TreasureHealBelow = healBelow / 100f;
+            configuration.Save();
         }
 
         Widgets.HelpMarker("The dearest piece the tokens allow first, then the next, never a piece already held. " +

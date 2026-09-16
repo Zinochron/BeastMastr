@@ -658,7 +658,7 @@ public sealed class BoardRunner : IDisposable
 
         if (configuration.ShopBuysGear && step == null)
         {
-            shopBuyer ??= new ShopBuyer();
+            shopBuyer ??= new ShopBuyer(configuration.ShopBuysPotions);
             shopBuyer.Tick();
             if (!shopBuyer.Done)
             {
@@ -710,6 +710,13 @@ public sealed class BoardRunner : IDisposable
             var pick = configuration.TreasurePick == Configuration.TreasureRandomGear || chosen == null
                            ? RandomGear(open)
                            : chosen;
+
+            // Low on HP, the strongest healing item beats a piece of gear.
+            if (PlayerHpShare() <= configuration.TreasureHealBelow &&
+                open.Where(offer => ItemUser.Heals.ContainsKey(offer.Item))
+                    .OrderByDescending(offer => ItemUser.Heals[offer.Item])
+                    .FirstOrDefault() is { } heal)
+                pick = heal;
             treasureChoice = pick.Index;
             var held = offers.Where(offer => offer.Held).Select(offer => offer.Name).ToList();
             Note($"Taking treasure offer {pick.Index + 1}: {pick.Name}." +
@@ -729,6 +736,9 @@ public sealed class BoardRunner : IDisposable
             step = null;
         }
     }
+
+    private static float PlayerHpShare() =>
+        Services.Objects.LocalPlayer is { MaxHp: > 0 } player ? (float)player.CurrentHp / player.MaxHp : 1f;
 
     /// <summary>A random piece of gear among the offers; any offer when none is gear.</summary>
     private static RoomActions.Offer RandomGear(IReadOnlyList<RoomActions.Offer> offers)

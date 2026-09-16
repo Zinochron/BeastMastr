@@ -228,6 +228,20 @@ public static class EnemyCasts
         }
     }
 
+    /// <summary>The widest lasting patch centred on a point, or 0: walking in to a target stops outside it.</summary>
+    public static float HazardAround(Vector3 point)
+    {
+        var widest = 0f;
+        foreach (var obj in Services.Objects)
+        {
+            if (GroundHazards.Radius(obj.BaseId) is { } radius &&
+                Vector2.Distance(new Vector2(obj.Position.X, obj.Position.Z), new Vector2(point.X, point.Z)) < 2f)
+                widest = MathF.Max(widest, radius);
+        }
+
+        return widest;
+    }
+
     /// <summary>Patches on the ground that hurt while they are there, by <see cref="GroundHazards"/>.</summary>
     private static void AddHazards(List<Zone> zones, IPlayerCharacter player)
     {

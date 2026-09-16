@@ -7,11 +7,11 @@ namespace BeastMastr.Automation.Run;
 
 /// <summary>
 /// Buys Beast Gear in a shop, one piece at a time: the dearest piece that is not held, not bought and
-/// affordable, until none is left.
+/// affordable, until none is left — and then, if asked, the strongest healing items the tokens left allow.
 ///
 /// A purchase is <c>[2, n]</c> on the shop, as recorded, and the game asks "Purchase the ice shield?".
-/// The shop's values are read from diffs rather than a full dump, so the question is checked before it
-/// is answered: yes only when it names the piece meant, otherwise no, and buying stops.
+/// The question is checked before it is answered: yes only when it names the item meant, otherwise no,
+/// and buying stops.
 /// </summary>
 public sealed class ShopBuyer
 {
@@ -20,11 +20,15 @@ public sealed class ShopBuyer
     private static readonly TimeSpan SettleTimeout = TimeSpan.FromSeconds(3);
 
     private readonly HashSet<int> tried = [];
+    private readonly bool buyPotions;
     private readonly List<string> bought = [];
     private RoomActions.ShopOffer? pending;
     private DateTime stageSince = DateTime.Now;
     private int stage;
     private int tokensBefore;
+
+    /// <param name="buyPotions">With no gear left to buy, spend what is left on healing items, strongest first.</param>
+    public ShopBuyer(bool buyPotions = false) => this.buyPotions = buyPotions;
 
     public bool Done { get; private set; }
 
@@ -51,6 +55,18 @@ public sealed class ShopBuyer
                                                      !tried.Contains(offer.Index))
                                      .OrderByDescending(offer => offer.Price)
                                      .FirstOrDefault();
+
+                // HP does not come back on its own, and the Strix alone took three quarters of it.
+                if (pending == null && buyPotions)
+                {
+                    pending = RoomActions.ShopOffers()
+                                         .Where(offer => ItemUser.Heals.ContainsKey(offer.Row) && !offer.Bought &&
+                                                         offer.Price > 0 && offer.Price <= tokens &&
+                                                         !tried.Contains(offer.Index))
+                                         .OrderByDescending(offer => ItemUser.Heals[offer.Row])
+                                         .ThenBy(offer => offer.Price)
+                                         .FirstOrDefault();
+                }
 
                 if (pending == null)
                 {

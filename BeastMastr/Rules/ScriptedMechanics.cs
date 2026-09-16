@@ -104,15 +104,15 @@ public static class ToxicBreath
 /// <summary>
 /// What stays on the ground and hurts, by base id, with the radius it hurts in. Both from the First
 /// Master's Board:
-/// - 2010106, an event object under the Treant: Sludge (3071) set in 8.0 yalms from its middle. The player
-///   stood there after walking in to 2.5 yalms of the Treant's middle, and died four seconds later.
+/// - 2010106, an event object under the Treant: Sludge (3071) set in 8.0 yalms from its middle, and at
+///   8.4–8.7 walking in on 2026-09-17 00:03 — with the status arriving a moment after the step.
 /// - 19674, Poison Cloud: left by Borgny's Fuming Vomit, placed circles of 6.
 /// </summary>
 public static class GroundHazards
 {
     public static float? Radius(uint baseId) => baseId switch
     {
-        2010106 => 8.5f,
+        2010106 => 9.5f,
         19674 => 6.5f,
         _ => null,
     };

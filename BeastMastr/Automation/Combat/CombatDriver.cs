@@ -568,7 +568,9 @@ public sealed unsafe class CombatDriver : IDisposable
 
         // To the edge of the target's hitbox, not its middle: the Treant keeps Sludge on the ground 8
         // yalms around its middle, and walking to 2.5 of it stood in that.
-        if (NavmeshIpc.PathfindAndMoveCloseTo(target.Position, target.HitboxRadius + MeleeReach - 0.5f))
+        // And never into a patch that lies under the target: the Treant's Sludge reaches past 8.5 yalms.
+        var stopAt = MathF.Max(target.HitboxRadius + MeleeReach - 0.5f, EnemyCasts.HazardAround(target.Position) + 0.7f);
+        if (NavmeshIpc.PathfindAndMoveCloseTo(target.Position, stopAt))
             approaching = true;
     }
 

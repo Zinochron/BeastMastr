@@ -699,12 +699,12 @@ Check("and nothing is left to dodge once both have swung",
 var treant = new Vector2(120f, -433f);
 var sludge = new Zone(ZoneKind.Circle, treant, 0f, GroundHazards.Radius(2010106)!.Value, 0f, "ground hazard", Lasting: true);
 Check("outside the Sludge with nothing cast, nothing to do",
-      Dodger.Plan(new Vector2(120f, -423f), treant, 10f, [sludge], arena, 18f) == null);
+      Dodger.Plan(new Vector2(120f, -422f), treant, 11f, [sludge], arena, 18f) == null);
 var outOfSludge = Dodger.Plan(new Vector2(116.2f, -426f), treant, 10f, [sludge], arena, 18f)!;
 Check("standing in it, out of it", outOfSludge.Safe && Vector2.Distance(outOfSludge.Point, treant) > 8.5f,
       $"to {outOfSludge.Point}");
 var breeze = CastShapes.Shape(2, 12, 0, "", 0f, treant, 0f, 4.5f, "Arboreal Storm")!;
-var sludgeAndStorm = Dodger.Plan(new Vector2(120f, -423f), treant, 10f, [sludge, breeze], arena, 18f)!;
+var sludgeAndStorm = Dodger.Plan(new Vector2(120f, -422f), treant, 11f, [sludge, breeze], arena, 18f)!;
 Check("a patch on the ground does not hide a hit to come",
       sludgeAndStorm.Safe && Vector2.Distance(sludgeAndStorm.Point, treant) > 12f, $"to {sludgeAndStorm.Point}");
 

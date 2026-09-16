@@ -135,6 +135,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShopBuysGear { get; set; } = true;
 
+    /// <summary>With the gear bought, spend the tokens left on healing items, strongest first.</summary>
+    public bool ShopBuysPotions { get; set; } = true;
+
+    /// <summary>At or below this share of HP, a coffer's healing item is taken instead of gear.</summary>
+    public float TreasureHealBelow { get; set; } = 0.5f;
+
     /// <summary>
     /// At a campsite, rest only with as many familiars as heal the most in total. Its 90% is shared
     /// between you and the familiars picked, and a share that heals past full is lost.
