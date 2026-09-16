@@ -2182,3 +2182,10 @@ at 21:56 that was 2789 of 6199 and the Opo-opo's 1571 of 3492. So with two famil
 - The campsite's limit is read from its prompt ("You and 2 familiars can recover HP…").
 - `HealthSelector.RequestPick(avoidOverheal)` then picks only that many of the most hurt. The setting
   `CampsiteAvoidOverheal` is on by default.
+
+**Which map places the board.** The fix above made it worse: with world positions in the signature,
+the join ran again in every fight's arena, and placed the rooms around the arena. The run then counted
+itself as on the board, and after Commence Battle "the fight had not begun" (both recordings of
+23:53 and 23:54). An arena shows another map of the same zone, with its own offsets. Markers now only
+get a world position while the map shown is the zone's own map (TerritoryType's `Map`, 1219 for the
+First Master's Board). Without any world positions the join keeps what it has.

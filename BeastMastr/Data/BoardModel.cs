@@ -308,9 +308,10 @@ public sealed class BoardModel : IDisposable
     {
         var icons = MapMarkerReader.ReadRooms();
 
-        // In a fight's arena, and while loading, the map shows none of the board's icons. That says
-        // nothing about where the rooms are, so the placement from the board is kept.
-        if (icons.Count == 0 && Join != null)
+        // In a fight's arena, and while loading, the map places none of the board's icons: it shows
+        // none, or shows the arena's map, whose icons get no world position. That says nothing about
+        // where the rooms are, so the placement from the board is kept.
+        if (icons.TrueForAll(icon => icon.World == null) && Join != null)
             return;
 
         // The world positions belong in the signature: after a reload in a fight's arena the icons were

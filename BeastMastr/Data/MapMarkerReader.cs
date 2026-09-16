@@ -84,6 +84,21 @@ public static unsafe class MapMarkerReader
                $"player={at}";
     }
 
+    private static uint zoneMapTerritory;
+    private static uint zoneMap;
+
+    /// <summary>The map the TerritoryType sheet gives a zone.</summary>
+    private static uint ZoneMap(uint territory)
+    {
+        if (territory != zoneMapTerritory)
+        {
+            zoneMapTerritory = territory;
+            zoneMap = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(territory)?.Map.RowId ?? 0;
+        }
+
+        return zoneMap;
+    }
+
     public static List<Marker> Read()
     {
         var markers = new List<Marker>();
@@ -133,7 +148,10 @@ public static unsafe class MapMarkerReader
     /// </summary>
     private static Vector3? ToWorld(MapMarkerBase marker, AgentMap* agent)
     {
-        if (agent->CurrentMapId == 0)
+        // Only the zone's own map places the board. A fight's arena shows another map of the same zone,
+        // and its offsets put every room around the arena instead — which made the run think it was
+        // still on the board after Commence Battle, and the fight never counted as begun.
+        if (agent->CurrentMapId == 0 || agent->CurrentMapId != ZoneMap(agent->CurrentTerritoryId))
             return null;
 
         var height = Services.Objects.LocalPlayer?.Position.Y ?? 0f;
