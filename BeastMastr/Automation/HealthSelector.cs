@@ -38,6 +38,7 @@ public sealed class HealthSelector : IDisposable
     private int framesWaited;
     private int picked;
     private bool requested;
+    private bool overhealAware;
 
     public HealthSelector(BeastCatalog catalog)
     {
@@ -51,10 +52,22 @@ public sealed class HealthSelector : IDisposable
     public bool Busy => requested || pending.Count > 0 || waitingFor != 0;
 
     /// <summary>The button.</summary>
-    public void RequestPick()
+    /// <param name="avoidOverheal">
+    /// At a campsite, pick only as many as heal the most in total: the healing is shared, and what a
+    /// share heals past full is lost (<see cref="Rules.CampsiteRest"/>).
+    /// </param>
+    public void RequestPick(bool avoidOverheal = false)
     {
         Reset();
         requested = true;
+        overhealAware = avoidOverheal;
+    }
+
+    /// <summary>"You and 2 familiars can recover HP at this campsite." — the 2; 2 when the prompt does not say.</summary>
+    private static int CampsiteLimit()
+    {
+        var match = System.Text.RegularExpressions.Regex.Match(PetPartyReader.Prompt(), @"(\d+) familiar");
+        return match.Success && int.TryParse(match.Groups[1].Value, out var limit) ? limit : 2;
     }
 
     private void OnUpdate(IFramework framework)
@@ -102,6 +115,25 @@ public sealed class HealthSelector : IDisposable
                 Tell("Every familiar is at full HP — nothing to pick.");
 
             return;
+        }
+
+        if (overhealAware && PetPartyReader.Mode() == XbmColumns.PetParty.CampsiteMode)
+        {
+            var player = Services.Objects.LocalPlayer;
+            var playerMissing = player is { MaxHp: > 0 } ? 1f - ((float)player.CurrentHp / player.MaxHp) : 0f;
+            var count = Rules.CampsiteRest.HowMany(playerMissing, hurt.Select(slot => 1f - slot.HealthShare).ToList(),
+                                                   CampsiteLimit());
+            Services.Log.Information($"Campsite: resting with {count} familiar(s) heals the most — " +
+                                     $"you are missing {playerMissing:P0}, the most hurt " +
+                                     string.Join(", ", hurt.Take(3).Select(slot => $"{slot.Name} {1f - slot.HealthShare:P0}")) + ".");
+
+            if (count == 0)
+            {
+                Tell("Resting alone heals the most: the familiars would mostly be overhealed.");
+                return;
+            }
+
+            hurt = hurt.Take(count).ToList();
         }
 
         foreach (var slot in hurt)

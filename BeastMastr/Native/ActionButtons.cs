@@ -163,7 +163,7 @@ public sealed unsafe class ActionButtons : IDisposable
                     break;
 
                 case Kind.PickHurtFromTeamList:
-                    InTheTeamListHeader(kind, "Pick lowest HP", healthSelector.RequestPick);
+                    InTheTeamListHeader(kind, "Pick lowest HP", () => healthSelector.RequestPick());
                     break;
             }
         }

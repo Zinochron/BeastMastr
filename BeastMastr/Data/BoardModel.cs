@@ -313,7 +313,11 @@ public sealed class BoardModel : IDisposable
         if (icons.Count == 0 && Join != null)
             return;
 
-        var signature = string.Join(";", icons.Select(icon => $"{icon.IconId}@{icon.MapX}/{icon.MapY}"));
+        // The world positions belong in the signature: after a reload in a fight's arena the icons were
+        // turned into positions with the arena's map, and the board's raw icon positions did not change
+        // when the player came back, so the rooms stayed 800 yalms away.
+        var signature = string.Join(";", icons.Select(icon => $"{icon.IconId}@{icon.MapX}/{icon.MapY}" +
+                                                              $"={icon.World?.X:0}/{icon.World?.Z:0}"));
         if (signature == markerSignature && Join != null)
             return;
 

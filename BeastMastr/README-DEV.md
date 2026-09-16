@@ -2162,3 +2162,23 @@ Beast Gear is rows 1–75, not 1–76 as first assumed: row 76 is the G1 Beast P
 The recording also holds a board being entered from the entrance (23:17:05): the board window's
 `[8]`, a `SelectYesno`, the duty finder's `ContentsFinderConfirm` `[8]`, and the load. That is what the
 re-entry for more than one board (M6) needs.
+
+### A run that would not start, and campsite overheal — 2026-09-16
+
+**"Not on the board."** `captures/run-20260916-232409.txt`: three starts in a row sat in Deciding until
+"The run is not on the board".
+- The plugin was reloaded at 23:21 while the player was in a fight's arena. The room icons were turned
+  into world positions with the arena's map: room 1 at (120, −393) instead of (−700, −9).
+- Back on the board, the raw icon positions were unchanged. The join's signature held only those, so
+  the rooms were never placed again. `OnBoard` stayed false, and the terrain was scanned around the
+  arena: 57 s and a 9 MB file.
+- The signature now includes the world positions. A wrong placement is replaced as soon as the map
+  reads right, and the terrain signature then asks for a fresh scan by itself.
+
+**Campsites share their healing.** The player alone recovers 90%. With one familiar, each recovers 45%:
+at 21:56 that was 2789 of 6199 and the Opo-opo's 1571 of 3492. So with two familiars each gets 30%.
+- `Rules/CampsiteRest.cs` picks the number of familiars that restores the most in total, counted as
+  shares of each one's HP. A share that heals past full counts only up to full, and fewer wins a tie.
+- The campsite's limit is read from its prompt ("You and 2 familiars can recover HP…").
+- `HealthSelector.RequestPick(avoidOverheal)` then picks only that many of the most hurt. The setting
+  `CampsiteAvoidOverheal` is on by default.

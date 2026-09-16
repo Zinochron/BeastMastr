@@ -135,6 +135,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool ShopBuysGear { get; set; } = true;
 
+    /// <summary>
+    /// At a campsite, rest only with as many familiars as heal the most in total. Its 90% is shared
+    /// between you and the familiars picked, and a share that heals past full is lost.
+    /// </summary>
+    public bool CampsiteAvoidOverheal { get; set; } = true;
+
     /// <summary>Drink the Crucible's healing items: Beast Potions and Crucible Ash.</summary>
     public bool UsePotions { get; set; } = true;
 

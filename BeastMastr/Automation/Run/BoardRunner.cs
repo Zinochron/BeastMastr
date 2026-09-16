@@ -621,7 +621,7 @@ public sealed class BoardRunner : IDisposable
         {
             acted = true;
             if (configuration.CampsiteRestFamiliars)
-                healthSelector.RequestPick();
+                healthSelector.RequestPick(configuration.CampsiteAvoidOverheal);
 
             return;
         }

@@ -220,6 +220,16 @@ public sealed class RunTab : ITab
                            "gear, the offer set here (the first one if that slot is empty), or hands the choice to you. " +
                            "The spoils after a fight are always taken whole.");
 
+        using (ImRaii.Disabled(!configuration.CampsiteRestFamiliars))
+        {
+            Toggle("At campsites, only as many familiars as heal the most", configuration.CampsiteAvoidOverheal,
+                   value => configuration.CampsiteAvoidOverheal = value);
+        }
+
+        Widgets.HelpMarker("A campsite's 90% is shared: alone you get 90%, with one familiar each gets 45%, with two " +
+                           "30%. Whatever heals past full is lost, so familiars are only picked while that adds up " +
+                           "to more HP restored in total.");
+
         Toggle("Let me shop myself", configuration.ShopByHand,
                value => configuration.ShopByHand = value);
 

@@ -729,6 +729,13 @@ var toBriar = Dodger.Plan(new Vector2(118f, -424f), flower, 6f, [elsewhere, trap
 Check("Floral Trap: into the nearest briar, even with another hit sooner", toBriar.Point == briars[2],
       $"to {toBriar.Point}");
 
+// Campsites: the 90% is shared, and what heals past full is lost.
+Check("a familiar missing a tenth is not worth half the heal", CampsiteRest.HowMany(0.6f, [0.1f], 2) == 0);
+Check("one missing half is", CampsiteRest.HowMany(0.6f, [0.5f, 0.05f], 2) == 1);
+Check("two badly hurt are both taken when you are nearly full", CampsiteRest.HowMany(0.1f, [0.6f, 0.5f], 2) == 2);
+Check("never more than the campsite takes", CampsiteRest.HowMany(0.1f, [0.6f, 0.5f, 0.5f], 2) <= 2);
+Check("the recording's rest heals 45% each", MathF.Abs(CampsiteRest.Healed(0.55f, [0.55f], 1) - 0.9f) < 0.001f);
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);
