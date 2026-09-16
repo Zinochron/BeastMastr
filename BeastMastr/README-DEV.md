@@ -2192,7 +2192,7 @@ First Master's Board). Without any world positions the join keeps what it has.
 
 ### Out of potions at the Treant — 2026-09-17
 
-`captures/run-20260917-235916.txt` (started 23:59): the fight started again. The recording shows:
+`captures/run-20260916-235916.txt` (started 23:59): the fight started again. The recording shows:
 - shop purchases (Thunder Armor, Thief's Boots);
 - a campsite resting with one familiar ("you are missing 6%, the most hurt Cu Sith 13%");
 - the Gargoyle survived, with Sweeping Evisceration dodged in turn;
