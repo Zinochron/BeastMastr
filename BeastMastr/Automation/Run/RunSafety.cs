@@ -46,9 +46,6 @@ public static class RunSafety
     /// <param name="mayLeaveZone">After the boss, leaving the zone is how a run ends rather than a failure.</param>
     public static string? MustStop(BoardModel board, bool mayLeaveZone)
     {
-        if (Services.Condition[ConditionFlag.Unconscious])
-            return "You went down.";
-
         if (!mayLeaveZone && !Waiting() && !board.InRunZone)
             return "The run's zone was left.";
 

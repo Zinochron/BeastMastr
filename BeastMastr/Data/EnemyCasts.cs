@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using BeastMastr.Rules;
 using Dalamud.Game.ClientState.Objects.Enums;
@@ -31,21 +33,39 @@ public static class EnemyCasts
 
     private static readonly Dictionary<uint, Shape?> Shapes = [];
 
-    /// <summary>The name of a hit on its way that no position avoids, or null.</summary>
+    /// <summary>
+    /// The name of a hit on its way that is aimed at you alone, or null — what Snarl is for. Hits over
+    /// the whole arena are not: Snarl's cover did not take them in the master board recordings (713
+    /// damage from On the Properties of Quakes, 650 a breath from the Morbol, all while Covered).
+    /// </summary>
     public static string? Unavoidable(IPlayerCharacter player)
     {
         foreach (var caster in Casting(player))
         {
-            if (ShapeOf(caster.CastActionId) is not { } shape)
+            if (ShapeOf(caster.CastActionId) is not { } shape || caster.CastTargetObjectId != player.GameObjectId)
                 continue;
 
-            var onPlayer = caster.CastTargetObjectId == player.GameObjectId;
-            if (IncomingHits.Unavoidable(shape.CastType, shape.EffectRange, shape.TargetArea, onPlayer))
+            if (IncomingHits.Unavoidable(shape.CastType, shape.EffectRange, shape.TargetArea, true))
                 return shape.Name;
         }
 
         return null;
     }
+
+    /// <summary>A cast seen starting again and again — the Morbol's breath went off every two seconds for a fifth of one.</summary>
+    private sealed class Repeat
+    {
+        public DateTime StartedAt;
+        public float Interval;
+        public Zone? Last;
+    }
+
+    private static readonly Dictionary<(ulong Caster, uint Action), Repeat> Repeats = [];
+
+    /// <summary>A repeat is only trusted this often; one that has stopped is dropped after this many intervals.</summary>
+    private const float LongestRepeat = 6f;
+
+    private const float RepeatLapses = 1.6f;
 
     /// <summary>
     /// Whether an enemy is casting something that a position can avoid — what BossMod has to be free to
@@ -76,6 +96,8 @@ public static class EnemyCasts
     {
         var zones = new List<Zone>();
         var sheet = Services.Data.GetExcelSheet<LuminaAction>();
+        var now = DateTime.Now;
+        var casting = new HashSet<(ulong, uint)>();
 
         foreach (var caster in Casting(player))
         {
@@ -104,11 +126,59 @@ public static class EnemyCasts
             var zone = CastShapes.Shape(row.CastType, row.EffectRange, row.XAxisModifier, omen, caster.HitboxRadius,
                                         origin, info->Rotation, caster.TotalCastTime - caster.CurrentCastTime,
                                         row.Name.ExtractText());
-            if (zone != null)
-                zones.Add(zone);
+            if (zone == null)
+                continue;
+
+            zones.Add(zone);
+            Remember(caster, zone, now);
+            casting.Add((caster.GameObjectId, caster.CastActionId));
+        }
+
+        // A repeating hit between its casts: the next one is expected an interval after the last began,
+        // where the last one pointed. Short casts like the Morbol's breath leave no time to react to.
+        foreach (var (key, repeat) in Repeats.ToList())
+        {
+            var since = (float)(now - repeat.StartedAt).TotalSeconds;
+            if (repeat.Interval <= 0f || since > repeat.Interval * RepeatLapses)
+            {
+                if (since > LongestRepeat * RepeatLapses)
+                    Repeats.Remove(key);
+
+                continue;
+            }
+
+            if (!casting.Contains(key) && repeat.Last is { } last)
+            {
+                zones.Add(last with
+                {
+                    ActivatesIn = MathF.Max(0.3f, repeat.Interval - since + last.ActivatesIn),
+                    Name = last.Name + " (repeating)",
+                });
+            }
         }
 
         return zones;
+    }
+
+    private static void Remember(IBattleChara caster, Zone zone, DateTime now)
+    {
+        var started = now - TimeSpan.FromSeconds(caster.CurrentCastTime);
+        var key = (caster.GameObjectId, caster.CastActionId);
+
+        if (!Repeats.TryGetValue(key, out var repeat))
+        {
+            Repeats[key] = new Repeat { StartedAt = started, Last = zone with { ActivatesIn = caster.TotalCastTime } };
+            return;
+        }
+
+        var gap = (float)(started - repeat.StartedAt).TotalSeconds;
+        if (gap > 0.3f)
+        {
+            repeat.Interval = gap <= LongestRepeat ? gap : 0f;
+            repeat.StartedAt = started;
+        }
+
+        repeat.Last = zone with { ActivatesIn = caster.TotalCastTime };
     }
 
     /// <summary>Every battle NPC in reach that is casting, familiars left out.</summary>

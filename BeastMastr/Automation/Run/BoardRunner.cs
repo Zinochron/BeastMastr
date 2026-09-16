@@ -60,6 +60,14 @@ public sealed class BoardRunner : IDisposable
     private static readonly TimeSpan ResultWait = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan PlacementWait = TimeSpan.FromSeconds(10);
     private const float FightSearchRange = 45f;
+
+    /// <summary>How long a revive is waited for after going down.</summary>
+    private static readonly TimeSpan ReviveWait = TimeSpan.FromSeconds(10);
+
+    /// <summary>How long a room's leftover "In Event" is waited out before walking on anyway.</summary>
+    private static readonly TimeSpan EventWait = TimeSpan.FromSeconds(15);
+
+    private DateTime? downSince;
     private const int LogLength = 30;
 
     private readonly Configuration configuration;
@@ -238,6 +246,27 @@ public sealed class BoardRunner : IDisposable
         {
             Fail(reason);
             return;
+        }
+
+        // Down is not over: the Ring of Sacrifice revived the player three seconds after both deaths
+        // on the master board.
+        if (Services.Condition[ConditionFlag.Unconscious])
+        {
+            downSince ??= DateTime.Now;
+            if (DateTime.Now - downSince.Value > ReviveWait)
+            {
+                Fail("You went down.");
+                return;
+            }
+
+            Status = "Down — waiting to be revived.";
+            return;
+        }
+
+        if (downSince != null)
+        {
+            Note("Revived; carrying on.");
+            downSince = null;
         }
 
         if (RunSafety.Waiting())
@@ -729,6 +758,15 @@ public sealed class BoardRunner : IDisposable
     {
         if (Elapsed < SettleTime)
             return;
+
+        // A campsite's rest keeps "In Event" on for a while after its window has closed; walking on
+        // before it has gone took the leftover for the next room beginning.
+        if (Elapsed < EventWait && Services.Objects.LocalPlayer is { } player &&
+            player.StatusList.Any(status => status.StatusId == XbmColumns.Crucible.InEventStatus))
+        {
+            Status = "Waiting for the room to finish.";
+            return;
+        }
 
         if (RoomOpened() is { } phase)
         {

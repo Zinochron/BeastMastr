@@ -76,9 +76,14 @@ public sealed class BoardWalker : IDisposable
     /// The room the run has finished, when the caller knows it better than the board does; otherwise
     /// the board's own word is taken.
     /// </param>
+    /// <summary>"In Event" was already on when the walk began, and has not gone since.</summary>
+    private bool eventLeftOver;
+
     public bool Walk(int eventIndex, int fromEvent = -1)
     {
         Stop(null);
+        eventLeftOver = Services.Objects.LocalPlayer?.StatusList
+                                .Any(status => status.StatusId == XbmColumns.Crucible.InEventStatus) ?? false;
 
         if (board.Graph is not { IsValid: true } graph)
             return Fail("There is no usable board: " + board.Status);
@@ -353,10 +358,16 @@ public sealed class BoardWalker : IDisposable
         if (board.MarkedEvent == Target || board.TriggerEvent == Target)
             return true;
 
-        // The first sign, about two seconds before any window: "In Event" on the player.
-        if (Services.Objects.LocalPlayer is { } player &&
-            player.StatusList.Any(status => status.StatusId == XbmColumns.Crucible.InEventStatus))
-            return true;
+        // The first sign, about two seconds before any window: "In Event" on the player. One still on
+        // from the room left behind — a campsite's rest keeps it a while — is not this room beginning.
+        if (Services.Objects.LocalPlayer is { } player)
+        {
+            var inEvent = player.StatusList.Any(status => status.StatusId == XbmColumns.Crucible.InEventStatus);
+            if (!inEvent)
+                eventLeftOver = false;
+            else if (!eventLeftOver)
+                return true;
+        }
 
         if (PetPartyReader.Mode() is XbmColumns.PetParty.FightMode or XbmColumns.PetParty.CampsiteMode)
             return true;

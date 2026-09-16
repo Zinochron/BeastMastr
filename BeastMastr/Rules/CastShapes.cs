@@ -12,6 +12,9 @@ public static class CastShapes
     /// <summary>BossMod pads every edge by this much.</summary>
     private const float Pad = 0.030518044f;
 
+    /// <summary>A cone's origin is dangerous at least this far around, whatever the caster's hitbox.</summary>
+    public const float MinimumApex = 2f;
+
     /// <summary>The cone angle BossMod assumes when an omen does not name one.</summary>
     public const float FallbackConeDegrees = 90f;
 
@@ -31,7 +34,7 @@ public static class CastShapes
         {
             2 => new Zone(ZoneKind.Circle, origin, rotation, range + Pad, activatesIn, name),
             3 => new Zone(ZoneKind.Cone, origin, rotation, range + hitbox, activatesIn, name,
-                          HalfAngle: ConeHalfAngle(omenPath)),
+                          HalfAngle: ConeHalfAngle(omenPath), Apex: MathF.Max(hitbox, MinimumApex)),
             4 => new Zone(ZoneKind.Rect, origin, rotation, range + hitbox + Pad, activatesIn, name,
                           HalfWidth: halfWidth, Behind: Pad),
             5 => new Zone(ZoneKind.Circle, origin, rotation, range + hitbox + Pad, activatesIn, name),
@@ -41,7 +44,7 @@ public static class CastShapes
             12 => new Zone(ZoneKind.Rect, origin, rotation, range + Pad, activatesIn, name,
                            HalfWidth: halfWidth, Behind: Pad),
             13 => new Zone(ZoneKind.Cone, origin, rotation, range, activatesIn, name,
-                           HalfAngle: ConeHalfAngle(omenPath)),
+                           HalfAngle: ConeHalfAngle(omenPath), Apex: MathF.Max(hitbox, MinimumApex)),
             _ => null,
         };
     }

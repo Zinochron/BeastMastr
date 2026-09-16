@@ -653,6 +653,24 @@ Check("inside with nothing cast, nothing to do", Dodger.Plan(standing, mite, 3f,
 var clear = Dodger.Plan(new Vector2(120f, -410f), mite, 3f, Uplift(0f), arena, 18f)!;
 Check("already clear of what hits first: stay put", clear.Point == new Vector2(120f, -410f), clear.Why);
 
+// The First Master's Board, as recorded.
+var morbol = new Vector2(120f, -420.9f);
+var breath = CastShapes.Shape(13, 50, 0, "gl_fan090_1bf", 5f, morbol, 0f, 4.7f, "Extremely Bad Breath")!;
+Check("standing inside the Morbol counts as in its breath", breath.Contains(new Vector2(120f, -421.5f)));
+var breathPlan = Dodger.Plan(new Vector2(120f, -421.5f), morbol, 8f, [breath], arena, 18f)!;
+Check("so the player steps out of it, behind the Morbol", breathPlan.Safe && !breath.Contains(breathPlan.Point),
+      $"to {breathPlan.Point}");
+
+// Malady: circles of 6 on a 7-yalm grid around (120, 0), eleven of them at once.
+var gargoyleArena = new Vector2(120f, 0f);
+var malady = new List<Zone>();
+foreach (var (x, z) in new[] { (109.5f, -10.5f), (130.5f, -10.5f), (102.5f, 17.5f), (123.5f, 17.5f), (130.5f, -3.5f),
+                               (102.5f, -3.5f), (123.5f, -17.5f), (116.5f, 10.5f), (137.5f, 3.5f), (116.5f, 3.5f) })
+    malady.Add(CastShapes.Shape(2, 6, 0, "", 0f, new Vector2(x, z), 0f, 4.7f, "Malady")!);
+
+var maladyPlan = Dodger.Plan(new Vector2(116.5f, 3.5f), new Vector2(120f, -8f), 8f, malady, gargoyleArena, 18f)!;
+Check("Malady's grid leaves a free cell to stand in", maladyPlan.Safe, $"to {maladyPlan.Point}");
+
 Check("where the Bleeding began is outside the default square",
       CrucibleArena.SquareIsSafe(CrucibleArena.DefaultHalfWidth) && 124.21f - 120f < CrucibleArena.DefaultHalfWidth &&
       -440.06f + 420f < -CrucibleArena.DefaultHalfWidth);

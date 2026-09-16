@@ -24,8 +24,13 @@ public enum ZoneKind
 /// <param name="HalfAngle">Half a cone's opening, in radians.</param>
 /// <param name="Behind">How far a line reaches behind its origin.</param>
 /// <param name="ActivatesIn">Seconds until it hits: the cast's time left.</param>
+/// <param name="Apex">
+/// Around a cone's origin, everything counts as hit. Standing inside the Morbol, 0.6 yalms behind its
+/// middle, was taken for safe from its breath and was not.
+/// </param>
 public sealed record Zone(ZoneKind Kind, Vector2 Origin, float Rotation, float Radius, float ActivatesIn, string Name,
-                          float Inner = 0f, float HalfWidth = 0f, float HalfAngle = 0f, float Behind = 0f)
+                          float Inner = 0f, float HalfWidth = 0f, float HalfAngle = 0f, float Behind = 0f,
+                          float Apex = 0f)
 {
     public bool Contains(Vector2 point)
     {
@@ -45,7 +50,7 @@ public sealed record Zone(ZoneKind Kind, Vector2 Origin, float Rotation, float R
                 if (distance > Radius)
                     return false;
 
-                if (distance < 0.001f)
+                if (distance <= MathF.Max(Apex, 0.001f))
                     return true;
 
                 var cos = Vector2.Dot(offset / distance, ahead);
@@ -91,8 +96,12 @@ public static class Dodger
     /// <summary>Hits landing this soon after the first are dodged together.</summary>
     public const float Window = 1.5f;
 
-    /// <summary>A spot this far inside a hit's edge still counts as in it: movement is not exact.</summary>
-    public const float Margin = 1f;
+    /// <summary>
+    /// A spot this close outside a hit's edge still counts as in it: movement is not exact. Kept small:
+    /// the Gargoyle's Malady puts circles of 6 on a 7-yalm grid, and the free cells between them are
+    /// only a yalm clear.
+    /// </summary>
+    public const float Margin = 0.5f;
 
     public const float GridStep = 1f;
 

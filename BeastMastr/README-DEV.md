@@ -1993,3 +1993,36 @@ Its fights, by the `ecast` lines:
   - Rustling Breeze, cones.
   - Arboreal Storm, a circle of 12, then rings out to 36 every two seconds; the dodger's line for
     this is the same as for Bedrock Uplift.
+
+### The first runs on the First Master's Board — 2026-09-16
+
+Two runs, `captures/run-20260916-220836.txt` and `run-20260916-221153.txt`. Walking, scanning (15 rooms,
+17 links) and the room windows all worked on the new board.
+
+**The Morbol killed the first run, with BeastMastr dodging.** The player stood 0.6 yalms from the
+Morbol's middle, behind it. The breath (48672/48673, a cone of 50) counted that as outside, so the
+dodge answered "already clear". Then the helper's short breath (48675) came every two seconds for a
+fifth of a second, 650 damage each, under Poison, Toxicosis, Slow, Blind and Paralysis. It was always
+too short to react to.
+- A cone now hits everything within the caster's hitbox of its origin, at least 2 yalms (`Zone.Apex`).
+- A cast that `EnemyCasts` sees start again within six seconds is predicted between its casts: the
+  last shape, due an interval after the last start.
+- The recorder now writes each caster's facing and cast facing, so that a turning breath shows next
+  time.
+
+**Snarl does not cover hits on the whole arena.** Quakes did 713 damage and the breath 650 while
+Covered. Snarl is now pressed only for a hit aimed at the player, and at low HP.
+
+**The Gargoyle killed the second run, with BossMod dodging** (switched back on for that run). It ran to
+z 20.9, 21 yalms from (120, 0), into Bleeding, and the obstacle map failed again. Afterwards,
+BeastMastr's own dodging handled Rippling Evisceration correctly: out to 14 yalms from the 13-yalm
+circle, then in to 11 inside the ring from 13 to 30. Malady puts circles of 6 on a 7-yalm grid, so
+the dodge margin is now 0.5 instead of 1, which leaves the free cells usable.
+
+**Both deaths were revived** by the Ring of Sacrifice three seconds later. The run gave up anyway.
+Going down now waits up to 10 seconds for a revive.
+
+**After the campsite** the run walked on while "In Event" (1268) was still on from the rest. The walker
+took that as the next room beginning and stood waiting 15 seconds for a window. Settling now waits for
+the status to go, for up to 15 seconds. A walk that starts with the status already on ignores it until
+it has gone once.
