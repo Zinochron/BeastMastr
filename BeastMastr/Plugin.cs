@@ -22,6 +22,8 @@ public sealed class Plugin : IDalamudPlugin
     private readonly MainWindow mainWindow;
     /// <summary>Built in the constructor body: it subscribes on construction. See the note above.</summary>
     private readonly EventRecorder recorder;
+    private readonly ActionWatcher actionWatcher;
+    private readonly RunRecorder runRecorder;
     private readonly FightSelector fightSelector;
     private readonly RankWatcher rankWatcher;
     private readonly EnemyCache enemies;
@@ -68,6 +70,8 @@ public sealed class Plugin : IDalamudPlugin
         Catalog = new BeastCatalog();
 
         recorder = new EventRecorder();
+        actionWatcher = new ActionWatcher();
+        runRecorder = new RunRecorder(recorder, actionWatcher);
         fightSelector = new FightSelector(Configuration, Catalog);
         rankWatcher = new RankWatcher(Configuration);
         enemies = new EnemyCache();
@@ -91,7 +95,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             tabs.Add(new SheetsTab(Configuration));
             tabs.Add(new AddonsTab(Configuration, delayedSweep));
-            tabs.Add(new BoardTab(Catalog, recorder, rankWatcher, enemies, boardCache));
+            tabs.Add(new BoardTab(Catalog, recorder, runRecorder, rankWatcher, enemies, boardCache));
         }
 
         tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector, difficultySelector, nextRoom));
@@ -102,7 +106,8 @@ public sealed class Plugin : IDalamudPlugin
         Services.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
             HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings, " +
-                          "/beastmastr room (open or close the next-room window).",
+                          "/beastmastr room (open or close the next-room window), " +
+                          "/beastmastr record (start or stop recording a run to a file).",
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -127,6 +132,10 @@ public sealed class Plugin : IDalamudPlugin
                 nextRoom.Toggle();
                 break;
 
+            case "record":
+                runRecorder.Toggle();
+                break;
+
             default:
                 ToggleMainUi();
                 break;
@@ -149,6 +158,8 @@ public sealed class Plugin : IDalamudPlugin
         mainWindow.Dispose();
         delayedSweep.Dispose();
         notebook.Dispose();
+        runRecorder.Dispose();
+        actionWatcher.Dispose();
         recorder.Dispose();
         fightSelector.Dispose();
         rankWatcher.Dispose();

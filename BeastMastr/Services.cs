@@ -26,4 +26,7 @@ public sealed class Services
     [PluginService] public static IContextMenu ContextMenu { get; private set; } = null!;
     [PluginService] public static IChatGui Chat { get; private set; } = null!;
     [PluginService] public static INotificationManager Notifications { get; private set; } = null!;
+    [PluginService] public static ITargetManager Targets { get; private set; } = null!;
+    [PluginService] public static IKeyState Keys { get; private set; } = null!;
+    [PluginService] public static IGamepadState Gamepad { get; private set; } = null!;
 }

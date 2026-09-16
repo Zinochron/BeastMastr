@@ -439,6 +439,15 @@ public static class XbmColumns
         /// </summary>
         public const uint FightMode = 2;
 
+        /// <summary>
+        /// Read off the log's mode lines: 1 while the board layout is open over it, 4 at a campsite
+        /// ("You and 3 familiars can recover HP at this campsite."). The shop's number is still
+        /// missing.
+        /// </summary>
+        public const uint BoardLayoutMode = 1;
+
+        public const uint CampsiteMode = 4;
+
         /// <summary>A beast's HP as the row shows it, "2943/2943". Offset 5 carries the first number alone.</summary>
         public const int HpTextOffset = 4;
 
@@ -543,6 +552,17 @@ public static class XbmColumns
 
         public const int LowerModeCommand = 4;
 
+        /// <summary>
+        /// Inside a run the briefing carries "Commence Battle" and "Flee" here (nodes 33 and 32, both
+        /// hidden in every capture so far); before a run the first reads "Challenge This Board".
+        /// </summary>
+        public const int CommenceBattleValue = 40056;
+
+        public const int FleeValue = 40057;
+
+        /// <summary>-1 before a run; in a run the room list index of the room the board marks.</summary>
+        public const int CurrentRoomValue = 40032;
+
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
     }
@@ -560,6 +580,105 @@ public static class XbmColumns
         Campsite = 4,
         Treasure = 5,
         RandomEnemyOrTreasure = 6,
+    }
+
+    /// <summary>
+    /// The board as a graph, <c>XBMContentStageEventMap</c> — a subrow sheet with one row per board
+    /// and one subrow per cell the board window draws. Five UInt8 columns, and the live component
+    /// (<c>AtkComponentXBMContentStageEventMap.EventMapEntries</c>) carries the same five bytes.
+    ///
+    /// Read offline against game 2026.09.01: a room is a cell of <see cref="RoomCellType"/>, every
+    /// other type is a piece of a link from its event to <see cref="LinkedEventIndex"/>. Y counts
+    /// down the screen, so the start (event 0) has the largest Y and the boss the smallest. X is the
+    /// column, 6 in the middle of a three column board. A link can take several cells — the fifth
+    /// board draws sideways links two cells wide — so edges are deduplicated rather than counted.
+    /// </summary>
+    public static class StageEventMap
+    {
+        public const string Sheet = "XBMContentStageEventMap";
+        public const int ColumnCount = 5;
+
+        public const int X = 0;
+        public const int Y = 1;
+        public const int Type = 2;
+        public const int EventIndex = 3;
+        public const int LinkedEventIndex = 4;
+
+        /// <summary>
+        /// A room. Links are 6 (straight up), 4/9 and 5/10 (the two diagonals) and 7/8 (sideways on
+        /// the fifth board); only "not a room" matters for the graph.
+        /// </summary>
+        public const int RoomCellType = 1;
+    }
+
+    /// <summary>
+    /// What each event on a board is, <c>XBMContentStageEvent</c> — a subrow sheet, one row per board,
+    /// subrow index = event index. Columns 0 and 1 settled against the room lists captured at the
+    /// entrance, move for move and kind for kind; 2 and 3 are not identified.
+    /// </summary>
+    public static class StageEvent
+    {
+        public const string Sheet = "XBMContentStageEvent";
+        public const int ColumnCount = 4;
+
+        public const int Move = 0;
+
+        /// <summary>1 is the start; 2 onward is <see cref="RoomKind"/> plus two.</summary>
+        public const int EventType = 1;
+
+        public const int StartEventType = 1;
+        public const int FirstRoomEventType = 2;
+
+        /// <summary>
+        /// Rises with the number of enemy groups on a board — 1..6 for enemies — but the elite rooms
+        /// read 3 and 6 while being labelled #1 and #2, so it is not the label's number.
+        /// </summary>
+        public const int Unknown2 = 2;
+
+        /// <summary>Strictly increasing per board. Some id; not identified.</summary>
+        public const int Unknown3 = 3;
+    }
+
+    /// <summary>
+    /// The Crucible as a place. Numbers read off captures in `captures/`, each one named where it is
+    /// used.
+    /// </summary>
+    public static class Crucible
+    {
+        /// <summary>Where every board is played, whichever board it is.</summary>
+        public const uint RunTerritory = 1339;
+
+        /// <summary>Central Shroud, where the boards are chosen.</summary>
+        public const uint EntranceTerritory = 148;
+
+        /// <summary>
+        /// An unnamed event object that sits on the room the player is on or has just finished. The
+        /// only object in the run besides the player, seen on five different rooms.
+        /// </summary>
+        public const uint RoomTriggerDataId = 2015483;
+
+        /// <summary>The event object at the entrance that opens the board selection.</summary>
+        public const uint EntranceDataId = 2015511;
+
+        /// <summary>The board's room icons run from 63850; 63853 is not yet seen and assumed to be Random.</summary>
+        public const uint FirstRoomIcon = 63850;
+
+        public const uint LastRoomIcon = 63859;
+    }
+
+    /// <summary>Windows only seen by name so far. What they hold is for the run recorder to find out.</summary>
+    public static class RunWindows
+    {
+        public const string ItemShop = "XBMContentsItemShop";
+        public const string Treasure = "XBMContentsTreasure";
+
+        /// <summary>Appears about ninety seconds after a fight starts, so taken to be the spoils.</summary>
+        public const string Booty = "XBMContentsBooty";
+
+        public const string Result = "XBMResult";
+
+        /// <summary>The job's own gauge on the HUD. Never dumped yet.</summary>
+        public const string JobHud = "JobHudXBM";
     }
 
     /// <summary>

@@ -21,6 +21,7 @@ public sealed class BoardTab : ITab
 {
     private readonly BeastCatalog catalog;
     private readonly EventRecorder recorder;
+    private readonly RunRecorder runRecorder;
     private readonly RankWatcher ranks;
     private readonly EnemyCache enemies;
     private readonly BoardCache board;
@@ -28,11 +29,12 @@ public sealed class BoardTab : ITab
     private string lastPath = string.Empty;
     private float radius = 60f;
 
-    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RankWatcher ranks, EnemyCache enemies,
-                    BoardCache board)
+    public BoardTab(BeastCatalog catalog, EventRecorder recorder, RunRecorder runRecorder, RankWatcher ranks,
+                    EnemyCache enemies, BoardCache board)
     {
         this.catalog = catalog;
         this.recorder = recorder;
+        this.runRecorder = runRecorder;
         this.ranks = ranks;
         this.enemies = enemies;
         this.board = board;
@@ -53,6 +55,8 @@ public sealed class BoardTab : ITab
         }
 
         ImGuiHelpers.ScaledDummy(4f);
+        DrawRunRecorder();
+        ImGuiHelpers.ScaledDummy(4f);
         DrawBoardCache();
         ImGuiHelpers.ScaledDummy(4f);
         DrawOpenAddons();
@@ -68,6 +72,34 @@ public sealed class BoardTab : ITab
         DrawMarkers();
         ImGuiHelpers.ScaledDummy(4f);
         DrawObjects();
+    }
+
+    /// <summary>
+    /// The whole-run timeline. One board played by hand with this on is what the board automation is
+    /// built from: what each button sends, what the job presses, what the gauge does.
+    /// </summary>
+    private void DrawRunRecorder()
+    {
+        if (!ImGui.CollapsingHeader("Run recording", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        if (ImGui.Button(runRecorder.Recording ? "Stop recording" : "Record a run"))
+            runRecorder.Toggle();
+
+        Widgets.HelpMarker(
+            "Writes everything that happens to captures/run-*.txt as it happens: windows opening with their " +
+            "values, every click the game sends, every action used, the gauge, conditions, objects and your " +
+            "position. Watches only. Same as /beastmastr record.");
+
+        if (runRecorder.Recording)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(new Vector4(0.95f, 0.4f, 0.35f, 1f),
+                              $"recording {runRecorder.Elapsed:hh\\:mm\\:ss}, {runRecorder.LinesWritten} lines");
+        }
+
+        if (runRecorder.LastPath.Length > 0)
+            ImGui.TextDisabled(runRecorder.LastPath);
     }
 
     /// <summary>
@@ -413,6 +445,20 @@ public sealed class BoardTab : ITab
                             string.Join("  ", row.Select(tile => $"idx={tile.DetailIndex}" +
                                                                  $"{(tile.IsCurrent ? "*" : string.Empty)}" +
                                                                  $"@{tile.ScreenPosition.X:0}/{tile.ScreenPosition.Y:0}")));
+        }
+
+        text.AppendLine();
+        if (BoardEventMapReader.Read() is { } eventMap)
+        {
+            text.AppendLine($"# Event map: {eventMap.Addon} row={eventMap.BoardRowId} grid={eventMap.GridSize} " +
+                            $"current={eventMap.CurrentEventIndex} marked={eventMap.MarksCurrent}");
+            foreach (var cell in eventMap.Cells)
+                text.AppendLine($"cell {cell.Index} x={cell.X} y={cell.Y} type={cell.Type} event={cell.EventIndex} " +
+                                $"linked={cell.LinkedEventIndex} state={cell.State}");
+            foreach (var tile in eventMap.Tiles)
+                text.AppendLine($"tile template={tile.Template} node={tile.NodeId} cell={tile.CellIndex} " +
+                                $"current={tile.IsCurrent} visible={tile.Visible} " +
+                                $"at {tile.ScreenPosition.X:0}/{tile.ScreenPosition.Y:0} {tile.Size.X:0}x{tile.Size.Y:0}");
         }
 
         text.AppendLine();
