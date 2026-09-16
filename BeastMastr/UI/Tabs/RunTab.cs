@@ -31,6 +31,7 @@ public sealed class RunTab : ITab
     private readonly Automation.Combat.CombatDriver combat;
     private readonly Automation.Combat.BossModBridge bossMod;
     private readonly BeastmasterJob job;
+    private readonly Automation.Run.BoardRunner runner;
 
     private string presetResult = string.Empty;
 
@@ -39,8 +40,10 @@ public sealed class RunTab : ITab
     public RunTab(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
                   Native.RouteOverlay overlay, RunRecorder recorder, Automation.Run.BoardWalker walker,
                   Automation.Run.ManualInputGuard input, Automation.Combat.CombatDriver combat,
-                  Automation.Combat.BossModBridge bossMod, BeastmasterJob job)
+                  Automation.Combat.BossModBridge bossMod, BeastmasterJob job,
+                  Automation.Run.BoardRunner runner)
     {
+        this.runner = runner;
         this.combat = combat;
         this.bossMod = bossMod;
         this.job = job;
@@ -59,6 +62,8 @@ public sealed class RunTab : ITab
 
     public void Draw()
     {
+        DrawRun();
+        ImGuiHelpers.ScaledDummy(4f);
         DrawHelpers();
         ImGuiHelpers.ScaledDummy(4f);
         DrawControls();
@@ -113,6 +118,66 @@ public sealed class RunTab : ITab
             ImGui.SameLine();
             ImGui.TextDisabled(recorder.LastPath);
         }
+    }
+
+    /// <summary>The whole run: start it, hold it, and see what it is doing or waiting for.</summary>
+    private void DrawRun()
+    {
+        if (!ImGui.CollapsingHeader("Run the board", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        using (ImRaii.Disabled(runner.Running))
+        {
+            if (ImGui.Button("Run"))
+                runner.Start(configuration.RunCount);
+        }
+
+        Widgets.HelpMarker("Plays the board from where you stand to the boss: plans the route, walks one room at a " +
+                           "time, calls familiars, fights, picks the most hurt at campsites. Steps whose buttons are " +
+                           "not recorded yet are handed to you, and the run carries on once they are done. " +
+                           "Same as /beastmastr run.");
+
+        ImGui.SameLine();
+        using (ImRaii.Disabled(!runner.Running))
+        {
+            if (ImGui.Button(runner.Paused ? "Carry on" : "Pause"))
+                runner.TogglePause();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Continue"))
+                runner.Continue();
+
+            ImGui.SameLine();
+            if (ImGui.Button("Stop"))
+                runner.Stop("Stopped from the Run tab.");
+        }
+
+        ImGui.SameLine();
+        var runs = configuration.RunCount;
+        ImGui.SetNextItemWidth(90f * ImGuiHelpers.GlobalScale);
+        if (ImGui.InputInt("boards", ref runs))
+        {
+            configuration.RunCount = Math.Clamp(runs, 1, 99);
+            configuration.Save();
+        }
+
+        var failed = runner.State == Automation.Run.BoardRunner.Phase.Failed;
+        ImGui.TextColored(failed ? Bad : runner.Running ? Good : Muted,
+                          $"{runner.State}{(runner.Paused ? " (paused)" : string.Empty)}: {runner.Status}");
+
+        if (runner.RunsWanted > 0)
+            ImGui.TextDisabled($"Board {Math.Min(runner.RunsDone + 1, runner.RunsWanted)} of {runner.RunsWanted}. " +
+                               $"Last room done: {runner.DoneEvent}. Heading for: {runner.Target}.");
+
+        if (runner.HandOff.Length > 0)
+            ImGui.TextColored(new Vector4(1f, 0.85f, 0.3f, 1f), $"Your turn: {runner.HandOff}");
+
+        using var node = ImRaii.TreeNode("What happened");
+        if (!node.Success)
+            return;
+
+        foreach (var line in runner.Log)
+            ImGui.TextDisabled(line);
     }
 
     /// <summary>What can be set going from here, and how it stops.</summary>

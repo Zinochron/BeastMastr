@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -40,6 +41,7 @@ public sealed class Plugin : IDalamudPlugin
     private readonly BeastmasterJob job;
     private readonly BossModBridge bossMod;
     private readonly CombatDriver combat;
+    private readonly BoardRunner runner;
     private readonly TeamSelector teamSelector;
     private readonly HealthSelector healthSelector;
     private readonly DifficultySelector difficultySelector;
@@ -98,6 +100,8 @@ public sealed class Plugin : IDalamudPlugin
         combat = new CombatDriver(Configuration, job, inputGuard, bossMod);
         teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
         healthSelector = new HealthSelector(Catalog);
+        runner = new BoardRunner(Configuration, boardModel, boardTerrain, routeKeeper, walker, combat, fightSelector,
+                                 healthSelector, Catalog);
         difficultySelector = new DifficultySelector(Configuration);
         rankPuller = new RankPuller(rankWatcher);
 
@@ -116,7 +120,7 @@ public sealed class Plugin : IDalamudPlugin
         {
             new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
             new RunTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder, walker,
-                       inputGuard, combat, bossMod, job),
+                       inputGuard, combat, bossMod, job, runner),
         };
         if (Configuration.ShowDataTab)
         {
@@ -136,9 +140,10 @@ public sealed class Plugin : IDalamudPlugin
                           "/beastmastr room (open or close the next-room window), " +
                           "/beastmastr record (start or stop recording a run to a file), " +
                           "/beastmastr scan (scan the board's ground with vnavmesh), " +
-                          "/beastmastr step (walk to the next room of the route), " +
-                          "/beastmastr combat (fight on or off), /beastmastr stop (stop everything), " +
-                          "/beastmastr run (the Run tab).",
+                          "/beastmastr run [boards] (play the board on its own), /beastmastr pause, " +
+                          "/beastmastr continue (the room in hand is finished), /beastmastr stop (stop everything), " +
+                          "/beastmastr step (walk to the next room only), /beastmastr combat (fight on or off), " +
+                          "/beastmastr tab (the Run tab).",
         });
 
         Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
@@ -148,7 +153,10 @@ public sealed class Plugin : IDalamudPlugin
 
     private void OnCommand(string command, string args)
     {
-        switch (args.Trim().ToLowerInvariant())
+        var words = args.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var verb = words.Length > 0 ? words[0] : string.Empty;
+
+        switch (verb)
         {
             case "settings":
             case "config":
@@ -173,6 +181,18 @@ public sealed class Plugin : IDalamudPlugin
                 break;
 
             case "run":
+                runner.Start(words.Length > 1 && int.TryParse(words[1], out var boards) ? boards : Configuration.RunCount);
+                break;
+
+            case "pause":
+                runner.TogglePause();
+                break;
+
+            case "continue":
+                runner.Continue();
+                break;
+
+            case "tab":
                 mainWindow.OpenAt("run");
                 break;
 
@@ -213,6 +233,7 @@ public sealed class Plugin : IDalamudPlugin
 
     private void StopEverything(string reason)
     {
+        runner.Stop(reason);
         walker.Stop(null);
         combat.Stop(reason);
         boardTerrain.Cancel();
@@ -242,6 +263,7 @@ public sealed class Plugin : IDalamudPlugin
         rankWatcher.Dispose();
         enemies.Dispose();
         boardCache.Dispose();
+        runner.Dispose();
         combat.Dispose();
         walker.Dispose();
         inputGuard.Dispose();

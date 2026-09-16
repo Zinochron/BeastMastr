@@ -73,6 +73,12 @@ public sealed unsafe class FightSelector : IDisposable
 
     private bool Busy => pending.Count > 0 || waitingFor != 0;
 
+    /// <summary>
+    /// Whether familiars are being called, or are about to be: a pick outstanding, a press not yet
+    /// handled, or the automatic call still counting down after the fight window opened.
+    /// </summary>
+    public bool IsCalling => Busy || requested || automaticCountdown >= 0;
+
     private void OnUpdate(IFramework framework)
     {
         if (!PetPartyReader.IsOpen)

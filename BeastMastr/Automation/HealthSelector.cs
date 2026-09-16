@@ -47,6 +47,9 @@ public sealed class HealthSelector : IDisposable
 
     public string Status { get; private set; } = string.Empty;
 
+    /// <summary>Whether a pick is asked for or still under way.</summary>
+    public bool Busy => requested || pending.Count > 0 || waitingFor != 0;
+
     /// <summary>The button.</summary>
     public void RequestPick()
     {

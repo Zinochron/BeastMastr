@@ -106,6 +106,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>Mark the route on the game's board window, with a pin on every fork to pick a room.</summary>
     public bool ShowRouteOnBoard { get; set; } = true;
 
+    /// <summary>How many boards <c>/beastmastr run</c> plays when no number is given.</summary>
+    public int RunCount { get; set; } = 1;
+
     // ---- When you take over ----------------------------------------------
     // Whatever the automation is doing, your own input wins at once. These decide what happens after.
 

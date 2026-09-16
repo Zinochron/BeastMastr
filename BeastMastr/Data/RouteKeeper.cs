@@ -106,8 +106,19 @@ public sealed class RouteKeeper : IDisposable
         }
 
         var from = board.CurrentEvent >= 0 ? board.CurrentEvent : graph.Start?.EventIndex ?? 0;
-        Plan = RoutePlanner.Plan(graph, from, Chosen, configuration.BuildRoutePreferences(), LowestFamiliarHpShare,
-                                 terrain.UnsafeEdges);
+        Plan = PlanFrom(from);
+    }
+
+    /// <summary>The plan from a given room — the one the run has finished, which the run knows better than the board.</summary>
+    public RoutePlan PlanFrom(int eventIndex)
+    {
+        WatchHealth();
+
+        if (board.Graph is not { IsValid: true } graph)
+            return new RoutePlan([], new HashSet<int>(), [board.Status]);
+
+        return RoutePlanner.Plan(graph, eventIndex, Chosen, configuration.BuildRoutePreferences(),
+                                 LowestFamiliarHpShare, terrain.UnsafeEdges);
     }
 
     /// <summary>

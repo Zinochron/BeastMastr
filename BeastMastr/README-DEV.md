@@ -1587,3 +1587,38 @@ when missing. Whatever BossMod had active is noted and put back when the fight e
 stops, and on unload. vnavmesh is stopped first, so only one thing moves the character, and an
 obstacle map is generated around the fight, since BossMod has none for the Crucible. BossMod's IPC
 signatures were read off the installed 7.5.6.5 with reflection; every call returns a value.
+
+### The run
+
+`Automation/Run/BoardRunner.cs` plays a board: `/beastmastr run [boards]` or the Run tab, and nothing
+else starts it. Each step it plans from the room it last finished, walks one room, and plays what the
+room opens:
+
+| The room opens | The run |
+|---|---|
+| team list, fight mode | waits for `FightSelector` to call the last fight's familiars, then commences |
+| combat, or enemies about | fights until combat has been over for three seconds and nothing hostile is near |
+| the spoils | takes them, then moves on |
+| team list, campsite mode | picks the most hurt with `HealthSelector`, then confirms |
+| the shop | leaves it |
+| a treasure coffer | takes an item |
+| the result, after the boss | closes it; the board is done |
+
+`Automation/Run/RoomActions.cs` holds what those buttons send, and **none of them is recorded yet**.
+Until one is copied out of a run recording, the run hands that step to the player: it says in chat and
+in the Run tab what to press, and carries on when the game shows it was done — the fight beginning,
+the window closing. A room that opens nothing the run knows is handed over as well, and the Continue
+button (`/beastmastr continue`) tells the run it is finished. Nothing is guessed.
+
+`Automation/Run/RunSafety.cs` refuses to start off Beastmaster, outside the run's zone, without
+vnavmesh or without a known board; stops the run when the player goes down, the job changes or the
+zone is left before the boss; waits through loading and cutscenes; and names the loaded plugins that
+answer dialogs, press actions or move the character on their own (WrathCombo, YesAlready, TextAdvance,
+AutoDuty, Questionable, PandorasBox) as a warning.
+
+Pause (`/beastmastr pause`) stops walking and fighting where they are and picks the step up again
+after. Manual input pauses walking and fighting by itself, as above. `/beastmastr stop` ends
+everything, and BossMod gets its own presets back.
+
+More than one board needs the way back in from the entrance — choosing the board, "Challenge This
+Board", the team — which is not built yet. Until it is, the run says so after each board.
