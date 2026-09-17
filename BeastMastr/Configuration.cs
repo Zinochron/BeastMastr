@@ -115,8 +115,12 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public SavedBoard LastBoard { get; set; } = new();
 
-    /// <summary>Show the Data tab. Off once the mapping work is done and the plugin is just used.</summary>
-    public bool ShowDataTab { get; set; } = true;
+    /// <summary>
+    /// Show the Data tab — the sheet explorer, the window inspector and the board captures. Off for
+    /// anyone installing the plugin: it is the tooling the mapping was done with, not something to
+    /// use. A config that already has it on keeps it on.
+    /// </summary>
+    public bool ShowDataTab { get; set; } = false;
 
     public void Save() => Services.PluginInterface.SavePluginConfig(this);
 }

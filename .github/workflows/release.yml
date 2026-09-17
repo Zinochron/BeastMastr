@@ -1,0 +1,167 @@
+name: Release BeastMastr
+
+# Publishing has two halves and they live in different places on purpose, exactly as for LootMastr.
+#
+# The zip goes to a GitHub release: immutable once tagged, free to serve, and rolling back means
+# pointing at an older tag rather than restoring a file. Only the manifest -- a couple of kilobytes
+# of json -- is sent to plugins.antimates.org, which regenerates repo.json from it. That is what keeps
+# the version in the listing from drifting away from the version in the zip: nobody types it twice.
+#
+# Two ways in:
+#   - a push to master publishes to stable;
+#   - "Run workflow" publishes whatever branch is picked there, to testing by default. Testing builds
+#     are only offered to people who ticked "Get plugin testing builds". Pick the branch deliberately:
+#     the dispatch builds whatever it is given.
+
+on:
+  push:
+    branches: [ master ]
+
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: Channel to publish to
+        default: testing
+        type: choice
+        options: [ testing, stable ]
+
+permissions:
+  contents: write
+
+env:
+  PUBLISH_URL: https://plugins.antimates.org/publish.php
+
+jobs:
+  release:
+    runs-on: windows-2022
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.x
+
+      # Dalamud.NET.Sdk does not fetch this. It looks in the XIVLauncher directory and errors out if
+      # the folder is not there, so CI has to put it where the SDK already looks.
+      - name: Download Dalamud
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile latest.zip
+          Expand-Archive -Force latest.zip "$env:AppData\XIVLauncher\addon\Hooks\dev"
+
+      # Warnings are errors here and nowhere else. The plugin builds clean, so the first one to
+      # appear is worth stopping a release for rather than finding out later.
+      - name: Build
+        run: dotnet build BeastMastr.slnx --configuration Release -warnaserror
+
+      - name: Read the version out of the build
+        id: build
+        env:
+          TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: |
+          # Checked here, before anything irreversible. A missing secret discovered after the release
+          # exists leaves a tag published and a listing that never heard about it.
+          if (-not $env:TOKEN) {
+            throw "PLUGIN_REPO_TOKEN is not set on this repository. Nothing was released."
+          }
+
+          $out = "BeastMastr\bin\x64\Release\BeastMastr"
+          $manifest = Get-Content "$out\BeastMastr.json" -Raw | ConvertFrom-Json
+          $version = $manifest.AssemblyVersion
+
+          if (-not $version) { throw "No AssemblyVersion in the build manifest." }
+
+          $channel = if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            '${{ inputs.channel }}'
+          } else {
+            'stable'
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "tag=v$version"    >> $env:GITHUB_OUTPUT
+          "out=$out"         >> $env:GITHUB_OUTPUT
+          "channel=$channel" >> $env:GITHUB_OUTPUT
+
+          Write-Host "BeastMastr $version from ${{ github.ref_name }} -> $channel"
+
+      # The tag is the record of what has been released, so it is also the check for whether this one
+      # has. A push that only changed a readme rebuilds and stops here.
+      #
+      # `release list` rather than `release view`: this step is a question, and `view` answers "no
+      # such release" with exit code 1, which Actions' pwsh settings turn into a failed step. `list`
+      # exits 0 whatever the answer is, and the explicit `exit 0` covers the rest.
+      - name: Is this version already tagged?
+        id: gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+
+          $tag = "${{ steps.build.outputs.tag }}"
+          $existing = @(gh release list --limit 200 --json tagName --jq '.[].tagName')
+
+          if ($LASTEXITCODE -ne 0) { throw "Could not list releases." }
+
+          if ($existing -contains $tag) {
+            Write-Host "$tag exists. Bump <Version> in BeastMastr.csproj to cut a new one."
+            "tagged=true" >> $env:GITHUB_OUTPUT
+          } else {
+            Write-Host "$tag is new."
+            "tagged=false" >> $env:GITHUB_OUTPUT
+          }
+
+          exit 0
+
+      - name: Create the release
+        if: steps.gate.outputs.tagged == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          Copy-Item "${{ steps.build.outputs.out }}\latest.zip" "BeastMastr.zip"
+
+          # An array, not an interpolated string: an empty '' would be passed to gh as a real empty
+          # argument rather than as nothing at all.
+          $flags = @('--generate-notes', '--target', '${{ github.sha }}')
+          if ('${{ steps.build.outputs.channel }}' -eq 'testing') { $flags += '--prerelease' }
+
+          gh release create "${{ steps.build.outputs.tag }}" "BeastMastr.zip" `
+             --title "BeastMastr ${{ steps.build.outputs.version }}" @flags
+
+          if ($LASTEXITCODE -ne 0) { throw "Could not create the release." }
+
+      # Deliberately not gated on the step above.
+      #
+      # publish.php is idempotent -- the same version twice answers "unchanged" -- so re-running this
+      # workflow is how a failed publish is recovered: the release step sees its tag and skips, and
+      # this one runs again.
+      - name: Publish to the plugin repository
+        env:
+          TOKEN: ${{ secrets.PLUGIN_REPO_TOKEN }}
+        run: |
+          $tag = "${{ steps.build.outputs.tag }}"
+
+          $body = @{
+            channel   = '${{ steps.build.outputs.channel }}'
+            manifest  = (Get-Content "${{ steps.build.outputs.out }}\BeastMastr.json" -Raw | ConvertFrom-Json)
+            download  = "${{ github.server_url }}/${{ github.repository }}/releases/download/$tag/BeastMastr.zip"
+            repoUrl   = "${{ github.server_url }}/${{ github.repository }}"
+            changelog = (git log -1 --pretty=%s)
+          } | ConvertTo-Json -Depth 8 -Compress
+
+          $answer = Invoke-RestMethod -Method Post -Uri "$env:PUBLISH_URL" `
+                                      -Headers @{ Authorization = "Bearer $env:TOKEN" } `
+                                      -ContentType 'application/json' -Body $body
+
+          Write-Host "$($answer.status): $($answer.plugin) $($answer.version) on $($answer.channel)"
+
+      - name: Keep the build when nothing was released
+        if: steps.gate.outputs.tagged == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: BeastMastr-${{ steps.build.outputs.version }}
+          path: ${{ steps.build.outputs.out }}\*
+          if-no-files-found: error
+          retention-days: 7
