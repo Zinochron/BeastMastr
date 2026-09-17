@@ -170,6 +170,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>How many boards <c>/beastmastr run</c> plays when no number is given.</summary>
     public int RunCount { get; set; } = 1;
 
+    /// <summary>A board lost to a wipe counts as played, and the next one is started.</summary>
+    public bool ContinueAfterLostBoard { get; set; } = true;
+
     // ---- When you take over ----------------------------------------------
     // Whatever the automation is doing, your own input wins at once. These decide what happens after.
 

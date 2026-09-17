@@ -700,6 +700,43 @@ public static class XbmColumns
         public const uint LastRoomIcon = 63859;
     }
 
+    /// <summary>
+    /// Getting back onto a board from the entrance, as recorded twice (2026-09-16 23:16 and 2026-09-17
+    /// 01:56) after a board ended:
+    /// 1. The load puts you in Central Shroud (148) at 26.5/65.4, 2.3 yalms from the NPC Lauda (1059759).
+    ///    The event object 2015511 beside her is not targetable; Lauda is what is talked to.
+    /// 2. A <c>SelectString</c> answered <c>[0]</c>.
+    /// 3. <c>XBMStageList</c>: <c>[1]</c> the board count, then name and board row in turn from
+    ///    <c>[2]</c> ("First Master's Board", 4). <c>[2, row]</c> previews a board, <c>[1, row]</c> picks it.
+    /// 4. The board window with the team (<c>XBMPetParty</c> mode 0): <c>[8]</c>, the same as Commence
+    ///    Battle, then a <c>SelectYesno</c> answered yes.
+    /// 5. <c>ContentsFinderConfirm</c> <c>[8]</c>, and the board loads. A short cutscene follows, then
+    ///    <c>XBMContentsMainHUD</c> opens and "… has begun." is said.
+    /// </summary>
+    public static class Entrance
+    {
+        public const uint Territory = 148;
+        public const uint Npc = 1059759;
+
+        /// <summary>How close to Lauda talking to her worked: the arrival spot is 2.3 yalms away.</summary>
+        public const float TalkRange = 4.5f;
+
+        public const string Menu = "SelectString";
+        public const int MenuChoice = 0;
+
+        public const string BoardList = "XBMStageList";
+        public const int BoardCount = 1;
+        public const int FirstBoard = 2;
+        public const int BoardStride = 2;
+        public const int BoardRowOffset = 1;
+        public const int PickBoardCommand = 1;
+
+        public const int ChallengeCommand = 8;
+
+        public const string DutyConfirm = "ContentsFinderConfirm";
+        public const int CommenceDutyCommand = 8;
+    }
+
     /// <summary>Windows only seen by name so far. What they hold is for the run recorder to find out.</summary>
     public static class RunWindows
     {

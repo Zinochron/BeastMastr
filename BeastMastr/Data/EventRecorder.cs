@@ -45,6 +45,10 @@ public sealed unsafe class EventRecorder : IDisposable
         XbmColumns.PetParty.Addon,
         XbmColumns.MonsterNotebook.Addon,
         XbmColumns.StageDetailList.Addon,
+
+        // The result and the loot after it: rolling Need is a click with no callback of its own.
+        XbmColumns.RunWindows.Result,
+        "NeedGreed",
     ];
 
     public sealed record Entry(DateTime At, string Addon, string EventType, int EventParam, string Detail);

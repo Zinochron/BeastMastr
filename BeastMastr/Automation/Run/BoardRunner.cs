@@ -44,6 +44,7 @@ public sealed class BoardRunner : IDisposable
         Treasure,
         Settling,
         Finishing,
+        Reentering,
         Done,
         Failed,
     }
@@ -68,6 +69,19 @@ public sealed class BoardRunner : IDisposable
     private static readonly TimeSpan EventWait = TimeSpan.FromSeconds(15);
 
     private DateTime? downSince;
+
+    /// <summary>The board being played, to start again from the entrance.</summary>
+    private uint boardRow;
+
+    private BoardEntrance? entrance;
+
+    /// <summary>When the result was left; the load to the entrance follows at once when it works.</summary>
+    private DateTime? resultLeftAt;
+
+    private bool resultButtonSent;
+
+    /// <summary>How long leaving the result is given before its own button is tried.</summary>
+    private static readonly TimeSpan ResultLeaveWait = TimeSpan.FromSeconds(8);
     private ShopBuyer? shopBuyer;
     private const int LogLength = 30;
 
@@ -158,6 +172,8 @@ public sealed class BoardRunner : IDisposable
 
         RunsWanted = Math.Max(1, runs);
         RunsDone = 0;
+        boardRow = board.BoardRowId;
+        entrance = null;
         downSince = null;
         DoneEvent = -1;
         Target = -1;
@@ -244,7 +260,8 @@ public sealed class BoardRunner : IDisposable
 
     private void Tick()
     {
-        if (RunSafety.MustStop(board, State == Phase.Finishing || IsBoss(Target) || IsBoss(DoneEvent)) is { } reason)
+        if (RunSafety.MustStop(board, State is Phase.Finishing or Phase.Reentering || IsBoss(Target) || IsBoss(DoneEvent))
+            is { } reason)
         {
             Fail(reason);
             return;
@@ -252,7 +269,17 @@ public sealed class BoardRunner : IDisposable
 
         // Down is not over: the Ring of Sacrifice revived the player three seconds after both deaths
         // on the master board.
-        if (Services.Condition[ConditionFlag.Unconscious])
+        // A lost board ends with its result, like a won one: the next is started if more are wanted.
+        if (Services.Condition[ConditionFlag.Unconscious] && State != Phase.Finishing &&
+            configuration.ContinueAfterLostBoard && AddonReader.IsOpen(XbmColumns.RunWindows.Result))
+        {
+            walker.Stop(null);
+            combat.Stop("The board was lost.");
+            downSince = null;
+            Enter(Phase.Finishing, "The board was lost.");
+        }
+
+        if (Services.Condition[ConditionFlag.Unconscious] && State != Phase.Finishing)
         {
             downSince ??= DateTime.Now;
             if (DateTime.Now - downSince.Value > ReviveWait)
@@ -293,6 +320,7 @@ public sealed class BoardRunner : IDisposable
             case Phase.Treasure: Treasure(); break;
             case Phase.Settling: Settling(); break;
             case Phase.Finishing: Finishing(); break;
+            case Phase.Reentering: Reentering(); break;
         }
 
         continueRequested = false;
@@ -829,25 +857,42 @@ public sealed class BoardRunner : IDisposable
 
     private void Finishing()
     {
-        if (AddonReader.IsOpen(XbmColumns.RunWindows.Result))
+        if (!board.InRunZone)
         {
-            if (RoomActions.CloseResult is { } command)
-            {
-                if (!acted)
-                    acted = RoomActions.Send(command);
-            }
-            else
-            {
-                Ask("The board is cleared — close the result window.");
-            }
-
+            RunDone();
             return;
         }
 
-        if (!board.InRunZone || Elapsed > ResultWait || continueRequested || acted || HandOff.Length > 0)
+        if (resultButtonSent && AddonReader.IsOpen(RoomActions.LootWindow))
+        {
+            Ask("Roll Need on the loot — the board is left once it is handed out.");
+            return;
+        }
+
+        if (AddonReader.IsOpen(XbmColumns.RunWindows.Result))
+        {
+            if (!acted)
+            {
+                if (Elapsed > SettleTime && RoomActions.Send(RoomActions.CloseResult))
+                {
+                    acted = true;
+                    resultLeftAt = DateTime.Now;
+                }
+            }
+            else if (resultLeftAt is { } left && DateTime.Now - left > ResultLeaveWait && !resultButtonSent)
+            {
+                // Closing did not take the run out: the result's own button, as pressed by hand.
+                resultButtonSent = RoomActions.Send(RoomActions.ResultButton);
+            }
+
+            Status = "Leaving the result.";
+            return;
+        }
+
+        if (Elapsed > ResultWait || continueRequested)
             RunDone();
         else
-            Status = "Waiting for the result.";
+            Status = acted ? "Leaving the board." : "Waiting for the result.";
     }
 
     private void RunDone()
@@ -862,9 +907,45 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        Enter(Phase.Done, $"Board {RunsDone} of {RunsWanted} is done. Going back in from the entrance is not " +
-                          "built yet — start the next board by hand, then /beastmastr run again.");
-        Services.Chat.Print($"[BeastMastr] {Status}");
+        if (boardRow == 0)
+        {
+            Enter(Phase.Done, $"Board {RunsDone} of {RunsWanted} is done, but which board it was is not known. " +
+                              "Start the next one by hand, then /beastmastr run again.");
+            Services.Chat.Print($"[BeastMastr] {Status}");
+            return;
+        }
+
+        entrance = new BoardEntrance(boardRow);
+        Enter(Phase.Reentering, $"Starting board {RunsDone + 1} of {RunsWanted} from the entrance.");
+    }
+
+    /// <summary>Back in from the entrance, then the next board is played from its start.</summary>
+    private void Reentering()
+    {
+        if (entrance == null)
+        {
+            Fail("There is no entrance step.");
+            return;
+        }
+
+        entrance.Tick();
+        Status = entrance.Status;
+
+        if (entrance.Failure is { } failure)
+        {
+            Fail($"The next board could not be started: {failure}");
+            return;
+        }
+
+        if (!entrance.Done)
+            return;
+
+        entrance = null;
+        DoneEvent = -1;
+        Target = -1;
+        reentries = 0;
+        downSince = null;
+        Enter(Phase.Preflight, $"Board {RunsDone + 1} of {RunsWanted} has begun.");
     }
 
     /// <summary>
@@ -932,6 +1013,12 @@ public sealed class BoardRunner : IDisposable
 
         if (phase == Phase.Shop)
             shopBuyer = null;
+
+        if (phase == Phase.Finishing)
+        {
+            resultLeftAt = null;
+            resultButtonSent = false;
+        }
 
         if (phase is Phase.CallingFamiliars or Phase.Commencing)
         {

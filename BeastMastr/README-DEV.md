@@ -2329,3 +2329,33 @@ reached the wall before Borgny landed. Whether the landing itself hurts is still
 
 **Chains of Condemnation (4562)** ("moving deals fire damage") came up at the Gargoyle and at Borgny. The
 player moved 19 yalms under it without losing HP, so nothing is done about it yet.
+
+### Starting the next board from the entrance (M6) — 2026-09-17
+
+Taken from the two recorded re-entries, `run-20260916-231237.txt` (23:16) and `run-20260917-014231.txt`
+(01:55). The steps are listed in `XbmColumns.Entrance`, and `Automation/Run/BoardEntrance.cs` plays them.
+
+**Leaving the board.** `XBMResult` opens after a win and after a wipe (88%).
+- By hand, the result's `[0]` was pressed every time (4 recordings). That opens `NeedGreed`, and the load
+  only came once Need was rolled. The Need click has no callback and was not recorded, so `NeedGreed` and
+  `XBMResult` are now watched for input events.
+- At 01:55 the result timed out and closed with `[-1]`. The load followed at once, and the loot was handed
+  over without a roll.
+- So the run closes the result with `[-1]`. If the run is still on the board 8 s later, it presses `[0]`
+  and hands the roll to the player.
+
+**The entrance.**
+- The load ends in Central Shroud (148) at 26.5/65.4. The NPC talked to is **Lauda** (EventNpc 1059759)
+  at 25.5/67.5, 2.3 yalms away. EventObj 2015511 next to her is not targetable.
+- Lauda's `SelectString` is answered `[0]`. Its options are logged, since they were not recorded.
+- `XBMStageList` lists the board count at `[1]`, then name and board row in turn from `[2]`. `[1, row]`
+  picks a board; `[2, row]` only previews it. The row is the one the run started on
+  (`configuration.LastBoardRowId`).
+- The board window opens with the team (`XBMPetParty` mode 0). After 2 s for the Crucible mode, `[8]` is
+  sent. That is the same command as Commence Battle, and it is followed by a `SelectYesno`.
+- `ContentsFinderConfirm` `[8]`.
+- After the load comes a short cutscene, then `XBMContentsMainHUD` opens. "In Event" (1268) stays until
+  the first room, so it is not waited for. The run goes back to Preflight.
+
+**A lost board** counts as played when "go on after a lost board" is on (the default), and the next one
+is started.

@@ -13,7 +13,9 @@ makes you click for it. BeastMastr puts that where you are already looking.
 
 - **Board automation (experimental, testing builds)** — `/beastmastr run` plays a Crucible board by
   itself: it walks from room to room, picks the route, buys Beast Gear and potions, rests at
-  campsites, takes treasure and fights, dodging the mechanics it knows. `/beastmastr stop` ends it.
+  campsites, takes treasure and fights, dodging the mechanics it knows. With a board count above one
+  (`/beastmastr run 5`, or "boards" on the Run tab) it leaves the result and starts the same board
+  again from the entrance. `/beastmastr stop` ends it.
   Needs [vnavmesh](https://github.com/awgil/ffxiv_navmesh). Moving, jumping, targeting or using an
   action yourself pauses the run; it carries on a few seconds after you let go.
 

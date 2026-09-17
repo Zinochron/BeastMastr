@@ -161,6 +161,18 @@ public sealed class RunTab : ITab
             configuration.Save();
         }
 
+        ImGui.SameLine();
+        var onAfterLoss = configuration.ContinueAfterLostBoard;
+        if (ImGui.Checkbox("go on after a lost board", ref onAfterLoss))
+        {
+            configuration.ContinueAfterLostBoard = onAfterLoss;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker("With more than one board, the next is started from the entrance: Lauda, the board " +
+                           "just played, Challenge, Commence. When this is on, a board lost to a wipe counts " +
+                           "as played.");
+
         DrawRoomChoices();
 
         var failed = runner.State == Automation.Run.BoardRunner.Phase.Failed;

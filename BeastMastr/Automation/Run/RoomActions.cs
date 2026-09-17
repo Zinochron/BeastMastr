@@ -183,10 +183,22 @@ public static unsafe class RoomActions
         new("OK", XbmColumns.RunWindows.SelectOk, [Value.Int(0)], true, false);
 
     /// <summary>
-    /// Closing the board's result. Not recorded: in the recording no result window appeared — the
-    /// board ended with a cutscene and a load back to the entrance.
+    /// Leaving the board's result (<c>XBMResult</c>) by closing it: <c>[-1]</c>, with the window
+    /// closing. Recorded on 2026-09-17 01:55, when the result timed out. The load to the entrance
+    /// followed at once, and the Bright Remnants were handed over without a roll.
     /// </summary>
-    public static Command? CloseResult => null;
+    public static readonly Command CloseResult =
+        new("leave the result", XbmColumns.RunWindows.Result, [Value.Int(-1)], true, false);
+
+    /// <summary>
+    /// The result's own button, pressed by hand in all four other recordings: <c>[0]</c>, with the window
+    /// closing. The loot window (<c>NeedGreed</c>) follows, and the load waits until Need is rolled.
+    /// That click has not been recorded, so the roll is handed to the player.
+    /// </summary>
+    public static readonly Command ResultButton =
+        new("leave the board", XbmColumns.RunWindows.Result, [Value.Int(0)], true, false);
+
+    public const string LootWindow = "NeedGreed";
 
     /// <summary>Sends a recorded command. False when its window is not up.</summary>
     public static bool Send(Command command)
