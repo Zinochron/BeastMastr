@@ -18,8 +18,11 @@ public static class SweepingEvisceration
     public const uint Cast = 48717;
     public const string Name = "Sweeping Evisceration";
 
-    /// <summary>How far from the Gargoyle to stand while it casts, to stretch the tether.</summary>
-    public const float StretchRadius = 14f;
+    /// <summary>
+    /// How far from the Gargoyle to stand while it casts, to stretch the tether. 14 was not enough (the
+    /// user: at least 20); the square arena leaves room for it.
+    /// </summary>
+    public const float StretchRadius = 20f;
 
     /// <summary>The dash, after the cast ends; used when no dash is seen.</summary>
     public const float DashAfterCast = 1.1f;
@@ -138,11 +141,56 @@ public static class ToxicBreath
 /// </summary>
 public static class GroundHazards
 {
+    public const uint PoisonCloud = 19674;
+
     public static float? Radius(uint baseId) => baseId switch
     {
         2010106 => 9.5f,
         2012932 => 6.5f,
-        19674 => 7.5f,
+        PoisonCloud => 6.5f,
+        _ => null,
+    };
+
+    /// <summary>
+    /// How far ahead a drifting patch is followed. The Poison Clouds rise eight at a time where Fuming Vomit
+    /// landed, stay for about 2.3 seconds, then drift outwards along the eight compass ways at about 2.1
+    /// yalms a second until they reach the arena's edge (recording of 2026-09-17 01:49). A hit came 4.6–5.6
+    /// yalms from a cloud's worked-out position, so the radius is 6.5 once the drift is followed.
+    /// </summary>
+    public const float DriftAhead = 1.5f;
+
+    /// <summary>A patch where it is and where it drifts to in <see cref="DriftAhead"/> seconds.</summary>
+    public static List<Zone> Drifting(Vector2 position, Vector2 velocity, float radius)
+    {
+        var zones = new List<Zone> { new(ZoneKind.Circle, position, 0f, radius, 0f, "ground hazard", Lasting: true) };
+        var travel = velocity * DriftAhead;
+        if (travel.Length() < 0.3f)
+            return zones;
+
+        var facing = MathF.Atan2(travel.X, travel.Y);
+        zones.Add(new Zone(ZoneKind.Rect, position, facing, travel.Length(), 0f, "drifting hazard",
+                           HalfWidth: radius, Lasting: true));
+        zones.Add(new Zone(ZoneKind.Circle, position + travel, 0f, radius, 0f, "drifting hazard", Lasting: true));
+        return zones;
+    }
+}
+
+/// <summary>
+/// The Treant's Rustling Breeze, two ways (First Master's Board):
+/// - 48776, with one helper casting 48778: a 90-degree cone of 60 ahead. The sides are safe. On
+///   2026-09-17 01:48 the player stood 49 degrees off its front and was not hit.
+/// - 48777, with helpers casting 48779 and 48780: two 150-degree cones. The player stood 76 degrees off the
+///   front on both 01:48 and 02:01 and was hit both times, so the cones point to the sides and the middle
+///   in front is safe, as the user plays it.
+/// The helpers all read facing 0, and the Treant turns to 0 during the cast; the sheet gives the cones'
+/// width but not their turn, which is added here.
+/// </summary>
+public static class RustlingBreeze
+{
+    public static float? Turn(uint actionId) => actionId switch
+    {
+        48779 => MathF.PI / 2f,
+        48780 => -MathF.PI / 2f,
         _ => null,
     };
 }
@@ -207,6 +255,61 @@ public static class ToxicVomit
     /// <summary>How far out from the middle to leave the tornadoes: inside the safe circle, clear of the middle.</summary>
     public const float EdgeRadius = 15f;
 
+    /// <summary>
+    /// The vomit lands this long after the cast ends: at 01:49 the cast ended at 29.5 and the hit came at
+    /// 31.8. Shield Charge in between took the player back to Borgny.
+    /// </summary>
+    public const float LandsAfterCast = 2.5f;
+
+    /// <summary>
+    /// After it lands, a tornado rises where the player stood, every three seconds, four in all (01:49:32,
+    /// 34.1, 37.2, 40.6; at 22:00 until 10.3 s after). A player standing still gets all four underfoot; one
+    /// on the move leaves them behind.
+    /// </summary>
+    public const float ChaseFor = 11f;
+
+    /// <summary>How far round the ring each step of the chase aims, in radians.</summary>
+    public const float ChaseStep = 0.7f;
+
+    /// <summary>
+    /// The next spot while the tornadoes follow: on the ring at <see cref="EdgeRadius"/>, a step on round in
+    /// <paramref name="turn"/>'s sense (+1 or −1), avoiding patches — shorter or longer steps, or the other
+    /// way round, if the first is covered.
+    /// </summary>
+    public static Vector2 ChasePoint(Vector2 centre, Vector2 player, int turn, IReadOnlyList<Zone> hazards)
+    {
+        var offset = player - centre;
+        var angle = offset.LengthSquared() > 0.01f ? MathF.Atan2(offset.X, offset.Y) : 0f;
+        Vector2 At(float a) => centre + (new Vector2(MathF.Sin(a), MathF.Cos(a)) * EdgeRadius);
+
+        foreach (var sense in new[] { turn, -turn })
+        {
+            foreach (var scale in new[] { 1f, 0.6f, 1.5f, 2f })
+            {
+                var point = At(angle + (sense * ChaseStep * scale));
+                if (Dodger.Hits(hazards, point, Dodger.Margin) == 0)
+                    return point;
+            }
+        }
+
+        return At(angle + (turn * ChaseStep));
+    }
+
+    /// <summary>The way round the ring that leads away from Borgny.</summary>
+    public static int ChaseTurn(Vector2 centre, Vector2 borgny, Vector2 player)
+    {
+        var offset = player - centre;
+        var angle = MathF.Atan2(offset.X, offset.Y);
+        var ahead = centre + (new Vector2(MathF.Sin(angle + ChaseStep), MathF.Cos(angle + ChaseStep)) * EdgeRadius);
+        var back = centre + (new Vector2(MathF.Sin(angle - ChaseStep), MathF.Cos(angle - ChaseStep)) * EdgeRadius);
+        return Vector2.Distance(ahead, borgny) >= Vector2.Distance(back, borgny) ? 1 : -1;
+    }
+
+    /// <summary>The spot to run to while the tornadoes follow, as a refuge.</summary>
+    public static Zone Chase(Vector2 point, float left) =>
+        new(ZoneKind.Circle, point, 0f, 0f, left, Name + " (keep moving, tornadoes follow)", Refuge: point);
+
+    /// <param name="castLeft">Seconds of the cast left; below 0 once it has ended and the vomit is on its way.</param>
     public static Zone Zone(Vector2 centre, Vector2 borgny, Vector2 player, float castLeft)
     {
         var away = player - borgny;
@@ -216,7 +319,8 @@ public static class ToxicVomit
             away = new Vector2(0f, 1f);
 
         var refuge = centre + (Vector2.Normalize(away) * EdgeRadius);
-        return new Zone(ZoneKind.Circle, player, 0f, 6f, castLeft, Name + " (to the edge, away from Borgny)",
+        return new Zone(ZoneKind.Circle, player, 0f, 6f, MathF.Max(0f, castLeft + LandsAfterCast),
+                        Name + " (to the edge, away from Borgny)",
                         Refuge: refuge);
     }
 }

@@ -90,6 +90,8 @@ public sealed unsafe class CombatDriver : IDisposable
     /// <summary>A new order to walk only when the spot moved this far, or this long after the last.</summary>
     private const float DodgeRegoal = 1f;
 
+    private static readonly TimeSpan DashAfterDodge = TimeSpan.FromSeconds(3);
+
     private static readonly TimeSpan DodgeReorder = TimeSpan.FromMilliseconds(500);
 
     /// <summary>Off an arena, BeastMastr's own dodging stays this close to where it started.</summary>
@@ -99,6 +101,12 @@ public sealed unsafe class CombatDriver : IDisposable
 
     /// <summary>How many hits and patches the last dodge plan saw.</summary>
     private int zonesAround;
+
+    /// <summary>The last plan's zones and arena, for walking round the patches on the way.</summary>
+    private List<Zone> lastZones = [];
+    private Vector2 lastArenaCentre;
+    private float lastArenaRadius;
+    private bool lastArenaSquare;
     private DateTime nextDodgePlan;
     private Vector2 dodgeGoal;
     private DateTime nextDodgeOrder;
@@ -411,7 +419,9 @@ public sealed unsafe class CombatDriver : IDisposable
             FamiliarHpShare: summoned == null ? 1f : Share(summoned),
             TargetOnFamiliar: familiars.Any(familiar => familiar.GameObjectId == target.TargetObjectId),
             UnavoidableHit: configuration.UseDutyActions ? EnemyCasts.Unavoidable(player) : null,
-            MayDash: dodge == null && zonesAround == 0);
+            // Not straight after a dodge either: Toxic Vomit's cast ends 2.3 s before it lands, and Shield
+            // Charge in between carried the player back to Borgny.
+            MayDash: dodge == null && zonesAround == 0 && DateTime.Now - lastDodgeAt > DashAfterDodge);
     }
 
     private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;
@@ -490,12 +500,19 @@ public sealed unsafe class CombatDriver : IDisposable
         var arena = CrucibleArena.CentreNear(here);
         var zones = EnemyCasts.Zones(player);
         zonesAround = zones.Count;
+        lastZones = zones;
         if (arena == null && zones.Count == 0)
             return null;
 
+        var square = arena is { } middle && CrucibleArena.IsSquare(middle);
+        lastArenaCentre = arena ?? here;
+        lastArenaSquare = square;
+        lastArenaRadius = arena == null ? OffArenaRadius
+                          : square ? CrucibleArena.SquareSafeHalfWidth
+                          : Math.Clamp(configuration.ArenaSafeRadius, 5f, 20f);
+
         return Dodger.Plan(here, new Vector2(target.Position.X, target.Position.Z), MeleeReach + target.HitboxRadius,
-                           zones, arena ?? here,
-                           arena != null ? Math.Clamp(configuration.ArenaSafeRadius, 5f, 20f) : OffArenaRadius);
+                           zones, lastArenaCentre, lastArenaRadius, square);
     }
 
     /// <summary>Walks to the dodge's spot in a straight line — the arenas are flat — or stands on it.</summary>
@@ -521,7 +538,10 @@ public sealed unsafe class CombatDriver : IDisposable
 
         dodgeGoal = plan.Point;
         nextDodgeOrder = DateTime.Now + DodgeReorder;
-        if (NavmeshIpc.MoveTo([new Vector3(plan.Point.X, player.Position.Y, plan.Point.Y)]))
+
+        // Round the patches on the ground, not through them.
+        var route = Dodger.Route(here, plan.Point, lastZones, lastArenaCentre, lastArenaRadius, lastArenaSquare);
+        if (NavmeshIpc.MoveTo(route.Select(point => new Vector3(point.X, player.Position.Y, point.Y)).ToList()))
             approaching = true;
     }
 

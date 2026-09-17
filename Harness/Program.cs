@@ -679,10 +679,21 @@ Check("Malady's grid leaves a free cell to stand in", maladyPlan.Safe, $"to {mal
 // Sweeping Evisceration, with the positions of the recording's second one.
 var gargoyleCast = new Vector2(116.1f, 4.3f);
 var sweepCast = SweepingEvisceration.Zones(gargoyleCast, 0f, 3f, 5f, null);
-var stretch = Dodger.Plan(new Vector2(112f, 5f), gargoyleCast, 6f, sweepCast, gargoyleArena, 18f)!;
-Check("while it casts, the tether is stretched",
-      stretch.Safe && Vector2.Distance(stretch.Point, gargoyleCast) >= SweepingEvisceration.StretchRadius &&
-      Vector2.Distance(stretch.Point, gargoyleArena) <= 18f, $"to {stretch.Point}");
+Check("the Gargoyle's arena is a square", CrucibleArena.IsSquare(gargoyleArena) && !CrucibleArena.IsSquare(arena));
+var squareSize = CrucibleArena.SquareSafeHalfWidth;
+var stretch = Dodger.Plan(new Vector2(112f, 5f), gargoyleCast, 6f, sweepCast, gargoyleArena, squareSize, true)!;
+Check("while it casts, the tether is stretched to 20 yalms, inside the square",
+      stretch.Safe && Vector2.Distance(stretch.Point, gargoyleCast) >= 20f &&
+      MathF.Abs(stretch.Point.X - 120f) <= squareSize && MathF.Abs(stretch.Point.Y) <= squareSize, $"to {stretch.Point}");
+var farGargoyle = new Vector2(118f, 11.7f);
+var stretchFar = Dodger.Plan(new Vector2(118f, 8f), farGargoyle, 6f, SweepingEvisceration.Zones(farGargoyle, 0f, 3f, 5f, null),
+                             gargoyleArena, squareSize, true)!;
+Check("and with the Gargoyle off the middle, as at 01:46", stretchFar.Safe, $"to {stretchFar.Point}");
+var squareBack = Dodger.Plan(new Vector2(142.5f, 9.8f), null, 3f, [], gargoyleArena, squareSize, true)!;
+Check("out of the square, back in along the axis", MathF.Abs(squareBack.Point.X - 138.5f) < 0.01f &&
+      MathF.Abs(squareBack.Point.Y - 9.8f) < 0.01f, $"to {squareBack.Point}");
+Check("a corner of the square is inside it",
+      Dodger.Plan(new Vector2(137f, 17f), null, 3f, [], gargoyleArena, squareSize, true) == null);
 
 var dashed = new Vector2(110.3f, 5f);
 var dashFacing = SweepingEvisceration.Facing(dashed - gargoyleCast);
@@ -735,6 +746,49 @@ Check("Toxic Vomit is carried to the edge away from Borgny",
 var breathAfter = ToxicBreath.Zone(new Vector2(920f, -439.6f), 0f, true, 1f);
 Check("and the cleave is taken to cover the arena in front of it",
       breathAfter.Contains(new Vector2(920f, -429f)) && breathAfter.Contains(new Vector2(930f, -435f)));
+
+var vomitFlying = ToxicVomit.Zone(borgnyArena, new Vector2(939.6f, -420f), new Vector2(918f, -420f), -1f);
+Check("Toxic Vomit still counts after its cast, until it lands", vomitFlying.Refuge != null &&
+      MathF.Abs(vomitFlying.ActivatesIn - (ToxicVomit.LandsAfterCast - 1f)) < 0.01f);
+var chaseTurn = ToxicVomit.ChaseTurn(borgnyArena, new Vector2(939.6f, -420f), new Vector2(905f, -420f));
+var chase1 = ToxicVomit.ChasePoint(borgnyArena, new Vector2(905f, -420f), chaseTurn, []);
+Check("the tornadoes are run from round the ring",
+      MathF.Abs(Vector2.Distance(chase1, borgnyArena) - ToxicVomit.EdgeRadius) < 0.01f &&
+      Vector2.Distance(chase1, new Vector2(905f, -420f)) > 8f, $"to {chase1}");
+var tornado = new Zone(ZoneKind.Circle, chase1, 0f, 6.5f, 0f, "ground hazard", Lasting: true);
+var chase2 = ToxicVomit.ChasePoint(borgnyArena, new Vector2(905f, -420f), chaseTurn, [tornado]);
+Check("and a covered step is swapped for a clear one", !tornado.Contains(chase2), $"to {chase2}");
+
+var cloud = GroundHazards.Drifting(new Vector2(920f, -432f), new Vector2(0f, -2.1f), 6.5f);
+Check("a drifting cloud covers where it will be", Dodger.Hits(cloud, new Vector2(920f, -441f), 0f) > 0 &&
+      Dodger.Hits(cloud, new Vector2(920f, -424f), 0f) == 0);
+var sitting = GroundHazards.Drifting(new Vector2(920f, -432f), Vector2.Zero, 6.5f);
+Check("a still one only where it is", sitting.Count == 1);
+var cloudRoute = Dodger.Route(new Vector2(920.8f, -419f), new Vector2(920f, -445.6f), sitting, borgnyArena, 18f);
+Check("the walk to the wall goes round fresh clouds",
+      cloudRoute.Count > 1 && cloudRoute[^1] == new Vector2(920f, -445.6f) &&
+      Dodger.Clear(sitting, new Vector2(920.8f, -419f), cloudRoute[0]), string.Join(" ", cloudRoute));
+Check("and a clear walk stays straight",
+      Dodger.Route(new Vector2(930f, -419f), new Vector2(935f, -415f), sitting, borgnyArena, 18f).Count == 1);
+
+// The Treant's two Rustling Breezes: helpers at the Treant, all facing 0.
+Zone Fan(float degrees, uint id)
+{
+    var zone = CastShapes.Shape(13, 60, 0, $"gl_fan{degrees:000}_1bf", 0f, treant, 0f, 5f, "Rustling Breeze")!;
+    return RustlingBreeze.Turn(id) is { } turn ? zone with { Rotation = zone.Rotation + turn } : zone;
+}
+
+var sideCones = new List<Zone> { Fan(150, 48779), Fan(150, 48780), sludge };
+Check("two wide cones: the recording's spot beside the Treant is hit",
+      Dodger.Hits(sideCones, new Vector2(109.5f, -430.3f), 0f) > 0);
+var inFront = Dodger.Plan(new Vector2(109.5f, -430.3f), treant, 11f, sideCones, arena, 18f)!;
+Check("and the middle in front is where to go", inFront.Safe && MathF.Abs(inFront.Point.X - 120f) <= 2.5f &&
+      inFront.Point.Y > -425f, $"to {inFront.Point}");
+var frontCone = new List<Zone> { Fan(90, 48778), sludge };
+Check("one narrow cone: the recording's spot 49 degrees off is clear",
+      Dodger.Hits(frontCone, new Vector2(112f, -426f), 0f) == 0);
+var toSide = Dodger.Plan(new Vector2(120f, -422f), treant, 11f, frontCone, arena, 18f)!;
+Check("and from in front, out to the side", toSide.Safe && MathF.Abs(toSide.Point.X - 120f) > 5f, $"to {toSide.Point}");
 
 // The Morbol's turning breath, and the Corpse Flower's trap.
 Check("a breath from 3.14 to -2.36 turns 45 degrees on", MathF.Abs(TurningHits.Step(3.14f, -2.36f) - 0.7832f) < 0.01f);

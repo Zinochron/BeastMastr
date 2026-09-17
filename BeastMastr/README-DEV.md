@@ -2286,3 +2286,46 @@ rose under the player at 01:32:18 (2527 → 1113 → 598 → dead).
 **The Fang was refused.** It was thrown 0.1 s after Shieldsplitter, and the menu's "Use" did nothing. Items
 are now only used without an animation lock and not while casting. If Fangs still fail, a recording of
 one thrown by hand will show whether they need a target picked on the ground.
+
+### Gargoyle tether, the Treant's two breezes, Borgny's clouds — 2026-09-17
+
+`captures/run-20260917-014231.txt` and `captures/run-20260917-015708.txt`.
+
+**Sweeping Evisceration** needs at least 20 yalms of tether (the user). A circle of 18 cannot hold that,
+and the Gargoyle's arena (120, 0) is a square anyway. Its Malady grid spans 102.5–137.5, and Bleeding
+began 21.5–22.5 yalms out along an axis. So `CrucibleArena.IsSquare` marks that centre, and the dodger
+searches a square of ±19.5 there. `StretchRadius` is 20.
+
+**Rustling Breeze** comes in two versions. The helpers all read facing 0, and the Treant turns to 0 as it
+casts.
+
+| Cast | Helpers | Shape | What the recordings show |
+|---|---|---|---|
+| 48776 | 48778 | One 90° cone ahead | The player stood 49° off the front and was not hit. |
+| 48777 | 48779 + 48780 | Two 150° cones | The player stood 76° off the front and was hit twice (01:48:21, 02:01:25). |
+
+The two 150° cones point to the sides, so they are turned ±90° (`RustlingBreeze.Turn`), and the middle in
+front is safe, as the user plays it.
+
+**Borgny, first death (01:50:00):**
+- **Shield Charge during Toxic Vomit.** The cast ended at 29.5 and the vomit landed at 31.8. In between,
+  the zone was gone and Shield Charge carried the player 13 yalms back to Borgny. The vomit now counts
+  until 2.5 s after its cast (`LandsAfterCast`). No dash is used within 3 s of a dodge.
+- **The tornadoes follow the player.** They rise every three seconds where the player just stood (4 in
+  all), not only where the vomit landed. After the landing the player now runs round a ring of 15 for
+  11 s, avoiding patches (`ToxicVomit.ChasePoint`).
+- **Poison Clouds.** Fuming Vomit places three circles. Eight clouds rise from each, stay about 2.3 s,
+  then drift outward along the eight compass ways at about 2.1 y/s and vanish at the edge. The dodger
+  used to see them standing still, at 7.5.
+  - The dodger now tracks each cloud's velocity and covers where it will be in 1.5 s
+    (`GroundHazards.Drifting`), with a radius of 6.5.
+  - The walk to a dodge spot goes round lasting patches (`Dodger.Route`, a grid search). Covered cells
+    are allowed, but each costs 10 yalms. The route is handed to vnavmesh as waypoints.
+
+**Borgny, second death (02:05:10):** Toxic Breath. The player walked from the middle straight to the
+south wall, through eight clouds that had just risen at (920, −432). Hits of 1050 and 758 followed, and
+the player died as Borgny landed. The leap direction (south, from its own facing) was right. The player
+reached the wall before Borgny landed. Whether the landing itself hurts is still open.
+
+**Chains of Condemnation (4562)** ("moving deals fire damage") came up at the Gargoyle and at Borgny. The
+player moved 19 yalms under it without losing HP, so nothing is done about it yet.

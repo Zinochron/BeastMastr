@@ -116,11 +116,12 @@ public static class Dodger
     /// <param name="reach">Distance to the target that counts as in reach.</param>
     /// <param name="arenaCentre">The arena's middle; the spot stays within <paramref name="arenaRadius"/> of it.</param>
     /// <returns>A plan, or null when nothing needs dodging and you are inside the arena.</returns>
+    /// <param name="square">The arena is a square of half-width <paramref name="arenaRadius"/>, not a circle.</param>
     public static DodgePlan? Plan(Vector2 player, Vector2? target, float reach, IReadOnlyList<Zone> zones,
-                                 Vector2 arenaCentre, float arenaRadius)
+                                 Vector2 arenaCentre, float arenaRadius, bool square = false)
     {
         var active = Soonest(zones);
-        var outside = Vector2.Distance(player, arenaCentre) > arenaRadius;
+        var outside = !Inside(player - arenaCentre, arenaRadius, square);
 
         foreach (var zone in active)
         {
@@ -137,7 +138,11 @@ public static class Dodger
             if (!outside)
                 return null;
 
-            var back = arenaCentre + (Direction(player - arenaCentre) * (arenaRadius - GridStep));
+            var inner = arenaRadius - GridStep;
+            var off = player - arenaCentre;
+            var back = square
+                           ? arenaCentre + new Vector2(Math.Clamp(off.X, -inner, inner), Math.Clamp(off.Y, -inner, inner))
+                           : arenaCentre + (Direction(off) * inner);
             return new DodgePlan(back, true, "back inside the arena");
         }
 
@@ -154,7 +159,7 @@ public static class Dodger
             for (var z = -arenaRadius; z <= arenaRadius; z += GridStep)
             {
                 var offset = new Vector2(x, z);
-                if (offset.Length() > arenaRadius)
+                if (!Inside(offset, arenaRadius, square))
                     continue;
 
                 var point = arenaCentre + offset;
@@ -223,6 +228,137 @@ public static class Dodger
         }
 
         return false;
+    }
+
+    private static bool Inside(Vector2 offset, float radius, bool square) =>
+        square ? MathF.Abs(offset.X) <= radius && MathF.Abs(offset.Y) <= radius : offset.Length() <= radius;
+
+    /// <summary>How finely a straight leg of a route is checked for patches on the ground.</summary>
+    private const float RouteSample = 0.5f;
+
+    /// <summary>What a covered cell adds to a route, in yalms: a long way round is worth it.</summary>
+    private const float CoveredPrice = 10f;
+
+    /// <summary>
+    /// The way to a spot around the patches on the ground, as waypoints after <paramref name="from"/>, ending
+    /// at <paramref name="to"/>. A straight line is kept when it is clear. On 2026-09-17 02:05 the walk to the
+    /// wall behind Borgny went straight through eight Poison Clouds that had just appeared, and the player
+    /// died before Borgny leapt.
+    ///
+    /// Patches the player already stands in, or the spot itself lies in, are left out: leaving them is the
+    /// point. With no way around, the straight line is kept.
+    /// </summary>
+    public static List<Vector2> Route(Vector2 from, Vector2 to, IReadOnlyList<Zone> zones, Vector2 arenaCentre,
+                                      float arenaRadius, bool square = false)
+    {
+        var obstacles = new List<Zone>();
+        foreach (var zone in zones)
+        {
+            if (zone.Lasting && !zone.Contains(from) && !zone.Contains(to))
+                obstacles.Add(zone);
+        }
+
+        if (obstacles.Count == 0 || Clear(obstacles, from, to))
+            return [to];
+
+        // A grid over the arena, the same the spot was searched on.
+        var size = (int)MathF.Floor(arenaRadius / GridStep);
+        var width = (2 * size) + 1;
+        Vector2 At(int i, int j) => arenaCentre + new Vector2((i - size) * GridStep, (j - size) * GridStep);
+        (int, int) Cell(Vector2 point)
+        {
+            var offset = point - arenaCentre;
+            return (Math.Clamp((int)MathF.Round(offset.X / GridStep) + size, 0, width - 1),
+                    Math.Clamp((int)MathF.Round(offset.Y / GridStep) + size, 0, width - 1));
+        }
+
+        bool InArena(int i, int j) =>
+            i >= 0 && j >= 0 && i < width && j < width && Inside(At(i, j) - arenaCentre, arenaRadius, square);
+
+        // A covered cell can be crossed, at a price: the wall behind Borgny may only be reached through
+        // the edge of a cloud, and the shortest stretch through it is still the way to take.
+        float Price(int i, int j) => Hits(obstacles, At(i, j), Margin) > 0 ? CoveredPrice : 0f;
+
+        var start = Cell(from);
+        var goal = Cell(to);
+        if (start == goal)
+            return [to];
+
+        var cost = new Dictionary<(int, int), float> { [start] = 0f };
+        var cameFrom = new Dictionary<(int, int), (int, int)>();
+        var open = new PriorityQueue<(int, int), float>();
+        open.Enqueue(start, 0f);
+        var found = false;
+
+        while (open.TryDequeue(out var cell, out _))
+        {
+            if (cell == goal)
+            {
+                found = true;
+                break;
+            }
+
+            for (var di = -1; di <= 1; di++)
+            {
+                for (var dj = -1; dj <= 1; dj++)
+                {
+                    var next = (cell.Item1 + di, cell.Item2 + dj);
+                    if ((di == 0 && dj == 0) || (next != goal && !InArena(next.Item1, next.Item2)))
+                        continue;
+
+                    var step = cost[cell] + (di != 0 && dj != 0 ? MathF.Sqrt(2f) : 1f) +
+                               (next == goal ? 0f : Price(next.Item1, next.Item2));
+                    if (cost.TryGetValue(next, out var known) && known <= step)
+                        continue;
+
+                    cost[next] = step;
+                    cameFrom[next] = cell;
+                    open.Enqueue(next, step + Vector2.Distance(At(next.Item1, next.Item2), At(goal.Item1, goal.Item2)));
+                }
+            }
+        }
+
+        if (!found)
+            return [to];
+
+        var cells = new List<Vector2>();
+        for (var cell = goal; cell != start; cell = cameFrom[cell])
+            cells.Add(At(cell.Item1, cell.Item2));
+
+        cells.Reverse();
+        cells[^1] = to;
+
+        // Only the corners are kept: from each, the farthest point still in plain sight. Through a covered
+        // stretch the grid's own cells are followed.
+        var route = new List<Vector2>();
+        var anchor = from;
+        var index = 0;
+        while (index < cells.Count)
+        {
+            var farthest = index;
+            for (var k = index + 1; k < cells.Count && Clear(obstacles, anchor, cells[k]); k++)
+                farthest = k;
+
+            route.Add(cells[farthest]);
+            anchor = cells[farthest];
+            index = farthest + 1;
+        }
+
+        return route;
+    }
+
+    /// <summary>A straight walk that touches none of the patches.</summary>
+    public static bool Clear(IReadOnlyList<Zone> obstacles, Vector2 from, Vector2 to)
+    {
+        var length = Vector2.Distance(from, to);
+        var steps = Math.Max(1, (int)MathF.Ceiling(length / RouteSample));
+        for (var k = 1; k <= steps; k++)
+        {
+            if (Hits(obstacles, Vector2.Lerp(from, to, (float)k / steps), Margin) > 0)
+                return false;
+        }
+
+        return true;
     }
 
     private static Vector2 Direction(Vector2 offset) =>

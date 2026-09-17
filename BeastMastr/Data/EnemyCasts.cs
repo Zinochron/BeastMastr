@@ -160,6 +160,9 @@ public static class EnemyCasts
             if (zone == null)
                 continue;
 
+            if (RustlingBreeze.Turn(caster.CastActionId) is { } turn)
+                zone = zone with { Rotation = zone.Rotation + turn };
+
             if (zone.Kind == ZoneKind.Donut)
                 zone = WithHole(zone, caster);
 
@@ -197,9 +200,9 @@ public static class EnemyCasts
 
         AddSweeps(zones, now);
         AddBreaths(zones, now);
-        AddHazards(zones, player);
+        AddHazards(zones, player, now);
         AddTraps(zones, player);
-        AddVomit(zones, player);
+        AddVomit(zones, player, now);
         return zones;
     }
 
@@ -224,21 +227,61 @@ public static class EnemyCasts
     /// Toxic Vomit on the player leaves tornadoes where it lands: it is carried to the arena's edge, on the
     /// far side from Borgny, so they rise out of the way.
     /// </summary>
-    private static void AddVomit(List<Zone> zones, IPlayerCharacter player)
+    private static void AddVomit(List<Zone> zones, IPlayerCharacter player, DateTime now)
     {
+        var here = new Vector2(player.Position.X, player.Position.Z);
         foreach (var borgny in Casting(player))
         {
             if (borgny.CastActionId != ToxicVomit.Cast || borgny.CastTargetObjectId != player.GameObjectId)
                 continue;
 
-            var here = new Vector2(player.Position.X, player.Position.Z);
-            if (CrucibleArena.CentreNear(here) is not { } centre)
-                continue;
-
-            zones.Add(ToxicVomit.Zone(centre, new Vector2(borgny.Position.X, borgny.Position.Z), here,
-                                      borgny.TotalCastTime - borgny.CurrentCastTime));
+            var left = borgny.TotalCastTime - borgny.CurrentCastTime;
+            Vomit = new VomitState
+            {
+                CastEnd = now + TimeSpan.FromSeconds(left),
+                Borgny = new Vector2(borgny.Position.X, borgny.Position.Z),
+            };
         }
+
+        if (Vomit is not { } vomit || CrucibleArena.CentreNear(here) is not { } centre)
+            return;
+
+        var sinceEnd = (float)(now - vomit.CastEnd).TotalSeconds;
+        if (sinceEnd < ToxicVomit.LandsAfterCast)
+        {
+            zones.Add(ToxicVomit.Zone(centre, vomit.Borgny, here, -sinceEnd));
+            return;
+        }
+
+        var chasing = sinceEnd - ToxicVomit.LandsAfterCast;
+        if (chasing > ToxicVomit.ChaseFor)
+        {
+            Vomit = null;
+            return;
+        }
+
+        if (vomit.Turn == 0)
+        {
+            vomit.Turn = ToxicVomit.ChaseTurn(centre, vomit.Borgny, here);
+            Services.Log.Information($"{ToxicVomit.Name} landed: keeping on the move round the arena " +
+                                     (vomit.Turn > 0 ? "clockwise" : "anticlockwise") + " while the tornadoes follow.");
+        }
+
+        var hazards = zones.Where(zone => zone.Lasting).ToList();
+        zones.Add(ToxicVomit.Chase(ToxicVomit.ChasePoint(centre, here, vomit.Turn, hazards),
+                                   ToxicVomit.ChaseFor - chasing));
     }
+
+    private sealed class VomitState
+    {
+        public DateTime CastEnd;
+        public Vector2 Borgny;
+
+        /// <summary>The way round the ring, chosen as it lands; 0 until then.</summary>
+        public int Turn;
+    }
+
+    private static VomitState? Vomit;
 
     /// <summary>Floral Trap: into the nearest briar patch before it resolves.</summary>
     private static void AddTraps(List<Zone> zones, IPlayerCharacter player)
@@ -272,7 +315,7 @@ public static class EnemyCasts
     }
 
     /// <summary>Patches on the ground that hurt while they are there, by <see cref="GroundHazards"/>.</summary>
-    private static void AddHazards(List<Zone> zones, IPlayerCharacter player)
+    private static void AddHazards(List<Zone> zones, IPlayerCharacter player, DateTime now)
     {
         foreach (var obj in Services.Objects)
         {
@@ -280,9 +323,53 @@ public static class EnemyCasts
                 Vector3.Distance(obj.Position, player.Position) > SearchRange)
                 continue;
 
-            zones.Add(new Zone(ZoneKind.Circle, new Vector2(obj.Position.X, obj.Position.Z), 0f, radius, 0f,
-                               "ground hazard", Lasting: true));
+            var position = new Vector2(obj.Position.X, obj.Position.Z);
+            if (obj.BaseId != GroundHazards.PoisonCloud)
+            {
+                zones.Add(new Zone(ZoneKind.Circle, position, 0f, radius, 0f, "ground hazard", Lasting: true));
+                continue;
+            }
+
+            zones.AddRange(GroundHazards.Drifting(position, DriftOf(obj.GameObjectId, position, now), radius));
         }
+
+        if (Drifts.Count > 100)
+        {
+            foreach (var (id, drift) in Drifts.ToList())
+            {
+                if (now - drift.SeenAt > TimeSpan.FromSeconds(30))
+                    Drifts.Remove(id);
+            }
+        }
+    }
+
+    private sealed class Drift
+    {
+        public Vector2 Position;
+        public DateTime SeenAt;
+        public Vector2 Velocity;
+    }
+
+    private static readonly Dictionary<ulong, Drift> Drifts = [];
+
+    /// <summary>A cloud's velocity, from where it was when last looked at a tenth of a second or more ago.</summary>
+    private static Vector2 DriftOf(ulong id, Vector2 position, DateTime now)
+    {
+        if (!Drifts.TryGetValue(id, out var drift))
+        {
+            Drifts[id] = new Drift { Position = position, SeenAt = now };
+            return Vector2.Zero;
+        }
+
+        var dt = (float)(now - drift.SeenAt).TotalSeconds;
+        if (dt < 0.1f)
+            return drift.Velocity;
+
+        var measured = dt > 2f ? Vector2.Zero : (position - drift.Position) / dt;
+        drift.Velocity = (drift.Velocity * 0.4f) + (measured * 0.6f);
+        drift.Position = position;
+        drift.SeenAt = now;
+        return drift.Velocity;
     }
 
     private sealed class Breath

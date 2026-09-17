@@ -37,6 +37,19 @@ public static class CrucibleArena
     /// <summary>The largest square half-width that stays inside <see cref="SafeRadius"/>, less a margin.</summary>
     public const float DefaultHalfWidth = 13.5f;
 
+    /// <summary>
+    /// The Gargoyle's arena (120, 0) is a square: its Malady grid runs from 102.5 to 137.5, and Bleeding
+    /// began at 21.5–22.5 yalms along an axis (97.8/11.3, 142.5/9.8, 121.5/21.8, 129.3/22.5) — 24 yalms
+    /// from the middle, far past the round arenas' 20.5. Sweeping Evisceration wants 20 yalms of tether,
+    /// which no circle of 18 holds.
+    /// </summary>
+    public static readonly Vector2[] SquareCentres = [new(120f, 0f)];
+
+    /// <summary>How far along each axis a square arena is safe, a yalm and a half inside the Bleeding.</summary>
+    public const float SquareSafeHalfWidth = 19.5f;
+
+    public static bool IsSquare(Vector2 centre) => Array.IndexOf(SquareCentres, centre) >= 0;
+
     /// <summary>The middle of the arena around a position, or null off every arena.</summary>
     public static Vector2? CentreNear(Vector2 position)
     {
