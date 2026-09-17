@@ -3,12 +3,12 @@
   "Name": "BeastMastr",
   "InternalName": "BeastMastr",
   "Punchline": "Know your beasts and read the board at a glance.",
-  "Description": "Quality of life for Beastmaster.\n\nShows at a glance what each beast's actions actually do, so you can ask \"which of mine interrupts?\" instead of opening every entry, and puts the important facts about a Crucible of the Unbroken room next to the room itself.\n\nOpens with /beastmastr.",
+  "Description": "Quality of life for Beastmaster.\n\nShows what each beast's actions actually do right on the Master's Bestiary, and dims it to the beasts you are looking for. Fills a levelling team with one press, calls the last fight's familiars when a fight asks for them, picks the most hurt at shops and campsites, remembers your Crucible mode, and briefs the next Crucible of the Unbroken room in a window of its own.\n\nOpens with /beastmastr.",
   "ApplicableVersion": "any",
   "Tags": [
     "beastmaster",
     "bestiary",
     "crucible",
-    "overlay"
+    "qol"
   ]
 }
