@@ -188,6 +188,11 @@ public class Configuration : IPluginConfiguration
     /// <summary>Boards finished, counted when their result window opens; see <c>LootTracker</c>.</summary>
     public int BoardsFinished { get; set; }
 
+    /// <summary>Boards timed from entering to their result, and the seconds they took in all.</summary>
+    public int TimedBoards { get; set; }
+
+    public double TimedBoardSeconds { get; set; }
+
     /// <summary>Loot rolled for at the end of boards, by item name, over all sessions.</summary>
     public Dictionary<string, int> LootTotals { get; set; } = [];
 

@@ -173,6 +173,27 @@ public sealed class RunTab : ITab
                            "for at the end — the remnants of resilience and the Modern Aesthetics items — not a " +
                            "room's spoils.");
 
+        // The speed: how long a board takes, entering to result, and how many an hour with the way back in.
+        if (loot.BoardStartedAt is { } started)
+            ImGui.TextDisabled($"This board: {Clock(DateTime.Now - started)}.");
+
+        if (loot.BoardTimes.Count > 0)
+        {
+            var average = TimeSpan.FromSeconds(loot.BoardTimes.Average(time => time.TotalSeconds));
+            var fastest = loot.BoardTimes.Min();
+            var line = $"Average board this session: {Clock(average)} over {loot.BoardTimes.Count} " +
+                       $"(fastest {Clock(fastest)}, last {Clock(loot.BoardTimes[^1])})";
+
+            if (loot.SessionStartedAt is { } first && loot.LastFinishedAt is { } last && last > first)
+                line += $", {loot.BoardsThisSession / (last - first).TotalHours:0.0} boards an hour with the way in";
+
+            ImGui.TextUnformatted(line + ".");
+        }
+
+        if (configuration.TimedBoards > 0)
+            ImGui.TextDisabled($"Average board in all: {Clock(TimeSpan.FromSeconds(configuration.TimedBoardSeconds / configuration.TimedBoards))} " +
+                               $"over {configuration.TimedBoards}.");
+
         if (configuration.LootTotals.Count == 0)
         {
             ImGui.TextDisabled("No loot counted yet.");
@@ -206,6 +227,9 @@ public sealed class RunTab : ITab
 
         Widgets.HelpMarker("Hold Ctrl while clicking: it forgets the boards and the loot counted, saved totals too.");
     }
+
+    private static string Clock(TimeSpan time) =>
+        time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
 
     /// <summary>What the run does in the rooms that offer a choice.</summary>
     private void DrawRooms()

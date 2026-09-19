@@ -45,20 +45,65 @@ public sealed class LootTracker : IDisposable
     {
         ThisSession.Clear();
         BoardsThisSession = 0;
+        BoardTimes.Clear();
+        SessionStartedAt = BoardStartedAt;
+        LastFinishedAt = null;
         configuration.LootTotals.Clear();
         configuration.BoardsFinished = 0;
+        configuration.TimedBoards = 0;
+        configuration.TimedBoardSeconds = 0;
         configuration.Save();
     }
 
+    /// <summary>When the board being played was entered, or null off a board.</summary>
+    public DateTime? BoardStartedAt { get; private set; }
+
+    /// <summary>How long this session's finished boards took, entering to result, in order.</summary>
+    public List<TimeSpan> BoardTimes { get; } = [];
+
+    /// <summary>When this session's first timed board was entered: boards per hour count from here.</summary>
+    public DateTime? SessionStartedAt { get; private set; }
+
+    /// <summary>When this session's last board was finished.</summary>
+    public DateTime? LastFinishedAt { get; private set; }
+
+    private bool wasOnBoard;
+
     private void OnUpdate(IFramework framework)
     {
+        var now = DateTime.Now;
+        var onBoard = BoardModel.IsRunTerritory(Services.ClientState.TerritoryType);
+        if (onBoard && !wasOnBoard)
+        {
+            BoardStartedAt = now;
+            SessionStartedAt ??= now;
+        }
+        else if (!onBoard && wasOnBoard)
+        {
+            BoardStartedAt = null;
+        }
+
+        wasOnBoard = onBoard;
+
         var open = AddonReader.IsOpen(XbmColumns.RunWindows.Result);
-        if (open && !resultWasOpen && BoardModel.IsRunTerritory(Services.ClientState.TerritoryType))
+        if (open && !resultWasOpen && onBoard)
         {
             BoardsThisSession++;
             configuration.BoardsFinished++;
+            LastFinishedAt = now;
+
+            // A board is only timed when it was entered while the plugin watched: one it was loaded into
+            // half way would count as a fast board.
+            if (BoardStartedAt is { } started)
+            {
+                var took = now - started;
+                BoardTimes.Add(took);
+                configuration.TimedBoards++;
+                configuration.TimedBoardSeconds += took.TotalSeconds;
+                Services.Log.Information($"Loot: board finished in {took:mm\\:ss} ({configuration.BoardsFinished} in all).");
+            }
+
             configuration.Save();
-            Services.Log.Information($"Loot: board finished ({configuration.BoardsFinished} in all).");
         }
 
         resultWasOpen = open;
