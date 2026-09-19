@@ -326,9 +326,9 @@ public class Configuration : IPluginConfiguration
     public SavedBoard LastBoard { get; set; } = new();
 
     /// <summary>
-    /// Show the Data tab — the sheet explorer, the window inspector and the board captures. Off for
-    /// anyone installing the plugin: it is the tooling the mapping was done with, not something to
-    /// use. A config that already has it on keeps it on.
+    /// Show the Debug tab: the run automation's insides, the board captures, the window inspector and
+    /// the sheet explorer. Off for anyone installing the plugin. The name is the old "Data tab" setting's,
+    /// so a config that already has it on keeps it on.
     /// </summary>
     public bool ShowDataTab { get; set; } = false;
 

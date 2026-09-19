@@ -123,17 +123,17 @@ public sealed class Plugin : IDalamudPlugin
         var tabs = new List<ITab>
         {
             new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
-            new RunTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder, walker,
-                       inputGuard, combat, bossMod, job, runner),
+            new RunTab(Configuration, boardModel, routeKeeper, runner),
+            new SettingsTab(Configuration, fightSelector, teamSelector, difficultySelector, nextRoom),
+            new DebugTab(Configuration,
+            [
+                new RunDebugTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder, walker,
+                                inputGuard, combat, bossMod, job, runner),
+                new BoardTab(Catalog, recorder, runRecorder, rankWatcher, enemies, boardCache),
+                new AddonsTab(Configuration, delayedSweep),
+                new SheetsTab(Configuration),
+            ]),
         };
-        if (Configuration.ShowDataTab)
-        {
-            tabs.Add(new SheetsTab(Configuration));
-            tabs.Add(new AddonsTab(Configuration, delayedSweep));
-            tabs.Add(new BoardTab(Catalog, recorder, runRecorder, rankWatcher, enemies, boardCache));
-        }
-
-        tabs.Add(new SettingsTab(Configuration, fightSelector, teamSelector, difficultySelector, nextRoom));
 
         mainWindow = new MainWindow(tabs);
         windowSystem.AddWindow(mainWindow);

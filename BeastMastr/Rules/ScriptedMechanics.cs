@@ -159,19 +159,15 @@ public static class GroundHazards
     /// </summary>
     public const float DriftAhead = 1.5f;
 
-    /// <summary>A patch where it is and where it drifts to in <see cref="DriftAhead"/> seconds.</summary>
-    public static List<Zone> Drifting(Vector2 position, Vector2 velocity, float radius)
+    /// <summary>A patch where it is and where it drifts to in <see cref="DriftAhead"/> seconds, as one zone.</summary>
+    public static Zone Drifting(Vector2 position, Vector2 velocity, float radius)
     {
-        var zones = new List<Zone> { new(ZoneKind.Circle, position, 0f, radius, 0f, "ground hazard", Lasting: true) };
         var travel = velocity * DriftAhead;
         if (travel.Length() < 0.3f)
-            return zones;
+            return new Zone(ZoneKind.Circle, position, 0f, radius, 0f, "ground hazard", Lasting: true);
 
-        var facing = MathF.Atan2(travel.X, travel.Y);
-        zones.Add(new Zone(ZoneKind.Rect, position, facing, travel.Length(), 0f, "drifting hazard",
-                           HalfWidth: radius, Lasting: true));
-        zones.Add(new Zone(ZoneKind.Circle, position + travel, 0f, radius, 0f, "drifting hazard", Lasting: true));
-        return zones;
+        return new Zone(ZoneKind.Capsule, position, MathF.Atan2(travel.X, travel.Y), travel.Length(), 0f,
+                        "drifting hazard", HalfWidth: radius, Lasting: true);
     }
 }
 
@@ -310,17 +306,55 @@ public static class ToxicVomit
         new(ZoneKind.Circle, point, 0f, 0f, left, Name + " (keep moving, tornadoes follow)", Refuge: point);
 
     /// <param name="castLeft">Seconds of the cast left; below 0 once it has ended and the vomit is on its way.</param>
-    public static Zone Zone(Vector2 centre, Vector2 borgny, Vector2 player, float castLeft)
+    /// <param name="hazards">Patches on the ground the spot at the edge keeps clear of.</param>
+    public static Zone Zone(Vector2 centre, Vector2 borgny, Vector2 player, float castLeft,
+                            IReadOnlyList<Zone>? hazards = null)
     {
-        var away = player - borgny;
+        return new Zone(ZoneKind.Circle, player, 0f, 6f, MathF.Max(0f, castLeft + LandsAfterCast),
+                        Name + " (to the edge, away from Borgny)",
+                        Refuge: EdgeBait.Spot(centre, borgny, player, hazards ?? []));
+    }
+}
+
+/// <summary>
+/// What Borgny drops where the player stands is best dropped at the arena's edge (the user): Toxic Vomit's
+/// tornadoes, and Wriggling Phlegm (48817 on Borgny; its helper places 48819, a circle of 6, on the player
+/// 5.3 s in, and a Toxic Mass rises there — 19:30:38 on 2026-09-17, right under the player). The spot is on
+/// a ring inside the safe circle, on the far side from Borgny, and clear of patches already down.
+/// </summary>
+public static class EdgeBait
+{
+    public const uint PhlegmCast = 48817;
+    public const uint PhlegmPlaced = 48819;
+    public const string PhlegmName = "Wriggling Phlegm";
+
+    public const float Radius = ToxicVomit.EdgeRadius;
+
+    /// <summary>How far either way round the ring a covered spot is swapped for, in radians.</summary>
+    private static readonly float[] Turns = [0f, 0.4f, -0.4f, 0.8f, -0.8f, 1.2f, -1.2f, 1.6f, -1.6f];
+
+    public static Vector2 Spot(Vector2 centre, Vector2 source, Vector2 player, IReadOnlyList<Zone> hazards)
+    {
+        var away = player - source;
         if (away.LengthSquared() < 0.01f)
             away = player - centre;
         if (away.LengthSquared() < 0.01f)
             away = new Vector2(0f, 1f);
 
-        var refuge = centre + (Vector2.Normalize(away) * EdgeRadius);
-        return new Zone(ZoneKind.Circle, player, 0f, 6f, MathF.Max(0f, castLeft + LandsAfterCast),
-                        Name + " (to the edge, away from Borgny)",
-                        Refuge: refuge);
+        var angle = MathF.Atan2(away.X, away.Y);
+        Vector2 At(float a) => centre + (new Vector2(MathF.Sin(a), MathF.Cos(a)) * Radius);
+
+        foreach (var turn in Turns)
+        {
+            var spot = At(angle + turn);
+            if (Dodger.Hits(hazards, spot, Dodger.Margin) == 0)
+                return spot;
+        }
+
+        return At(angle);
     }
+
+    /// <summary>The spot to carry a drop to, as a refuge until it is placed.</summary>
+    public static Zone Zone(Vector2 spot, float placedIn, string name) =>
+        new(ZoneKind.Circle, spot, 0f, 0f, placedIn, name + " (to the edge)", Refuge: spot);
 }

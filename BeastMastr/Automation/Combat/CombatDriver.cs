@@ -279,6 +279,25 @@ public sealed unsafe class CombatDriver : IDisposable
         var target = Target(player, inCombat);
         if (target == null)
         {
+            // Borgny cannot be targeted while it charges with Cauterize, and on 2026-09-17 19:30 nothing
+            // else was up: the charge went undodged, straight through the player. It is dodged anyway.
+            if (inCombat && OwnDodging)
+            {
+                if (DateTime.Now >= nextDodgePlan)
+                {
+                    nextDodgePlan = DateTime.Now + DodgePlanInterval;
+                    dodge = PlanDodge(player, null);
+                }
+
+                if (dodge != null)
+                {
+                    lastDodgeAt = DateTime.Now;
+                    FollowDodge(player, dodge);
+                    Status = "In combat with nothing to hit; dodging.";
+                    return;
+                }
+            }
+
             StopApproaching();
             Status = inCombat ? "In combat, but nothing to hit is in reach." : "On — waiting for a fight.";
             return;
@@ -494,7 +513,7 @@ public sealed unsafe class CombatDriver : IDisposable
 
     private bool OwnDodging => bossMod.Role == BossModRole.Off && configuration.DodgeWithBeastMastr;
 
-    private DodgePlan? PlanDodge(IPlayerCharacter player, IGameObject target)
+    private DodgePlan? PlanDodge(IPlayerCharacter player, IGameObject? target)
     {
         var here = new Vector2(player.Position.X, player.Position.Z);
         var arena = CrucibleArena.CentreNear(here);
@@ -511,8 +530,8 @@ public sealed unsafe class CombatDriver : IDisposable
                           : square ? CrucibleArena.SquareSafeHalfWidth
                           : Math.Clamp(configuration.ArenaSafeRadius, 5f, 20f);
 
-        return Dodger.Plan(here, new Vector2(target.Position.X, target.Position.Z), MeleeReach + target.HitboxRadius,
-                           zones, lastArenaCentre, lastArenaRadius, square);
+        return Dodger.Plan(here, target == null ? null : new Vector2(target.Position.X, target.Position.Z),
+                           MeleeReach + (target?.HitboxRadius ?? 0f), zones, lastArenaCentre, lastArenaRadius, square);
     }
 
     /// <summary>Walks to the dodge's spot in a straight line — the arenas are flat — or stands on it.</summary>

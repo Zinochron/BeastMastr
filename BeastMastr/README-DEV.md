@@ -2359,3 +2359,64 @@ Taken from the two recorded re-entries, `run-20260916-231237.txt` (23:16) and `r
 
 **A lost board** counts as played when "go on after a lost board" is on (the default), and the next one
 is started.
+
+### Borgny at 19:29, the lag, and a Debug tab — 2026-09-19
+
+`captures/run-20260917-191334.txt`. Boards 1 → 2 → 3 were started from the entrance on their own. The
+boss was won, mostly by luck.
+
+**No dodging without a target.** Borgny is untargetable while it charges with Cauterize. At 19:30:48 the
+Toxic Mass had just died, so nothing was targetable, and the combat tick returned before planning a
+dodge. The player stood 2 yalms off the charge's line and took 963 + 924. The second Toxic Breath
+(19:30:17) went the same way. Dodges are now planned with no target too (`PlanDodge(player, null)`).
+
+**The walk in.** The player stood 15–25 yalms from Borgny for most of the fight. With only patches on
+the ground and the target out of reach, the dodger now searches a clear spot by the target.
+- `TargetWeight` is 1.5, aimed half a step inside the reach.
+- The walk there goes round the patches.
+- While hits are still being cast, a clear player still stays put, as Bedrock Uplift needs.
+
+**The lag.** Dalamud logged `CombatDriver::OnUpdate` at up to 740 ms. The causes:
+- A zone was tested with 9 samples.
+- Each cloud had three zones.
+- The route search re-tested cells.
+
+The fixes:
+- `Zone.Covers(point, margin)` tests the grown shape once.
+- A drifting cloud is one `Capsule`.
+- Stacked clouds and tornadoes are merged.
+- The route caches each cell's price and is bounded.
+
+The harness times 34 patches at 4.4 ms for plan and route.
+
+**Wriggling Phlegm** (48817 on Borgny) is the drop the user wants at the edge. Its helper places 48819,
+a circle of 6, on the player 5.3 s in, and a Toxic Mass rises there. Until it is placed, the player goes
+to a spot on the ring of 15, away from Borgny and clear of patches (`EdgeBait`). Toxic Vomit's spot uses
+the same rule. **Cauterize** leaves a line of ten Poison Clouds along the charge; they are ordinary
+hazards.
+
+**The boards field** is read live (`BoardRunner.RunsWanted` is `configuration.RunCount`), so it can be
+changed mid-run.
+
+**Players from the repo had no Run tab.** The workflow had only ever run for `beastmastr-implementation`,
+so the repository offered `v0.1.0.0` on both channels, and that version predates the automation.
+Enabling testing builds changed nothing.
+
+**UI.** The tab layout for players:
+
+| Tab | What it holds |
+|---|---|
+| Beasts | As before. |
+| Run | Start and stop, boards, what happens in the rooms, fight choices, what counts as taking over, the route and fork picks. |
+| Settings | As before, plus "Show the Debug tab". |
+| Debug | Hidden by default. Its pages are listed below. |
+
+The Debug tab's pages:
+- **Run:** plugins, the recorder, the run state, single steps, the fight driver, dodging and BossMod,
+  the ground scan and the map.
+- **Board:** the board captures.
+- **Windows:** the window inspector.
+- **Sheets:** the sheet explorer.
+
+The setting is still stored as `ShowDataTab`, so old configs keep it. It takes effect at once: `ITab`
+has a `Visible` property.

@@ -203,6 +203,7 @@ public static class EnemyCasts
         AddHazards(zones, player, now);
         AddTraps(zones, player);
         AddVomit(zones, player, now);
+        AddPhlegm(zones, player);
         return zones;
     }
 
@@ -249,7 +250,7 @@ public static class EnemyCasts
         var sinceEnd = (float)(now - vomit.CastEnd).TotalSeconds;
         if (sinceEnd < ToxicVomit.LandsAfterCast)
         {
-            zones.Add(ToxicVomit.Zone(centre, vomit.Borgny, here, -sinceEnd));
+            zones.Add(ToxicVomit.Zone(centre, vomit.Borgny, here, -sinceEnd, zones.Where(zone => zone.Lasting).ToList()));
             return;
         }
 
@@ -270,6 +271,28 @@ public static class EnemyCasts
         var hazards = zones.Where(zone => zone.Lasting).ToList();
         zones.Add(ToxicVomit.Chase(ToxicVomit.ChasePoint(centre, here, vomit.Turn, hazards),
                                    ToxicVomit.ChaseFor - chasing));
+    }
+
+    /// <summary>
+    /// Wriggling Phlegm: carried to the edge while Borgny casts it, until its circle is placed on the
+    /// player. From then the circle is dodged like any other.
+    /// </summary>
+    private static void AddPhlegm(List<Zone> zones, IPlayerCharacter player)
+    {
+        var casters = Casting(player).ToList();
+        if (casters.Any(caster => caster.CastActionId == EdgeBait.PhlegmPlaced))
+            return;
+
+        var here = new Vector2(player.Position.X, player.Position.Z);
+        foreach (var borgny in casters)
+        {
+            if (borgny.CastActionId != EdgeBait.PhlegmCast || CrucibleArena.CentreNear(here) is not { } centre)
+                continue;
+
+            var spot = EdgeBait.Spot(centre, new Vector2(borgny.Position.X, borgny.Position.Z), here,
+                                     zones.Where(zone => zone.Lasting).ToList());
+            zones.Add(EdgeBait.Zone(spot, borgny.TotalCastTime - borgny.CurrentCastTime, EdgeBait.PhlegmName));
+        }
     }
 
     private sealed class VomitState
@@ -317,6 +340,8 @@ public static class EnemyCasts
     /// <summary>Patches on the ground that hurt while they are there, by <see cref="GroundHazards"/>.</summary>
     private static void AddHazards(List<Zone> zones, IPlayerCharacter player, DateTime now)
     {
+        // Eight clouds rise on one spot, and four tornadoes on another: one zone each is enough.
+        var seen = new HashSet<(int, int, int, int, uint)>();
         foreach (var obj in Services.Objects)
         {
             if (GroundHazards.Radius(obj.BaseId) is not { } radius ||
@@ -324,13 +349,15 @@ public static class EnemyCasts
                 continue;
 
             var position = new Vector2(obj.Position.X, obj.Position.Z);
-            if (obj.BaseId != GroundHazards.PoisonCloud)
-            {
-                zones.Add(new Zone(ZoneKind.Circle, position, 0f, radius, 0f, "ground hazard", Lasting: true));
-                continue;
-            }
+            var velocity = obj.BaseId == GroundHazards.PoisonCloud
+                               ? DriftOf(obj.GameObjectId, position, now)
+                               : Vector2.Zero;
 
-            zones.AddRange(GroundHazards.Drifting(position, DriftOf(obj.GameObjectId, position, now), radius));
+            if (!seen.Add(((int)MathF.Round(position.X * 2f), (int)MathF.Round(position.Y * 2f),
+                           (int)MathF.Round(velocity.X), (int)MathF.Round(velocity.Y), obj.BaseId)))
+                continue;
+
+            zones.Add(GroundHazards.Drifting(position, velocity, radius));
         }
 
         if (Drifts.Count > 100)

@@ -760,16 +760,61 @@ var chase2 = ToxicVomit.ChasePoint(borgnyArena, new Vector2(905f, -420f), chaseT
 Check("and a covered step is swapped for a clear one", !tornado.Contains(chase2), $"to {chase2}");
 
 var cloud = GroundHazards.Drifting(new Vector2(920f, -432f), new Vector2(0f, -2.1f), 6.5f);
-Check("a drifting cloud covers where it will be", Dodger.Hits(cloud, new Vector2(920f, -441f), 0f) > 0 &&
-      Dodger.Hits(cloud, new Vector2(920f, -424f), 0f) == 0);
-var sitting = GroundHazards.Drifting(new Vector2(920f, -432f), Vector2.Zero, 6.5f);
-Check("a still one only where it is", sitting.Count == 1);
+Check("a drifting cloud covers where it will be", cloud.Contains(new Vector2(920f, -441f)) &&
+      !cloud.Contains(new Vector2(920f, -424f)) && cloud.Contains(new Vector2(920f, -432f)));
+var still = GroundHazards.Drifting(new Vector2(920f, -432f), Vector2.Zero, 6.5f);
+Check("a still one only where it is", still.Kind == ZoneKind.Circle);
+List<Zone> sitting = [still];
+Check("a zone grown by the margin: circle, cone and line",
+      still.Covers(new Vector2(920f, -438.8f), 0.5f) && !still.Covers(new Vector2(920f, -439.2f), 0.5f) &&
+      CastShapes.Shape(12, 48, 20, "", 0f, new Vector2(905.9f, -405.9f), 2.36f, 5f, "Cauterize")!
+                .Covers(new Vector2(924.7f, -421.8f), 0.5f));
+
+// Walking in: clear but out of reach, a clear spot by the target is picked instead of standing still.
+var farBorgny = new Vector2(920f, -420f);
+var closing = Dodger.Plan(new Vector2(935f, -416f), farBorgny, 6f, sitting, borgnyArena, 18f);
+Check("clear but out of reach, the run walks in round the patches",
+      closing is { Safe: true } && Vector2.Distance(closing.Point, farBorgny) <= 6f && !still.Covers(closing.Point, 0.5f),
+      $"{closing?.Point} {closing?.Why}");
+Check("and in reach with only patches about, nothing to do",
+      Dodger.Plan(new Vector2(924f, -418f), farBorgny, 6f, sitting, borgnyArena, 18f) == null);
+var charge = CastShapes.Shape(12, 48, 20, "", 0f, new Vector2(905.9f, -405.9f), 2.36f, 5f, "Cauterize")!;
+var noTarget = Dodger.Plan(new Vector2(924.7f, -421.8f), null, 3f, [charge], borgnyArena, 18f);
+Check("with nothing to target, the charge is still dodged", noTarget is { Safe: true } && !charge.Contains(noTarget.Point),
+      $"{noTarget?.Point}");
+var phlegmSpot = EdgeBait.Spot(borgnyArena, farBorgny, new Vector2(926.7f, -426.7f), sitting);
+Check("Wriggling Phlegm is carried to the edge, away from Borgny and clear of patches",
+      MathF.Abs(Vector2.Distance(phlegmSpot, borgnyArena) - EdgeBait.Radius) < 0.01f && !still.Covers(phlegmSpot, 0.5f) &&
+      Vector2.Dot(phlegmSpot - farBorgny, new Vector2(926.7f, -426.7f) - farBorgny) > 0f, $"{phlegmSpot}");
 var cloudRoute = Dodger.Route(new Vector2(920.8f, -419f), new Vector2(920f, -445.6f), sitting, borgnyArena, 18f);
 Check("the walk to the wall goes round fresh clouds",
       cloudRoute.Count > 1 && cloudRoute[^1] == new Vector2(920f, -445.6f) &&
       Dodger.Clear(sitting, new Vector2(920.8f, -419f), cloudRoute[0]), string.Join(" ", cloudRoute));
 Check("and a clear walk stays straight",
       Dodger.Route(new Vector2(930f, -419f), new Vector2(935f, -415f), sitting, borgnyArena, 18f).Count == 1);
+
+// The lag of 2026-09-17 19:14 and 19:30: 740 ms a frame with two dozen clouds. Thirty drifting clouds and
+// four tornadoes, planned and routed round, have to stay well inside a frame.
+var crowd = new List<Zone>();
+for (var i = 0; i < 30; i++)
+{
+    var angle = i * 0.7f;
+    crowd.Add(GroundHazards.Drifting(borgnyArena + (new Vector2(MathF.Sin(angle), MathF.Cos(angle)) * (4f + (i % 12))),
+                                     new Vector2(MathF.Sin(angle), MathF.Cos(angle)) * 2.1f, 6.5f));
+}
+
+for (var i = 0; i < 4; i++)
+    crowd.Add(new Zone(ZoneKind.Circle, borgnyArena + new Vector2(10f - (i * 5f), 12f), 0f, 6.5f, 0f, "tornado", Lasting: true));
+
+var watch = System.Diagnostics.Stopwatch.StartNew();
+for (var i = 0; i < 20; i++)
+{
+    var crowdPlan = Dodger.Plan(new Vector2(935f, -416f), farBorgny, 6f, crowd, borgnyArena, 18f);
+    Dodger.Route(new Vector2(935f, -416f), crowdPlan?.Point ?? new Vector2(903f, -425f), crowd, borgnyArena, 18f);
+}
+
+var perFrame = watch.Elapsed.TotalMilliseconds / 20;
+Check("planning and routing round 34 patches takes a fraction of a frame", perFrame < 15, $"{perFrame:0.0} ms");
 
 // The Treant's two Rustling Breezes: helpers at the Treant, all facing 0.
 Zone Fan(float degrees, uint id)

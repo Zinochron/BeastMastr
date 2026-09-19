@@ -149,7 +149,8 @@ public sealed class BoardRunner : IDisposable
     /// <summary>The room being gone to or played, or -1.</summary>
     public int Target { get; private set; } = -1;
 
-    public int RunsWanted { get; private set; }
+    /// <summary>How many boards to play: the Run tab's field, read as it stands, so it can be changed mid-run.</summary>
+    public int RunsWanted => Math.Max(1, configuration.RunCount);
 
     public int RunsDone { get; private set; }
 
@@ -170,7 +171,12 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        RunsWanted = Math.Max(1, runs);
+        if (configuration.RunCount != Math.Max(1, runs))
+        {
+            configuration.RunCount = Math.Max(1, runs);
+            configuration.Save();
+        }
+
         RunsDone = 0;
         boardRow = board.BoardRowId;
         entrance = null;

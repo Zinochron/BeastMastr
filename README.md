@@ -26,7 +26,8 @@ Opens with `/beastmastr`.
 The automation is tuned on the First Master's Board and still dies to some mechanics there. Other
 boards have enemies it has never seen: it dodges their casts from the game data alone. Settings are
 on the Run tab. If a run goes wrong, a recording (`/beastmastr record`) of it is the most useful thing
-to send along. See `BeastMastr/README-DEV.md`.
+to send along. The tools for that — recorder, single steps, the fight's decisions, the ground scan —
+are on the Debug tab (Settings → "Show the Debug tab"). See `BeastMastr/README-DEV.md`.
 
 ## Building
 

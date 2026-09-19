@@ -11,6 +11,12 @@ public enum ZoneKind
     Cone,
     Rect,
     Cross,
+
+    /// <summary>
+    /// A circle of <see cref="Zone.HalfWidth"/> swept <see cref="Zone.Radius"/> along the rotation: a
+    /// drifting patch and where it is going, as one zone.
+    /// </summary>
+    Capsule,
 }
 
 /// <summary>
@@ -68,16 +74,77 @@ public sealed record Zone(ZoneKind Kind, Vector2 Origin, float Rotation, float R
                 return InLine(offset, ahead, Radius, Radius) ||
                        InLine(offset, new Vector2(ahead.Y, -ahead.X), Radius, Radius);
 
+            case ZoneKind.Capsule:
+                return SegmentDistance(offset, ahead) <= HalfWidth;
+
             default:
                 return false;
         }
     }
 
-    private bool InLine(Vector2 offset, Vector2 ahead, float front, float back)
+    /// <summary>
+    /// The point is in the zone, or within <paramref name="margin"/> of it: the zone grown by the margin,
+    /// tested once. Sampling eight points around it cost nine tests per zone, and with two dozen clouds
+    /// the dodge took 700 ms a frame.
+    /// </summary>
+    public bool Covers(Vector2 point, float margin)
+    {
+        if (margin <= 0f)
+            return Contains(point);
+
+        var offset = point - Origin;
+        var distance = offset.Length();
+        var ahead = new Vector2(MathF.Sin(Rotation), MathF.Cos(Rotation));
+
+        switch (Kind)
+        {
+            case ZoneKind.Circle:
+                return distance <= Radius + margin;
+
+            case ZoneKind.Donut:
+                return distance >= Inner - margin && distance <= Radius + margin;
+
+            case ZoneKind.Cone:
+                if (distance > Radius + margin)
+                    return false;
+
+                if (distance <= MathF.Max(Apex, 0.001f) + margin)
+                    return true;
+
+                var cos = Vector2.Dot(offset / distance, ahead);
+                var widen = MathF.Asin(MathF.Min(1f, margin / distance));
+                return MathF.Acos(Math.Clamp(cos, -1f, 1f)) <= HalfAngle + widen;
+
+            case ZoneKind.Rect:
+                return InLine(offset, ahead, Radius + margin, Behind + margin, HalfWidth + margin);
+
+            case ZoneKind.Cross:
+                return InLine(offset, ahead, Radius + margin, Radius + margin, HalfWidth + margin) ||
+                       InLine(offset, new Vector2(ahead.Y, -ahead.X), Radius + margin, Radius + margin,
+                              HalfWidth + margin);
+
+            case ZoneKind.Capsule:
+                return SegmentDistance(offset, ahead) <= HalfWidth + margin;
+
+            default:
+                return false;
+        }
+    }
+
+    private bool InLine(Vector2 offset, Vector2 ahead, float front, float back) =>
+        InLine(offset, ahead, front, back, HalfWidth);
+
+    private static bool InLine(Vector2 offset, Vector2 ahead, float front, float back, float halfWidth)
     {
         var along = Vector2.Dot(offset, ahead);
         var side = MathF.Abs((offset.X * ahead.Y) - (offset.Y * ahead.X));
-        return along >= -back && along <= front && side <= HalfWidth;
+        return along >= -back && along <= front && side <= halfWidth;
+    }
+
+    private float SegmentDistance(Vector2 offset, Vector2 ahead)
+    {
+        var along = Math.Clamp(Vector2.Dot(offset, ahead), 0f, Radius);
+        return Vector2.Distance(offset, ahead * along);
     }
 }
 
@@ -110,8 +177,11 @@ public static class Dodger
 
     public const float GridStep = 1f;
 
-    /// <summary>How much a yalm further from the target weighs against a yalm more to walk.</summary>
-    public const float TargetWeight = 0.5f;
+    /// <summary>
+    /// How much a yalm further from the target weighs against a yalm more to walk. Above 1, so a clear
+    /// spot in reach beats standing still out of it.
+    /// </summary>
+    public const float TargetWeight = 1.5f;
 
     /// <param name="reach">Distance to the target that counts as in reach.</param>
     /// <param name="arenaCentre">The arena's middle; the spot stays within <paramref name="arenaRadius"/> of it.</param>
@@ -129,10 +199,6 @@ public static class Dodger
                 return new DodgePlan(refuge, true, zone.Name);
         }
 
-        // Only lasting patches, and none underfoot: nothing to do but not walk into them.
-        if (active.Count > 0 && active.TrueForAll(zone => zone.Lasting) && !outside && Hits(active, player, Margin) == 0)
-            return null;
-
         if (active.Count == 0)
         {
             if (!outside)
@@ -147,8 +213,23 @@ public static class Dodger
         }
 
         var names = string.Join(", ", Names(active));
-        if (!outside && Hits(active, player, Margin) == 0)
+        var clearHere = !outside && Hits(active, player, Margin) == 0;
+        var inReach = target is not { } aim || Vector2.Distance(player, aim) <= reach;
+
+        // Clear of hits still being cast: stay — a step in could land in the next ring of Bedrock Uplift.
+        // Clear with only patches on the ground about: nothing to dodge when in reach; out of reach, a clear
+        // spot by the target is searched for, so the walk in goes round the patches instead of stopping
+        // short of them — in the recording of 2026-09-17 19:29 the player stood 15 to 25 yalms from
+        // Borgny for most of the fight.
+        var onlyPatches = active.TrueForAll(zone => zone.Lasting);
+        if (clearHere && !onlyPatches)
             return new DodgePlan(player, true, $"already clear of {names}");
+
+        if (clearHere && inReach)
+            return null;
+
+        if (clearHere)
+            names = $"closing in, clear of {names}";
 
         DodgePlan? best = null;
         var bestScore = float.MaxValue;
@@ -164,8 +245,11 @@ public static class Dodger
 
                 var point = arenaCentre + offset;
                 var hits = Hits(active, point, Margin);
+                // Aimed half a grid step inside the reach, so the spot found is in it and not at its rim.
                 var score = Vector2.Distance(point, player) +
-                            (target is { } t ? TargetWeight * MathF.Max(0f, Vector2.Distance(point, t) - reach) : 0f);
+                            (target is { } t
+                                 ? TargetWeight * MathF.Max(0f, Vector2.Distance(point, t) - (reach - (GridStep * 0.5f)))
+                                 : 0f);
 
                 if (hits < bestHits || (hits == bestHits && score < bestScore))
                 {
@@ -207,23 +291,18 @@ public static class Dodger
         var count = 0;
         foreach (var zone in zones)
         {
-            if (zone.Contains(point) || Near(zone, point, margin))
+            if (zone.Covers(point, margin))
                 count++;
         }
 
         return count;
     }
 
-    /// <summary>A point within the margin of a zone's edge, tested by the points around it.</summary>
-    private static bool Near(Zone zone, Vector2 point, float margin)
+    private static bool Any(IReadOnlyList<Zone> zones, Vector2 point, float margin)
     {
-        if (margin <= 0f)
-            return false;
-
-        for (var i = 0; i < 8; i++)
+        foreach (var zone in zones)
         {
-            var angle = i * MathF.PI / 4f;
-            if (zone.Contains(point + (new Vector2(MathF.Sin(angle), MathF.Cos(angle)) * margin)))
+            if (zone.Covers(point, margin))
                 return true;
         }
 
@@ -238,6 +317,12 @@ public static class Dodger
 
     /// <summary>What a covered cell adds to a route, in yalms: a long way round is worth it.</summary>
     private const float CoveredPrice = 10f;
+
+    /// <summary>A bound on the route search: the whole arena is under 1700 cells.</summary>
+    private const int MostExpanded = 2000;
+
+    /// <summary>A bound on the corner search's straight checks, each of which samples every half yalm.</summary>
+    private const int MostCornerLooks = 12;
 
     /// <summary>
     /// The way to a spot around the patches on the ground, as waypoints after <paramref name="from"/>, ending
@@ -276,8 +361,18 @@ public static class Dodger
             i >= 0 && j >= 0 && i < width && j < width && Inside(At(i, j) - arenaCentre, arenaRadius, square);
 
         // A covered cell can be crossed, at a price: the wall behind Borgny may only be reached through
-        // the edge of a cloud, and the shortest stretch through it is still the way to take.
-        float Price(int i, int j) => Hits(obstacles, At(i, j), Margin) > 0 ? CoveredPrice : 0f;
+        // the edge of a cloud, and the shortest stretch through it is still the way to take. Each cell is
+        // looked at once.
+        var prices = new float[width * width];
+        Array.Fill(prices, -1f);
+        float Price(int i, int j)
+        {
+            ref var price = ref prices[(j * width) + i];
+            if (price < 0f)
+                price = Any(obstacles, At(i, j), Margin) ? CoveredPrice : 0f;
+
+            return price;
+        }
 
         var start = Cell(from);
         var goal = Cell(to);
@@ -289,6 +384,7 @@ public static class Dodger
         var open = new PriorityQueue<(int, int), float>();
         open.Enqueue(start, 0f);
         var found = false;
+        var expanded = 0;
 
         while (open.TryDequeue(out var cell, out _))
         {
@@ -297,6 +393,9 @@ public static class Dodger
                 found = true;
                 break;
             }
+
+            if (++expanded > MostExpanded)
+                break;
 
             for (var di = -1; di <= 1; di++)
             {
@@ -335,9 +434,18 @@ public static class Dodger
         var index = 0;
         while (index < cells.Count)
         {
+            // Looked for in growing steps rather than cell by cell: the first blocked look ends it.
             var farthest = index;
-            for (var k = index + 1; k < cells.Count && Clear(obstacles, anchor, cells[k]); k++)
+            var reach = 1;
+            for (var looks = 0; looks < MostCornerLooks; looks++)
+            {
+                var k = Math.Min(cells.Count - 1, index + reach);
+                if (k <= farthest || !Clear(obstacles, anchor, cells[k]))
+                    break;
+
                 farthest = k;
+                reach *= 2;
+            }
 
             route.Add(cells[farthest]);
             anchor = cells[farthest];
@@ -354,7 +462,7 @@ public static class Dodger
         var steps = Math.Max(1, (int)MathF.Ceiling(length / RouteSample));
         for (var k = 1; k <= steps; k++)
         {
-            if (Hits(obstacles, Vector2.Lerp(from, to, (float)k / steps), Margin) > 0)
+            if (Any(obstacles, Vector2.Lerp(from, to, (float)k / steps), Margin))
                 return false;
         }
 
