@@ -2420,3 +2420,26 @@ The Debug tab's pages:
 
 The setting is still stored as `ShowDataTab`, so old configs keep it. It takes effect at once: `ITab`
 has a `Visible` property.
+
+### Carries first, and one copy at a time — 2026-09-19
+
+**Carries first.** `TeamPlanner.ForFight` calls the carries (`CarryBeasts`) that are in the team and not
+down, in their order, then the last fight's familiars. It calls up to three: as many as last time, or
+as many carries as can come if that is more. A familiar that is down is still replaced by the
+healthiest one left. The Settings switch is `CallCarriesFirst`, on by default.
+
+**Two copies at once.** At 14:37 the installed v0.2.0.0 and the dev build v0.2.1.0 were both loaded.
+Dalamud only warns ("another plugin with the same assembly name was already loaded"). Both copies called
+Cu Sith, and a pick toggles, so each undid the other's. The log read "The window did not take Cu Sith",
+and nobody was called.
+
+`Plugin` is now a shell and everything else is `PluginCore`. Every copy registers in Dalamud's data share
+(`BeastMastr.Instances`, a `ConcurrentDictionary<string, string>` that every load context can read).
+Exactly one copy builds its core. The order of preference is:
+1. a dev build before an installed one,
+2. then the higher version,
+3. then the copy loaded first.
+
+The others stay idle and say so in chat. When a preferred copy arrives, the active one disposes its core
+first, and the newcomer builds only once no other copy is active. Copies older than 0.2.1.0 do not take
+part.

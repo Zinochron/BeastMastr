@@ -1,294 +1,143 @@
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
-using System.Threading.Tasks;
-using Dalamud.Game.Command;
-using Dalamud.Interface.Windowing;
 using Dalamud.Plugin;
+using Dalamud.Plugin.Services;
 using ECommons;
-using KamiToolKit;
-using BeastMastr.Automation;
-using BeastMastr.Automation.Combat;
-using BeastMastr.Automation.Run;
-using BeastMastr.Data;
-using BeastMastr.Native;
-using BeastMastr.Rules;
-using BeastMastr.UI;
-using BeastMastr.UI.Tabs;
 
 namespace BeastMastr;
 
+/// <summary>
+/// The shell Dalamud loads. It makes sure only one copy of BeastMastr is at work, then builds
+/// <see cref="PluginCore"/>.
+///
+/// Dalamud will load two copies side by side — the one from the repository and a dev build, say — and
+/// warns only in its log. On 2026-09-19 at 14:37 both called the familiars into a fight: every pick is a
+/// toggle, so each copy undid the other's, nobody was called, and the run stopped. So every copy puts
+/// itself on a list in Dalamud's data share; exactly one is active — a dev build before an installed one,
+/// then the higher version, then the one loaded first — and the others stay idle and say so in chat.
+/// When a preferred copy arrives, the active one steps down first and the newcomer takes over after it.
+/// </summary>
 public sealed class Plugin : IDalamudPlugin
 {
-    private const string CommandName = "/beastmastr";
+    private const string ShareTag = "BeastMastr.Instances";
 
-    private readonly WindowSystem windowSystem = new("BeastMastr");
-    private readonly MainWindow mainWindow;
-    /// <summary>Built in the constructor body: it subscribes on construction. See the note above.</summary>
-    private readonly EventRecorder recorder;
-    private readonly ActionWatcher actionWatcher;
-    private readonly RunRecorder runRecorder;
-    private readonly FightSelector fightSelector;
-    private readonly RankWatcher rankWatcher;
-    private readonly EnemyCache enemies;
-    private readonly BoardCache boardCache;
-    private readonly BoardModel boardModel;
-    private readonly BoardTerrain boardTerrain;
-    private readonly RouteKeeper routeKeeper;
-    private readonly RouteOverlay routeOverlay;
-    private readonly ManualInputGuard inputGuard;
-    private readonly BoardWalker walker;
-    private readonly BeastmasterJob job;
-    private readonly BossModBridge bossMod;
-    private readonly CombatDriver combat;
-    private readonly BoardRunner runner;
-    private readonly WorldRouteOverlay worldRoute;
-    private readonly TeamSelector teamSelector;
-    private readonly HealthSelector healthSelector;
-    private readonly DifficultySelector difficultySelector;
-    private readonly ActionButtons actionButtons;
-    private readonly CarryContextMenu carryMenu;
-    private readonly NextRoomPanel nextRoom;
-    private readonly RankPuller rankPuller;
+    /// <summary>How often the list is looked at for a change of hands.</summary>
+    private static readonly TimeSpan CheckEvery = TimeSpan.FromSeconds(1);
 
-    /// <summary>
-    /// Assigned in the constructor body, never as a field initializer. Field initializers run
-    /// before the constructor runs, which is before <c>Create&lt;Services&gt;()</c> has filled
-    /// anything in — so anything reaching for a Dalamud service on construction has to be built
-    /// after that call, or it dies on a null service and the plugin fails to load.
-    /// </summary>
-    private readonly DelayedSweep delayedSweep;
-
-    public Configuration Configuration { get; }
-    public BeastCatalog Catalog { get; }
-
-    /// <summary>One filter, shared: what is typed in the Beasts tab dims the game's own bestiary.</summary>
-    public BeastFilter Filter { get; } = new();
-
-    private readonly MonsterNotebookDecorator notebook;
-
-    /// <summary>
-    /// KamiToolKit has to be initialised before a single one of its nodes may be constructed, and
-    /// it initialises asynchronously. Constructing a node early throws inside the constructor, which
-    /// hands the runtime a half-built object it can only clean up in a finalizer — and that
-    /// finalizer crashes the game. Nothing native is created until this has completed.
-    /// </summary>
-    private readonly Task kamiToolKitReady;
+    private readonly IDalamudPluginInterface pluginInterface;
+    private readonly ConcurrentDictionary<string, string> instances;
+    private readonly string id = Guid.NewGuid().ToString("N");
+    private readonly string describe;
+    private PluginCore? core;
+    private DateTime nextCheck;
+    private bool saidIdle;
 
     public Plugin(IDalamudPluginInterface pluginInterface)
     {
+        this.pluginInterface = pluginInterface;
         pluginInterface.Create<Services>();
         ECommonsMain.Init(pluginInterface, this);
 
-        Configuration = Services.PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-        if (Configuration.Migrate())
-            Configuration.Save();
-        delayedSweep = new DelayedSweep();
-        Catalog = new BeastCatalog();
+        var version = pluginInterface.Manifest.AssemblyVersion?.ToString() ?? "0.0.0.0";
+        describe = $"{(pluginInterface.IsDev ? "dev build" : "installed")} v{version}";
 
-        recorder = new EventRecorder();
-        actionWatcher = new ActionWatcher();
-        runRecorder = new RunRecorder(recorder, actionWatcher);
-        fightSelector = new FightSelector(Configuration, Catalog);
-        rankWatcher = new RankWatcher(Configuration);
-        enemies = new EnemyCache();
-        boardCache = new BoardCache(Configuration);
-        boardModel = new BoardModel(Configuration);
-        boardTerrain = new BoardTerrain(Configuration, boardModel);
-        routeKeeper = new RouteKeeper(Configuration, Catalog, boardModel, boardTerrain);
-        inputGuard = new ManualInputGuard(Configuration, actionWatcher);
-        walker = new BoardWalker(Configuration, boardModel, boardTerrain, inputGuard);
-        job = new BeastmasterJob();
-        bossMod = new BossModBridge(Configuration);
-        combat = new CombatDriver(Configuration, job, inputGuard, bossMod, actionWatcher);
-        teamSelector = new TeamSelector(Configuration, Catalog, rankWatcher);
-        healthSelector = new HealthSelector(Catalog);
-        worldRoute = new WorldRouteOverlay(Configuration, boardModel, boardTerrain, routeKeeper, walker);
-        runner = new BoardRunner(Configuration, boardModel, boardTerrain, routeKeeper, walker, combat, fightSelector,
-                                 healthSelector, Catalog);
-        difficultySelector = new DifficultySelector(Configuration);
-        rankPuller = new RankPuller(rankWatcher);
+        instances = pluginInterface.GetOrCreateData(ShareTag, () => new ConcurrentDictionary<string, string>());
+        instances[id] = Entry(pluginInterface.IsDev, version, DateTime.UtcNow.Ticks, false);
 
-        kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
-        notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
-                                                () => kamiToolKitReady.IsCompletedSuccessfully);
-        actionButtons = new ActionButtons(Configuration, teamSelector, fightSelector, healthSelector,
-                                          () => kamiToolKitReady.IsCompletedSuccessfully);
-        carryMenu = new CarryContextMenu(Configuration, Catalog, recorder);
-        nextRoom = new NextRoomPanel(Configuration, boardCache, enemies, boardModel, routeKeeper, StepToNextRoom,
-                                     () => kamiToolKitReady.IsCompletedSuccessfully);
-        routeOverlay = new RouteOverlay(Configuration, boardModel, routeKeeper,
-                                        () => kamiToolKitReady.IsCompletedSuccessfully);
-
-        var tabs = new List<ITab>
-        {
-            new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
-            new RunTab(Configuration, boardModel, routeKeeper, runner),
-            new SettingsTab(Configuration, fightSelector, teamSelector, difficultySelector, nextRoom),
-            new DebugTab(Configuration,
-            [
-                new RunDebugTab(Configuration, boardModel, boardTerrain, routeKeeper, routeOverlay, runRecorder, walker,
-                                inputGuard, combat, bossMod, job, runner),
-                new BoardTab(Catalog, recorder, runRecorder, rankWatcher, enemies, boardCache),
-                new AddonsTab(Configuration, delayedSweep),
-                new SheetsTab(Configuration),
-            ]),
-        };
-
-        mainWindow = new MainWindow(tabs);
-        windowSystem.AddWindow(mainWindow);
-
-        Services.Commands.AddHandler(CommandName, new CommandInfo(OnCommand)
-        {
-            HelpMessage = "Open BeastMastr. Also: /beastmastr beasts, /beastmastr settings, " +
-                          "/beastmastr room (open or close the next-room window), " +
-                          "/beastmastr record (start or stop recording a run to a file), " +
-                          "/beastmastr scan (scan the board's ground with vnavmesh), " +
-                          "/beastmastr run [boards] (play the board on its own), /beastmastr pause, " +
-                          "/beastmastr continue (the room in hand is finished), /beastmastr stop (stop everything), " +
-                          "/beastmastr step (walk to the next room only), /beastmastr combat (fight on or off), " +
-                          "/beastmastr tab (the Run tab).",
-        });
-
-        Services.PluginInterface.UiBuilder.Draw += windowSystem.Draw;
-        Services.PluginInterface.UiBuilder.Draw += worldRoute.Draw;
-        Services.PluginInterface.UiBuilder.OpenMainUi += ToggleMainUi;
-        Services.PluginInterface.UiBuilder.OpenConfigUi += OpenSettings;
+        Decide();
+        Services.Framework.Update += OnUpdate;
     }
 
-    private void OnCommand(string command, string args)
+    private void OnUpdate(IFramework framework)
     {
-        var words = args.Trim().ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var verb = words.Length > 0 ? words[0] : string.Empty;
+        if (DateTime.Now < nextCheck)
+            return;
 
-        switch (verb)
+        nextCheck = DateTime.Now + CheckEvery;
+        try
         {
-            case "settings":
-            case "config":
-                OpenSettings();
-                break;
-
-            case "beasts":
-                mainWindow.OpenAt("beasts");
-                break;
-
-            case "room":
-                nextRoom.Toggle();
-                break;
-
-            case "record":
-                runRecorder.Toggle();
-                break;
-
-            case "scan":
-                boardTerrain.RequestScan();
-                Services.Chat.Print($"[BeastMastr] {boardTerrain.Status}");
-                break;
-
-            case "run":
-                runner.Start(words.Length > 1 && int.TryParse(words[1], out var boards) ? boards : Configuration.RunCount);
-                break;
-
-            case "pause":
-                runner.TogglePause();
-                break;
-
-            case "continue":
-                runner.Continue();
-                break;
-
-            case "tab":
-                mainWindow.OpenAt("run");
-                break;
-
-            case "":
-                ToggleMainUi();
-                break;
-
-            case "step":
-                StepToNextRoom();
-                break;
-
-            case "stop":
-                StopEverything("Stopped by /beastmastr stop.");
-                break;
-
-            case "combat":
-                combat.Toggle();
-                Services.Chat.Print($"[BeastMastr] Fighting: {combat.Status}");
-                break;
-
-            default:
-                Services.Chat.Print($"[BeastMastr] Unknown command \"{verb}\". /xlhelp lists what /beastmastr takes.");
-                break;
+            Decide();
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error(ex, "Deciding which BeastMastr copy is active failed.");
         }
     }
 
-    /// <summary>Walks one room along the route. The one thing a single press should do.</summary>
-    private void StepToNextRoom()
+    /// <summary>Builds the core when this copy should be at work and nobody else is; steps down when not.</summary>
+    private void Decide()
     {
-        routeKeeper.Replan();
-        var next = routeKeeper.NextEvent;
-        if (next < 0)
+        var mine = instances.TryGetValue(id, out var entry) ? entry : null;
+        if (mine == null)
+            return;
+
+        var winner = instances.OrderByDescending(pair => Rank(pair.Value))
+                              .ThenBy(pair => Loaded(pair.Value))
+                              .First().Key;
+
+        if (winner != id)
         {
-            Services.Chat.Print("[BeastMastr] There is no next room on the route: " +
-                                string.Join(" ", routeKeeper.Plan.Notes.DefaultIfEmpty(boardModel.Status)));
+            if (core != null)
+            {
+                core.Dispose();
+                core = null;
+                SetActive(false);
+                Services.Chat.Print($"[BeastMastr] Another copy of BeastMastr was loaded and takes over; this " +
+                                    $"one ({describe}) is now idle. Disable one of them in the plugin installer.");
+            }
+
+            if (!saidIdle)
+            {
+                saidIdle = true;
+                Services.Log.Warning($"BeastMastr is loaded more than once; this copy ({describe}) stays idle.");
+                Services.Chat.Print($"[BeastMastr] BeastMastr is loaded twice. This copy ({describe}) stays idle " +
+                                    "so the two do not undo each other's clicks. Disable one of them in the " +
+                                    "plugin installer.");
+            }
+
             return;
         }
 
-        if (walker.Walk(next))
-            Services.Chat.Print($"[BeastMastr] {walker.Status}");
+        // The winner waits until whoever was at work before has let go of the commands and windows.
+        if (core != null || instances.Any(pair => pair.Key != id && IsActive(pair.Value)))
+            return;
+
+        core = new PluginCore(pluginInterface);
+        SetActive(true);
+        if (instances.Count > 1)
+            Services.Log.Warning($"BeastMastr is loaded more than once; this copy ({describe}) is the active one.");
     }
 
-    private void StopEverything(string reason)
+    private void SetActive(bool active)
     {
-        runner.Stop(reason);
-        walker.Stop(null);
-        combat.Stop(reason);
-        boardTerrain.Cancel();
-        Services.Chat.Print($"[BeastMastr] {reason}");
+        if (instances.TryGetValue(id, out var entry))
+            instances[id] = entry[..entry.LastIndexOf('|')] + (active ? "|1" : "|0");
     }
 
-    private void ToggleMainUi() => mainWindow.Toggle();
+    /// <summary>"dev|version|loaded ticks|active", in a type every copy's load context shares.</summary>
+    private static string Entry(bool dev, string version, long loaded, bool active) =>
+        $"{(dev ? 1 : 0)}|{version}|{loaded}|{(active ? 1 : 0)}";
 
-    private void OpenSettings() => mainWindow.OpenAt("settings");
+    private static (int Dev, Version Version) Rank(string entry)
+    {
+        var parts = entry.Split('|');
+        return (parts[0] == "1" ? 1 : 0, Version.TryParse(parts[1], out var version) ? version : new Version(0, 0));
+    }
+
+    private static long Loaded(string entry) => long.TryParse(entry.Split('|')[2], out var ticks) ? ticks : 0;
+
+    private static bool IsActive(string entry) => entry.EndsWith("|1", StringComparison.Ordinal);
 
     public void Dispose()
     {
-        Services.PluginInterface.UiBuilder.Draw -= windowSystem.Draw;
-        Services.PluginInterface.UiBuilder.Draw -= worldRoute.Draw;
-        Services.PluginInterface.UiBuilder.OpenMainUi -= ToggleMainUi;
-        Services.PluginInterface.UiBuilder.OpenConfigUi -= OpenSettings;
+        Services.Framework.Update -= OnUpdate;
 
-        Services.Commands.RemoveHandler(CommandName);
+        core?.Dispose();
+        core = null;
 
-        windowSystem.RemoveAllWindows();
-        mainWindow.Dispose();
-        delayedSweep.Dispose();
-        notebook.Dispose();
-        runRecorder.Dispose();
-        actionWatcher.Dispose();
-        recorder.Dispose();
-        fightSelector.Dispose();
-        rankWatcher.Dispose();
-        enemies.Dispose();
-        boardCache.Dispose();
-        runner.Dispose();
-        combat.Dispose();
-        walker.Dispose();
-        inputGuard.Dispose();
-        routeKeeper.Dispose();
-        boardTerrain.Dispose();
-        boardModel.Dispose();
-        teamSelector.Dispose();
-        healthSelector.Dispose();
-        difficultySelector.Dispose();
-        actionButtons.Dispose();
-        carryMenu.Dispose();
-        nextRoom.Dispose();
-        routeOverlay.Dispose();
-        rankPuller.Dispose();
-        KamiToolKitLibrary.Dispose();
+        instances.TryRemove(id, out _);
+        pluginInterface.RelinquishData(ShareTag);
 
         ECommonsMain.Dispose();
     }
