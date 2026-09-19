@@ -45,6 +45,10 @@ public sealed unsafe class EventRecorder : IDisposable
         XbmColumns.PetParty.Addon,
         XbmColumns.MonsterNotebook.Addon,
         XbmColumns.StageDetailList.Addon,
+
+        // The result and the loot after it: rolling Need is a click with no callback of its own.
+        XbmColumns.RunWindows.Result,
+        "NeedGreed",
     ];
 
     public sealed record Entry(DateTime At, string Addon, string EventType, int EventParam, string Detail);
@@ -54,6 +58,12 @@ public sealed unsafe class EventRecorder : IDisposable
     public bool Recording { get; set; }
 
     public IReadOnlyList<Entry> Entries => entries;
+
+    /// <summary>
+    /// Every entry as it is recorded, for the run recorder to weave into its timeline. Raised only
+    /// while <see cref="Recording"/> is on, like the list itself.
+    /// </summary>
+    public event Action<Entry>? Recorded;
 
     private delegate bool FireCallbackDelegate(AtkUnitBase* addon, uint count, AtkValue* values, bool close);
 
@@ -141,7 +151,13 @@ public sealed unsafe class EventRecorder : IDisposable
     /// </summary>
     private static bool Worth(string addon) => addon.Length > 0;
 
-    /// <summary>The values as sent, which is exactly what a replay needs to send back.</summary>
+    /// <summary>
+    /// The values as sent, which is exactly what a replay needs to send back.
+    ///
+    /// Each one is printed as what it is. Printing <c>.Int</c> for all of them turned a string into
+    /// the low half of its pointer and a bool into whatever the other bytes held, which reads like a
+    /// number the game sent and is not one.
+    /// </summary>
     private static string Describe(uint count, AtkValue* values)
     {
         if (values == null)
@@ -149,9 +165,28 @@ public sealed unsafe class EventRecorder : IDisposable
 
         var parts = new List<string>();
         for (var i = 0; i < count && i < 8; i++)
-            parts.Add($"[{i}] {values[i].Type}={values[i].Int}");
+            parts.Add($"[{i}] {values[i].Type}={ValueText(&values[i])}");
 
         return string.Join(" ", parts);
+    }
+
+    private static string ValueText(AtkValue* value)
+    {
+        try
+        {
+            return value->Type switch
+            {
+                AtkValueType.Int => value->Int.ToString(),
+                AtkValueType.UInt => value->UInt.ToString(),
+                AtkValueType.Bool => (value->Byte != 0).ToString(),
+                AtkValueType.Undefined or AtkValueType.Null => "-",
+                _ => $"\"{new Dalamud.Game.NativeWrapper.AtkValuePtr((nint)value).GetValue()}\"",
+            };
+        }
+        catch (Exception)
+        {
+            return "?";
+        }
     }
 
     public void Clear() => entries.Clear();
@@ -175,7 +210,9 @@ public sealed unsafe class EventRecorder : IDisposable
     /// <summary>Newest first: the click you just made is the one you are looking for.</summary>
     private void Record(string addon, string kind, int param, string detail)
     {
-        entries.Insert(0, new Entry(DateTime.Now, addon, kind, param, detail));
+        var entry = new Entry(DateTime.Now, addon, kind, param, detail);
+        entries.Insert(0, entry);
+        Recorded?.Invoke(entry);
 
         if (entries.Count > Capacity)
             entries.RemoveRange(Capacity, entries.Count - Capacity);

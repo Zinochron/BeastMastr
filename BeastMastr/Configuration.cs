@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Dalamud.Configuration;
 
 namespace BeastMastr;
@@ -7,7 +8,11 @@ namespace BeastMastr;
 [Serializable]
 public class Configuration : IPluginConfiguration
 {
-    public const int CurrentVersion = 1;
+    /// <summary>
+    /// 2: Parting Blow on by default, since that is how the job was played in the first recording.
+    /// 3: treasure takes a random piece of gear by default.
+    /// </summary>
+    public const int CurrentVersion = 4;
 
     public int Version { get; set; } = CurrentVersion;
 
@@ -70,6 +75,211 @@ public class Configuration : IPluginConfiguration
     /// <summary>What was taken into the last fight, so it can be taken into the next one.</summary>
     public List<uint> LastFightBeasts { get; set; } = [];
 
+    // ---- Board automation -------------------------------------------------
+
+    /// <summary>
+    /// The board last seen in a board window, as its <c>XBMContentStageEventMap</c> row. The graph is
+    /// read from the sheet by this, so the board is known out in the run where no window is open.
+    /// </summary>
+    public uint LastBoardRowId { get; set; }
+
+    /// <summary>
+    /// Rooms picked on the board, per board row, by event index. A pick binds its move for as long as
+    /// the run can still reach it; picking another room on the same move replaces it.
+    /// </summary>
+    public Dictionary<uint, List<int>> ChosenRooms { get; set; } = [];
+
+    /// <summary>
+    /// Room kinds from most to least wanted, as <see cref="Rules.BoardRoomKind"/> numbers. Empty means
+    /// the default order. It starts empty on purpose: a list that starts filled has the saved one
+    /// appended to it on every load.
+    /// </summary>
+    public List<int> RouteOrder { get; set; } = [];
+
+    /// <summary>A campsite goes first while the most hurt familiar has less than this share of HP.</summary>
+    public float CampsiteBelowHpShare { get; set; } = Rules.RoutePreferences.Default.CampsiteBelowHpShare;
+
+    public bool AvoidElite { get; set; }
+
+    /// <summary>
+    /// How close to a room's centre counts as stepping onto it. Walking keeps at least this far from
+    /// every room it is not heading for. A guess until a run recording measures it.
+    /// </summary>
+    public float RoomTriggerRadius { get; set; } = 2f;
+
+    /// <summary>Mark the route on the game's board window, with a pin on every fork to pick a room.</summary>
+    public bool ShowRouteOnBoard { get; set; } = true;
+
+    /// <summary>Draw the route's next step on the board itself: the room to go to and the way there.</summary>
+    public bool ShowRouteInWorld { get; set; } = true;
+
+    public const int TreasureByHand = -1;
+    public const int TreasureRandomGear = -2;
+
+    /// <summary>
+    /// Which of a treasure coffer's four offers the run takes: 0..3 by position,
+    /// <see cref="TreasureRandomGear"/> for a random piece of gear, <see cref="TreasureByHand"/> to hand
+    /// the choice to you.
+    /// </summary>
+    public int TreasurePick { get; set; } = TreasureRandomGear;
+
+    /// <summary>
+    /// At a shop the run buys nothing and leaves. On: it hands the shop to you instead, and carries on
+    /// once you have left it.
+    /// </summary>
+    public bool ShopByHand { get; set; }
+
+    /// <summary>
+    /// In a shop, buy the Beast Gear the tokens allow — the dearest first, never a piece already held —
+    /// before leaving.
+    /// </summary>
+    public bool ShopBuysGear { get; set; } = true;
+
+    /// <summary>With the gear bought, spend the tokens left on healing items, strongest first.</summary>
+    public bool ShopBuysPotions { get; set; } = true;
+
+    /// <summary>At or below this share of HP, a coffer's healing item is taken instead of gear.</summary>
+    public float TreasureHealBelow { get; set; } = 0.5f;
+
+    /// <summary>
+    /// At a campsite, rest only with as many familiars as heal the most in total. Its 90% is shared
+    /// between you and the familiars picked, and a share that heals past full is lost.
+    /// </summary>
+    public bool CampsiteAvoidOverheal { get; set; } = true;
+
+    /// <summary>Drink the Crucible's healing items: Beast Potions and Crucible Ash.</summary>
+    public bool UsePotions { get; set; } = true;
+
+    /// <summary>Throw a Fang or Celestial Sand once this many adds attack you or your familiars.</summary>
+    public bool UseAreaItems { get; set; } = true;
+
+    public int AreaItemAtAdds { get; set; } = 3;
+
+    /// <summary>In a fight, drink the strongest at or below this share of HP.</summary>
+    public float PotionInFightBelow { get; set; } = 0.4f;
+
+    /// <summary>On the board, drink until above this share of HP, the smallest item that gets there first.</summary>
+    public float PotionOnBoardBelow { get; set; } = 0.6f;
+
+    /// <summary>
+    /// At a campsite the run picks the most hurt familiars. Off: it rests alone — you recover 90%,
+    /// the familiars keep watch.
+    /// </summary>
+    public bool CampsiteRestFamiliars { get; set; } = true;
+
+    /// <summary>How many boards <c>/beastmastr run</c> plays when no number is given.</summary>
+    public int RunCount { get; set; } = 1;
+
+    /// <summary>A board lost to a wipe counts as played, and the next one is started.</summary>
+    public bool ContinueAfterLostBoard { get; set; } = true;
+
+    // ---- When you take over ----------------------------------------------
+    // Whatever the automation is doing, your own input wins at once. These decide what happens after.
+
+    /// <summary>Stop the run for good on manual input instead of pausing it.</summary>
+    public bool AbortOnManualInput { get; set; }
+
+    /// <summary>How long after your last input a paused run carries on.</summary>
+    public float ResumeDelaySeconds { get; set; } = 3f;
+
+    /// <summary>Typing into chat or a text field, and keys ImGui is using, do not count as taking over.</summary>
+    public bool IgnoreMenuInput { get; set; } = true;
+
+    public bool CountMovementInput { get; set; } = true;
+    public bool CountJumpInput { get; set; } = true;
+    public bool CountTargetingInput { get; set; } = true;
+
+    /// <summary>An action pressed on a hotbar. Automated actions never go through the hotbar.</summary>
+    public bool CountActionInput { get; set; } = true;
+
+    /// <summary>How far the left stick has to be pushed to count, 0 to 1.</summary>
+    public float StickDeadzone { get; set; } = 0.3f;
+
+    // ---- Fighting ---------------------------------------------------------
+
+    /// <summary>What BossMod does in a fight the run plays. Nothing, if it is not loaded.</summary>
+    public BossModRole BossModRole { get; set; } = BossModRole.Off;
+
+    /// <summary>
+    /// With BossMod off, BeastMastr dodges itself: out of what the enemies cast, and never out of the
+    /// arena's safe circle.
+    /// </summary>
+    public bool DodgeWithBeastMastr { get; set; } = true;
+
+    /// <summary>How far from an arena's middle BeastMastr's own dodging may go. Bleeding starts at about 20.5.</summary>
+    public float ArenaSafeRadius { get; set; } = 18f;
+
+    /// <summary>The preset that only moves: dodging and staying in range.</summary>
+    public string BossModDodgePreset { get; set; } = "BeastMastr Dodge";
+
+    /// <summary>The preset that moves and presses the combo.</summary>
+    public string BossModFullPreset { get; set; } = "BeastMastr Full";
+
+    /// <summary>
+    /// While BossMod plays the combo, BeastMastr still spends TP and cooldowns — BossMod's Beastmaster
+    /// module does not.
+    /// </summary>
+    public bool BeastMastrHandlesResources { get; set; } = true;
+
+    /// <summary>With no Heart to pair an axe with, TP is spent from here on.</summary>
+    public int SpendTpAt { get; set; } = 200;
+
+    public bool UseBattlehorns { get; set; } = true;
+
+    /// <summary>
+    /// Send the familiar off with Parting Blow when its cooldowns are spent, to summon the next one and
+    /// have them reset. Off until a recording shows it pays.
+    /// </summary>
+    public bool UsePartingBlow { get; set; } = true;
+
+    public bool UseShieldCharge { get; set; } = true;
+
+    /// <summary>Parting Blow only while another Battlehorn is ready within this many seconds.</summary>
+    public float PartingBlowHornWithin { get; set; } = 10f;
+
+    /// <summary>…or when the target is down to this share of its HP.</summary>
+    public float PartingBlowFinisherShare { get; set; } = 0.1f;
+
+    /// <summary>Decide who takes the hits with the duty actions: Challenge draws them to you, Snarl to the familiar.</summary>
+    public bool UseDutyActions { get; set; } = true;
+
+    /// <summary>Who takes the hits while neither you nor the familiar is low.</summary>
+    public Rules.DutyTank DutyTank { get; set; } = Rules.DutyTank.Auto;
+
+    /// <summary>At or below this share of your HP, the familiar takes over with Snarl.</summary>
+    public float SnarlBelowPlayerHp { get; set; } = 0.5f;
+
+    /// <summary>At or below this share of the familiar's HP, you take over with Challenge.</summary>
+    public float ChallengeBelowFamiliarHp { get; set; } = 0.35f;
+
+    /// <summary>
+    /// The version of BeastMastr's BossMod presets last written. An older one is written again before the
+    /// next fight.
+    /// </summary>
+    public int BossModPresetVersion { get; set; }
+
+    /// <summary>
+    /// Walk into melee range with vnavmesh. While BossMod dodges it is held back only as long as no enemy
+    /// casts anything with a shape: BossMod takes a Beastmaster for a ranged job and never closes in.
+    /// </summary>
+    public bool KeepRangeWithNavmesh { get; set; } = true;
+
+    /// <summary>
+    /// Half the width of the square around an arena's middle that BossMod may move in. The arena's safe
+    /// circle is about 20 yalms; outside it, Bleeding stacks.
+    /// </summary>
+    public float ArenaHalfWidth { get; set; } = Rules.CrucibleArena.DefaultHalfWidth;
+
+    /// <summary>While you have taken over, BossMod keeps dodging. Off hands it back until you let go.</summary>
+    public bool KeepBossModWhilePaused { get; set; } = true;
+
+    /// <summary>A method rather than a property, so the saved config does not carry a copy of it.</summary>
+    public Rules.RoutePreferences BuildRoutePreferences() =>
+        new(RouteOrder.Count == 0
+                ? Rules.RoutePreferences.DefaultOrder
+                : [.. RouteOrder.Select(kind => (Rules.BoardRoomKind)kind)],
+            CampsiteBelowHpShare, AvoidElite);
+
     // ---- Data explorer ----------------------------------------------------
     // Phase 0 tooling. The Beastmaster sheets are almost entirely unnamed upstream, so the
     // explorer is how column meanings get pinned down; these remember where you left off.
@@ -116,13 +326,33 @@ public class Configuration : IPluginConfiguration
     public SavedBoard LastBoard { get; set; } = new();
 
     /// <summary>
-    /// Show the Data tab — the sheet explorer, the window inspector and the board captures. Off for
-    /// anyone installing the plugin: it is the tooling the mapping was done with, not something to
-    /// use. A config that already has it on keeps it on.
+    /// Show the Debug tab: the run automation's insides, the board captures, the window inspector and
+    /// the sheet explorer. Off for anyone installing the plugin. The name is the old "Data tab" setting's,
+    /// so a config that already has it on keeps it on.
     /// </summary>
     public bool ShowDataTab { get; set; } = false;
 
     public void Save() => Services.PluginInterface.SavePluginConfig(this);
+
+    /// <summary>Brings an older saved config up to date. Returns whether anything changed.</summary>
+    public bool Migrate()
+    {
+        if (Version >= CurrentVersion)
+            return false;
+
+        if (Version < 2)
+            UsePartingBlow = true;
+
+        if (Version < 3 && TreasurePick == 0)
+            TreasurePick = TreasureRandomGear;
+
+        // BossMod dodged out of the arena into Bleeding twice, and the third test died of it.
+        if (Version < 4)
+            BossModRole = BossModRole.Off;
+
+        Version = CurrentVersion;
+        return true;
+    }
 }
 
 /// <summary>
@@ -143,4 +373,17 @@ public class SavedRoom
     public int Kind { get; set; }
     public string Label { get; set; } = string.Empty;
     public string Detail { get; set; } = string.Empty;
+}
+
+/// <summary>How much of a fight BossMod plays.</summary>
+public enum BossModRole
+{
+    /// <summary>BossMod stays out of it; BeastMastr presses everything and walks into range itself.</summary>
+    Off,
+
+    /// <summary>BossMod moves — dodging and keeping range — and BeastMastr presses everything.</summary>
+    DodgeOnly,
+
+    /// <summary>BossMod moves and presses the combo; BeastMastr spends the resources.</summary>
+    DodgeAndRotation,
 }

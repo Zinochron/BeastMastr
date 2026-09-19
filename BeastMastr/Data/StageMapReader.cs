@@ -38,7 +38,12 @@ public static unsafe class StageMapReader
 
     public static bool IsOpen => Find(out _, out _);
 
-    private static bool Find(out AtkUnitBase* addon, out AtkComponentXBMContentStageEventMap* map)
+    private static bool Find(out AtkUnitBase* addon, out AtkComponentXBMContentStageEventMap* map) =>
+        Find(out _, out addon, out map);
+
+    /// <summary>The board's event map and the window it was found in, whichever of the two that is.</summary>
+    internal static bool Find(out string addonName, out AtkUnitBase* addon,
+                              out AtkComponentXBMContentStageEventMap* map)
     {
         foreach (var name in BoardWindows)
         {
@@ -49,11 +54,13 @@ public static unsafe class StageMapReader
             if (found == null)
                 continue;
 
+            addonName = name;
             addon = candidate;
             map = found;
             return true;
         }
 
+        addonName = string.Empty;
         addon = null;
         map = null;
         return false;

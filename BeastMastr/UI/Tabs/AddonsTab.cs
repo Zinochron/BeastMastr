@@ -37,7 +37,7 @@ public sealed class AddonsTab : ITab
         addonName = configuration.LastAddon;
     }
 
-    public string Title => "Addons";
+    public string Title => "Windows";
     public string Id => "addons";
 
     public void Draw()

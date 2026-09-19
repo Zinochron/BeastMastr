@@ -6,12 +6,14 @@ Written for whoever touches this next, including future me.
 
 | Folder | What lives there |
 |---|---|
-| `Data/` | Reading the game: Excel sheets, addon values and node trees, the beast catalogue |
-| `Rules/` | Pure calculation: the beast model, trait classification, filtering |
+| `Data/` | Reading the game: Excel sheets, addon values and node trees, the beast catalogue, the board model and its ground |
+| `Rules/` | Pure calculation: the beast model, trait classification, filtering, the board graph and the route |
 | `Native/` | Everything that mutates the game's UI: KamiToolKit node injection |
+| `Automation/` | Everything that changes game state: callbacks sent to windows, and later movement and actions |
+| `Ipc/` | Other plugins, over their IPC: vnavmesh now, BossMod later |
 | `UI/` | ImGui windows and tabs |
 
-`Data` and `Rules` never change game state. `Native` is the only place that writes.
+`Data` and `Rules` never change game state. `Native` and `Automation` are the only places that write.
 `Rules` additionally holds no Dalamud references at all, so it can be exercised from a console
 harness the way LootMastr's `Planning` is.
 
@@ -1391,3 +1393,1030 @@ nothing but the presentation.
 
 A setting that no longer exists cannot be saved as on, which is the point of removing the property
 rather than only the drawing. An old config carrying `ShowBoardOverlay` is simply ignored.
+
+## Board automation, from the ground up
+
+The goal: `/beastmastr run` plays a whole board on its own. It is built in the order the plan fixed —
+record what is not known, place the board in the world, scan the ground, pick a route on the board
+window, then walking, the rotation, the rooms and the runner that ties them together.
+
+### Recording a run
+
+`Data/RunRecorder.cs` writes a timeline to `captures/run-*.txt` while `/beastmastr record` is on:
+condition flags, windows opening (with their values, and their node tree the first time) and the
+values that change while they stay open, every callback, every action used, the combo, the raw gauge,
+the familiar bytes, the board's current event, the target, casts, statuses, objects appearing and
+going, chat the game writes, and the player's position ten times a second.
+
+It exists because everything the automation still lacks is a *sequence* — what "Commence Battle"
+sends, what closes the spoils, what the job presses while the gauge does what — and a capture is a
+moment. One board played by hand with it on answers all of it.
+
+`Data/ActionWatcher.cs` watches `ActionManager.UseAction` and the hotbar's `ExecuteSlot` and
+`ExecuteSlotById`. A use that arrives inside a hotbar press is the player's; BossMod and this plugin
+call `UseAction` directly and never pass through the hotbar. That is how a manual press will be told
+from an automated one later, which `UseAction` alone could not say.
+
+`EventRecorder` prints callback values as their own type now. It printed `.Int` for everything, which
+turned a string into half a pointer.
+
+### The board is in the game data, links included
+
+Found offline with a Lumina dump, and it replaces every screen-position heuristic:
+
+- **`XBMContentStageEventMap`**, a subrow sheet, one row per board, one subrow per drawn cell:
+  `X, Y, Type, EventIndex, LinkedEventIndex`, all UInt8. Type 1 is a room. Every other type is a piece
+  of a link *from* `EventIndex` *to* `LinkedEventIndex` — 6 straight, 4/9 and 5/10 the diagonals, 7/8
+  sideways on the fifth board, where a link spans two cells. Type 0 is padding. Y counts down the
+  window: the start (event 0) has the largest Y, the boss the smallest. X is the column, 6 in the middle.
+- **`XBMContentStageEvent`**, subrow index = event index: `Move, EventType, ?, ?`. Event type 1 is the
+  start, then the room list's kind ids plus two — 2 Enemy, 3 Elite, 4 Boss, 5 Shop, 6 Campsite,
+  7 Treasure, 8 Random. Checked move for move and kind for kind against the room lists captured at the
+  entrance.
+- The board window's component carries the same five bytes live, as
+  `AtkComponentXBMContentStageEventMap.EventMapEntries`, plus `CurrentEventIndex`, `GridSize` and
+  `XBMContentStageEventMapRowId` — the board's row in the sheet. The "tile index" the component hands
+  out per drawn node is an index into these entries. That is why a twelve-room board handed out indices
+  up to 28: the links are entries too.
+- The room list at the entrance counts back from the boss: list index = highest event − event.
+
+All five boards come out as whole graphs — one start, one boss, nothing leading nowhere — and the
+harness asserts it. `Rules/BoardGraph.cs` builds them, `Data/BoardSheets.cs` reads the sheets,
+`Data/BoardEventMapReader.cs` reads the live component.
+
+### Placing the board in the world
+
+`Rules/BoardJoin.cs` pairs every room with its map icon. Rows pair by order from the start, columns by
+position (map X 320 per column, taken from the icons themselves), and every pair has to agree on the
+kind. A mirrored or shifted set of icons is refused rather than joined; the harness checks both. The
+icon range 63850–63859 counts as rooms, known kind or not, so an unidentified icon cannot shift a row.
+
+`Data/BoardModel.cs` keeps it together: the board's row (remembered in the config, since the window
+has to be open to name it), the graph, the join, where the run stands — the window's marked event
+while it is up, else the room trigger object 2015483, which sits on the current platform — and, while
+the window is open, `Rules/PreviewProjection.cs`: grid to screen fitted from the drawn tiles, world
+to grid linear across the columns and piecewise down the rows, because the platforms are not evenly
+spaced (7.5 and 9 yalms alternate on the first board).
+
+The start has no icon. Its position is measured when the board marks event 0, else estimated five
+yalms short of the first room, which is where one capture had the player standing.
+
+### Scanning the ground
+
+`Ipc/NavmeshIpc.cs` wraps vnavmesh 1.2.3.14. Every signature was read off the installed dll with
+reflection — the lambdas it registers keep their parameter and return types — because an IPC type
+mismatch fails at runtime, not at build time. `Nav.Pathfind` returns `Task<List<Vector3>>`,
+`Query.Mesh.PointOnFloor` is `(Vector3, bool allowUnlandable, float halfExtentXZ) → Vector3?`,
+`Nav.Rebuild` returns a bool, `Path.Stop` is a plain action.
+
+`Data/BoardTerrain.cs` asks, and never moves:
+
+1. the floor under every room — a room off the mesh cannot be walked to, and usually means the mesh
+   cached for this zone belongs to a different board, which is what "Rebuild the mesh" is for;
+2. a half-yalm grid of the ground around the board, for the map;
+3. every link as a walk: a straight line if the floor holds along it, a planned path if not, and in
+   either case the closest it comes to any *other* room. The columns are five yalms apart and walking
+   onto a platform starts its room, so a walk that comes within the trigger radius (a setting, 2 y by
+   default) plus half a yalm of a room it is not heading for is retried around that room, and marked
+   unsafe if it still does. The route never takes an unsafe link.
+
+A few hundred queries a frame at most. The result is stored per board in the config folder as JSON.
+
+### Picking the route
+
+`Rules/RoutePlanner.cs` scores whole paths, not single rooms — a good room can lead into a lane whose
+next rooms are worse. A room picked by hand binds its move while it is still reachable; everything
+else follows the preference order (treasure, shop, campsite, enemy, random, elite by default), a
+campsite jumps to the front while the most hurt familiar the team list last showed is under the set
+share, and elite rooms can be avoided outright. Ties go to the lower event index, so a board plans the
+same way twice. It is planned again every quarter second, from where the run stands.
+
+`Data/RouteKeeper.cs` holds the picks, per board. `Native/RouteOverlay.cs` draws the route on the
+board window — an arrow on every planned room, a star on every picked one — and puts a pin in the
+corner of every room on a fork; clicking the pin picks the room. The marks hang off the window's root,
+not the tiles: the tiles are components inside a component, and the team list's buttons, which work,
+hang off a root too. The Run tab offers the same picks as buttons and on its map.
+
+### The job, read offline
+
+Beast Tamer is ClassJob 43. From the `Action` and `ActionTransient` sheets:
+
+| Id | Action | Level | What |
+|---|---|---|---|
+| 44879 | Smash Axe | 1 | combo 1, GCD |
+| 44883 | Axeblade Bite | 2 | combo 2 after Smash Axe |
+| 44885 | Shieldsplitter | 12 | combo 3 after Axeblade Bite, +15 TP |
+| 44884, 44887, 44888, 44889 | Avalanche, Mistral, Spinning, Gale Axe | 4, 8, 14, 16 | 100 TP minimum, spends all TP, potency 400 to 1000 with TP; shared 5 s timer (group 16); affinity Rampant, Durant, Eldritch, Volant |
+| 44930 to 44933 | Brutal Rage, Hawkish Talons, Risen Fall, Calamity | 50 | the four axes at 250 TP (trait 758) |
+| 47093 | Trick | 8 | 100 familiar TP; grants a Heart |
+| 44890, 47092 | Tempered Release | 18 | 30 s; needs One with Nature (4601) |
+| 44895 | Borrow | 22 | 30 s; grants a Kinship, turns Beast Mode into that kinship's action |
+| 44886 | Beast Mode | 22 | GCD |
+| 44891 | Parting Blow | 6 | 10 s; the familiar retreats after an AoE of 1000 |
+| 44881, 44892, 44894 | First, Second, Third Battlehorn | 1, 10, 20 | 1 s cast; summons that slot's familiar |
+| 44893 | Shield Charge | 24 | 60 s gap closer |
+| 44905, 44904 | Rally, Rallying Cheer | 28, 40 | 120 s; spend Instinct stacks for TP and familiar TP |
+
+The resource loop: the combo builds TP (cost type 111); Trick spends familiar TP (cost type 112) and
+grants a Heart — Volant 4595, Rampant 4596, Durant 4597, Eldritch 4598. An axe whose affinity follows
+the Heart completes an intentional combo: Rampant after Volant, Durant after Rampant, Eldritch after
+Durant, Volant after Eldritch. Those grant Sunstrider 4599 or Moonstalker 4600, and a skill of the
+other one completes the infinitive combo. Summoning a familiar grants One with Nature (trait 692) and,
+from 30 and 34, resets Tempered Release and Borrow.
+
+BossMod 7.5.6.5 knows the job (`BossMod.BST`), but its "xan BST" rotation presses the combo only; its
+gauge read is commented out. The gauge layout it declares — counted from the gauge pointer, past eight
+bytes: player TP, familiar TP, the last familiar action's TP, the summoned beast — is what
+`Data/GaugeReader.cs` reads raw, since neither ClientStructs nor Dalamud has a struct for it. What each
+byte does in a fight is for the first run recording to show.
+
+### Walking one room
+
+`Automation/Run/BoardWalker.cs` walks to one room and never further — a path over several rows is one
+more chance to cross a platform on the way. It follows the link the ground scan checked, starting from
+wherever the player stands; if the straight way from there comes too close to another room, it goes
+back over the current room first. It stops as the room starts (the board marking it, the trigger object
+moving onto it, the team list switching to a fight or a campsite, a shop or treasure window, combat)
+and stops hard if the player comes within the trigger radius of a room it was not heading for.
+`/beastmastr step`, the Run tab and the next-room window's Walk button all walk to the route's next room.
+
+### Taking over
+
+`Automation/Run/ManualInputGuard.cs` reads manual input from the game's own input ids
+(`UIInputData.IsInputIdDown`) — movement 321–327, autorun, jump, the targeting ids 362–393 — plus the
+left stick, a left click on a world object, and a hotbar press from `ActionWatcher`. Input ids follow
+the player's own bindings, and vnavmesh and BossMod move the character underneath that layer, so
+neither is mistaken for the player. While a game text field or a Dalamud window has the keyboard,
+keys do not count (a setting).
+
+Whatever is running lets go the moment input is seen: the walk stops vnavmesh, the fight stops
+pressing and moving. It carries on after the set time without input — three seconds by default — or
+stops for good, if that is the setting. Which inputs count is a setting too.
+
+### Fighting
+
+`Rules/BstRotation.cs` is the rotation, pure and covered by the harness. Given a snapshot — level,
+combo, both TP values, statuses, what the game says is usable, target distance and cast, whether a
+familiar is out — it names one weaponskill and one ability:
+
+1. no familiar in the fight: the first Battlehorn that is ready;
+2. One with Nature: Tempered Release; a familiar out: Borrow;
+3. an axe that completes a combo with the Heart or star that is up; without one, the highest axe
+   once TP reaches the set threshold (200 by default) — the axes grow stronger with TP and spend all
+   of it, so spending early wastes potency;
+4. Trick when familiar TP allows and no Heart is up to be overwritten, and not under Wavering Heart;
+5. Rally and Rallying Cheer when their gauge is low;
+6. Beast Mode under a Kinship — except Soul Kinship, whose Beast Mode interrupts and is kept for a cast;
+7. Parting Blow, only if switched on, once Tempered Release and Borrow are spent (a new familiar
+   resets them from 30 and 34); Shield Charge to close a gap;
+8. the combo, in melee reach.
+
+Before 2, the duty actions decide who takes the hits: Snarl hands them to the familiar, Challenge
+takes them back. See "The second automated test" below.
+
+`Data/BeastmasterJob.cs` holds the assumed levels and combo links against the `Action` sheet as the
+plugin loads and reports any difference in the Run tab.
+
+`Automation/Combat/CombatDriver.cs` plays it: the current target if it is a living enemy, else the
+nearest one — but a new target only while a fight is under way, or once the run has started one.
+It asks `GetActionStatus` for the adjusted id before every `UseAction`, waits out the animation lock,
+and walks into reach with vnavmesh when BossMod is not moving. `/beastmastr combat` switches it on
+by hand.
+
+`Automation/Combat/BossModBridge.cs` hands the moving — and, if set, the combo — to BossMod for the
+length of a fight, by preset: "BeastMastr Dodge" is `MiscAI.NormalMovement` (Destination Pathfind,
+Range MaxRange); "BeastMastr Full" adds `MiscAI.AutoTarget` and `xan.BST`. They are created over IPC
+when missing. Whatever BossMod had active is noted and put back when the fight ends, when fighting
+stops, and on unload. vnavmesh is stopped first, so only one thing moves the character, and an
+obstacle map is generated around the fight, since BossMod has none for the Crucible. BossMod's IPC
+signatures were read off the installed 7.5.6.5 with reflection; every call returns a value.
+
+### The run
+
+`Automation/Run/BoardRunner.cs` plays a board: `/beastmastr run [boards]` or the Run tab, and nothing
+else starts it. Each step it plans from the room it last finished, walks one room, and plays what the
+room opens:
+
+| The room opens | The run |
+|---|---|
+| team list, fight mode | waits for `FightSelector` to call the last fight's familiars, then commences |
+| combat, or enemies about | fights until combat has been over for three seconds and nothing hostile is near |
+| the spoils | takes them, then moves on |
+| team list, campsite mode | picks the most hurt with `HealthSelector`, then confirms |
+| the shop | leaves it |
+| a treasure coffer | takes an item |
+| the result, after the boss | closes it; the board is done |
+
+`Automation/Run/RoomActions.cs` holds what those buttons send, each copied out of a run recording
+(below), and `ConfirmedStep` carries one through: send it, answer the `SelectYesno` that follows, see
+the window close. What cannot be carried through is handed to the player, who is told in chat and in
+the Run tab what to press; the run carries on once the game shows it was done. A room that opens
+nothing the run knows is handed over too, and the Continue button (`/beastmastr continue`) tells the
+run it is finished. Nothing is guessed. The shop is left without buying and the first treasure offer
+is taken, unless the Run tab says otherwise.
+
+`Automation/Run/RunSafety.cs` refuses to start off Beastmaster, outside the run's zone, without
+vnavmesh or without a known board; stops the run when the player goes down, the job changes or the
+zone is left before the boss; waits through loading and cutscenes; and names the loaded plugins that
+answer dialogs, press actions or move the character on their own (WrathCombo, YesAlready, TextAdvance,
+AutoDuty, Questionable, PandorasBox) as a warning.
+
+Pause (`/beastmastr pause`) stops walking and fighting where they are and picks the step up again
+after. Manual input pauses walking and fighting by itself, as above. `/beastmastr stop` ends
+everything, and BossMod gets its own presets back.
+
+More than one board needs the way back in from the entrance — choosing the board, "Challenge This
+Board", the team — which is not built yet. Until it is, the run says so after each board.
+
+### What the first run recording showed — 2026-09-16
+
+`captures/run-20260916-170423.txt`: board 1, level 30, played by hand from the start platform to the
+boss in six minutes. It answered everything the run had been handing over.
+
+**A room starts as it is stepped on.** The trigger fired 0.4 to 1.8 yalms from the room's centre in
+all nine rooms. First sign: the status "In Event" (1268) on the player and the condition flag
+SufferingStatusAffliction2, about two seconds before any window. The trigger object 2015483 moves
+onto the room at the same moment. The walker now stops on "In Event".
+
+**The board window opens only for fights**, together with the team list in fight mode, and marks the
+room *being entered*: events 1, 2, 6, 8 and 12. Campsites, treasure and shops open their own windows
+and leave the board window's mark where it was — so `BoardModel.CurrentEvent` now takes whichever of
+the mark and the trigger object moved last.
+
+**Fights happen elsewhere.** "Commence Battle" closes both windows and loads an arena in the same zone
+(X 120 or 520, far from the board at X -700); after the spoils another load puts the player back on
+the room just finished. The run waits to be back on the board before planning the next walk — there
+is a second or so between the spoils closing and the load.
+
+**The boss ends the run.** After it, a cutscene and a load back to the entrance (territory 148). No
+result window appeared in the recording.
+
+**What the buttons send**, every one recorded, with the window closing each time:
+
+| Step | Window | Values | Then |
+|---|---|---|---|
+| Commence Battle | `XBMStageDetailList` | `[Int 8]` | load into the arena |
+| Take the spoils | `XBMContentsBooty` | `[Int 1]` | `SelectYesno` "You will receive:" → `[Int 0]` |
+| Rest at a campsite | `XBMPetParty` (mode 4) | `[Int 3]` | `SelectYesno` → `[Int 0]` |
+| Leave a shop | `XBMContentsItemShop` | `[Int 0]` | `SelectYesno` "Conclude purchasing and leave the shop?" → `[Int 0]` |
+| Take treasure offer n | `XBMContentsTreasure` | `[Int 2, Int n]`, n from 0 | `SelectYesno` "Choose the angel robe?" → `[Int 0]` |
+| Buy or feed shop item n | `XBMContentsItemShop` | `[Int 2, Int n]` | team list mode 3 to pick who is fed, then a `SelectYesno` |
+
+`[Int 1]` answers No. The shop sends itself `[8]` after every change.
+
+**The team list's row click differs by job.** In a fight it is `[Int 1, UInt row]`; at a campsite and
+for a shop's feeding it is `[Int 1, Int row]`, sent as closing. `TeamListCommands` sends whichever the
+window's mode calls for. At a campsite a picked row shows at block offset +75 (a bool), where a fight
+shows its call slot at +74. Modes: 2 fight, 3 shop feeding ("Feed the grape simular to whom?"),
+4 campsite. Confirming a campsite with nobody picked asks "Rest alone while your familiars keep watch
+and recover 90% of HP?"; with a familiar picked, "Rest and recover 45% of HP for you and your: …".
+
+**The treasure coffer** offers four items in blocks of five values from 3: a bool (offered) at +0 and
+the `XBMItem` row at +3. Offers 0..3 were green beret, windblown axe, demonic armour and angel robe;
+choosing 3 asked about the angel robe and choosing 1 gave the windblown axe.
+
+**The gauge**, from 178 changes: byte 0 is the player's TP (Shieldsplitter +15, Rally +40, an axe
+spends all of it), byte 1 the familiar's TP (it rises with the familiar's attacks and Parting Blow),
+byte 2 what the familiar's last action cost (Trick at 108 familiar TP left 108 here and 0 in byte 1 —
+Trick spends everything, not 100), byte 3 the Battlehorn slot summoned (1–3, 0 while none). Bytes 4–8
+move with the instinctual combos and are not identified.
+
+**The job as it was played:** a familiar is summoned before the pull; Borrow, Beast Mode (Beastskin
+under Beast Kinship) and Tempered Release follow; Rally when TP is low; Parting Blow once Tempered
+Release is spent, and the next Battlehorn straight after it — while the old familiar is still on the
+field — which grants One with Nature again and resets Tempered Release from 30. Trick at 100 familiar
+TP or more, then the axe that answers its Heart (Rampant Heart, Mistral Axe → Moonstalker). Familiars
+are battle NPCs of the pet kind. The rotation now does all of this, Parting Blow on by default (config
+version 2 turns it on for older configs).
+
+**The ground.** A grid of the board by height: the platforms are at Y 0, about five yalms long and
+separated by bridges about one and a half yalms wide; the ground 2.5 yalms below is everywhere else.
+The straight line between two rooms of different columns does not stay on the platforms, so those
+links are planned by vnavmesh — all at platform height, and five yalms clear of any other room. The
+Run tab's map now draws platforms and ground apart. vnavmesh's own bitmap
+(`captures/navmesh-20260916-170845.bmp`) only draws what is reachable from where it was taken — the
+middle column's three rooms and their bridges there — and agrees on the widths and the nine-yalm rows.
+
+The recorder now leaves unset values out of its dumps; they were 93% of this file.
+
+### The first automated test — 2026-09-16
+
+Played with the Debug build of 17:03, not the Release build with the recorded buttons: Dalamud has both
+folders registered, and the Debug one was loaded. Both are built from now on.
+
+**The board window's "current event" follows the selection.** Opening the Board Layout at the start
+logged "marks event 1", then "event 2" as tiles were clicked — `CurrentEventIndex` is the selected
+room, not where the run stands. Walking "from event 2" while standing on the start sent the character
+straight across a gap into a wall. Three things follow:
+
+- The window's mark is now the tile flagged `IsCurrentEvent`, not the selected event.
+- `BoardModel.PositionEvent` — the room (or the start) the player stands within three yalms of — is
+  asked first. After a fight the player is put back on the room just finished, so standing on a room
+  means having entered it.
+- A walk only starts from the room the player is standing on, and always goes over that room's centre,
+  where the checked link begins. The run takes where the player stands as the room last finished,
+  whatever it thought — someone may have walked on by hand.
+
+**A fight was declared over before it began**: the arena had loaded and nothing was in combat yet. A
+fight now ends only after combat has been seen and has stopped, when the spoils open, or when the run
+is back on the board after the arena. Hostiles seen from the board no longer count as the fight
+beginning. The room that opens is taken as the one stood on, even when it is not the one walked to.
+
+**The opener**, as the player plays it: a Battlehorn, Borrow from that familiar, a second Battlehorn —
+all before the pull, and nothing is walked to or attacked until it is done. The second summon grants
+One with Nature, so the first familiar's Tempered Release and the borrowed Beast Mode are ready as the
+fight starts. The familiar only appears about half a second after the cast; for two and a half seconds
+after a Battlehorn it counts as there, or the opener would summon twice instead of borrowing.
+`GetActionStatus` is asked without the casting check, so what follows a cast is already decided during
+it; the use itself still waits.
+
+**Parting Blow** now needs a familiar to follow: another Battlehorn usable within ten seconds (a horn's
+recast only starts once its familiar has retreated; the one out, per gauge byte 3, is left out) — or
+the target at 10% HP or less, where the blow finishes it. Both are settings.
+
+**Treasure** takes a random piece of gear by default (`XBMItem` column 0 is the kind, 1 Beast Gear);
+the spoils are always taken whole.
+
+**On the board window**, "▶" and "☆" are not in the game's font and showed as bars and empty buttons.
+The arrow is now the game's own glyph (`SeIconChar.ArrowRight`), the pin a "+", the star stays. Marks
+are placed by the grid's cell size on screen rather than the tile node's own size.
+
+**On the board itself**, `UI/WorldRouteOverlay.cs` draws the next step: a green ring on the room the
+route takes next (yellow while walking), red rings on the other rooms of that move, and the checked
+way there on the ground. Nothing is drawn on the game's map; the map in the Run tab is the plugin's.
+
+### The second automated test — 2026-09-16
+
+Two whole boards ran on `/beastmastr run`: 17:56–18:02 with the recorder on
+(`captures/run-20260916-175650.txt`), and 18:05–18:16 without. Every room was walked to and
+handled — spoils, treasure, shop, boss — but only the first two fights of a board were fought.
+
+**Later fights never started, because the enemy was out of reach of the target search.** Every
+arena puts you at z −404. The first fight's Piscodemon stood 22.6 yalms away, and the boss 21. The
+Banemite and the Ogre stood at z −430, 26 yalms away, and the driver only looked 25 yalms around.
+It found no target, so it pressed nothing, not even the opener; you started those fights by hand.
+Before the pull, the search now reaches 45 yalms: the arena holds this fight alone. The run's own
+hostile search, used to see that the fight has begun and that nothing is left, reaches 45 as well.
+
+**Continue while waiting for the fight ended it.** Eight seconds into the arena, the run went to
+"the fight is over", and the only thing that ends a fight that has not begun is Continue. Continue
+before any combat now means the fight did not start: the driver is started again, and the run
+stays in the fight.
+
+**BossMod broke the Battlehorns to dodge.** The driver's Third Battlehorn went off twice while Bedrock
+Uplift was cast. Both times you were moving within 70 and 380 ms, and the cast broke. A Battlehorn has
+a one second cast in the sheet, 0.54 s under Haste. BossMod does not know a cast it did not start,
+so it slides out of it at once. Its movement module has a `Cast` track with the options Leeway,
+Explicit, Greedy, FinishMove, DropMove, FinishInstants and DropInstants. The presets now set it to
+Greedy, which never breaks a cast to move. The only casts are these one-second horns. The presets
+carry a version: older ones already in BossMod are written again before the next fight, which
+replaces any edits made to them there. The driver also starts a cast only once you have stood
+still for 300 ms, and it stops walking into reach while a horn is next.
+
+**BossMod has no module for any Crucible enemy.** None of the recording's enemy ids (19338 Piscodemon,
+19339 Banemite, 19341 Ogre, 19344 Pas de Seul, 19345/19346 its adds) is an `OID` in
+`BossMod.Modules.dll`. BossMod dodges them only by the shape the `Action` sheet gives each cast.
+
+Most area hits come from hidden helpers: BattleNpc sub kind 11, base 9020, named after the enemy,
+never targetable. The visible enemy casts a same-named action without a shape a few rows away:
+Void Flare Star is cast by the enemy as 46893 (single, radius 0) and by a helper as 46895 (circle,
+radius 100). Before the change, the recorder only kept the helpers in `obj~` lines.
+
+What the recording's casts are, by the sheet:
+
+| Enemy | Cast | Shape | Can it be dodged? |
+|---|---|---|---|
+| Piscodemon | Void Blizzard III 46889 (helper) | circle 5 | yes |
+| Piscodemon | Void Flare Star 46893 → 46895 (helper) | circle 100 | no — 439 damage at 17:57:57 |
+| Piscodemon | Arcane Blast 46899 | circle 100, 8 s | no |
+| Banemite | Bedrock Uplift 46901 → 46902–46905 (helpers) | circle 6, then rings 12/18/24 | yes, in turn |
+| Banemite | Deadly Thrust 46906 | on you | no — you pressed Snarl for it |
+| Banemite | Venom Web 46908 (helper) | placed circle 9 | yes |
+| Ogre | Scorching Smite 46913 → 46912 | cone 40 | yes |
+| Ogre | Allfire 46915 | circle 40 | no |
+| Ogre | Magma 46916/46917 (helpers) | placed circles 3/5 | yes |
+| Pas de Seul | Blood Rain 46923 → 46924 | ring 40 | yes |
+| Pas de Seul | Void Aero II 46932 / 46933 | line 60×8 / cone 60 | yes |
+| Pas de Seul | Cold Caress 46935 | on you | no — you pressed Snarl for it |
+
+`Rules/IncomingHits.cs` calls a hit unavoidable when it is aimed at you alone, or when it is a circle
+of 30 yalms or more around its caster. `Data/EnemyCasts.cs` scans every battle NPC that is not a
+familiar, helpers included. A cast without a shape takes the widest same-named neighbour within six
+rows.
+
+**The duty actions** are `ContentExAction` row 26: Duty Action I is **Challenge** (46750), Duty Action II
+is **Snarl** (46751). In the recording, `GeneralAction 27` went to Snarl.
+- Challenge: you go to the top of the enmity list, and the familiar's cover ends.
+- Snarl: the familiar goes to the top, and "takes all damage intended for the beastmaster" for 45 s.
+  You get Covered (status 2413).
+- Both have a 15 s recast in cooldown group 81, so they share one timer. Both reach 25 yalms and use
+  the enemy as target. `UseAction` takes them as plain actions, which is what the game does too.
+
+You pressed Snarl exactly twice, for Deadly Thrust and for Cold Caress. The rotation now does the
+same:
+- Snarl for a hit that cannot be dodged, and when your HP is at or below a setting (50%). Either
+  needs a familiar that is not itself low.
+- Challenge when the familiar is at or below its setting (35%) while it covers you or is being hit,
+  unless your own HP is low. While an undodgeable hit is on its way, the cover stays.
+- The setting "Otherwise, the hits go to" picks Auto (the rules above), the familiar (Snarl whenever
+  it can), or you (Challenge whenever the target turns to a familiar).
+- Neither is pressed before the pull, since both draw the target. The HP matters: status 1097
+  "Auto-heal Penalty" stops your regeneration for the whole run, and familiars carry their HP from
+  room to room. Every Challenge and Snarl is logged with its reason.
+
+**The recorder** now writes two more kinds of line:
+- `ecast`: every enemy cast as it starts, helpers included, with caster, target (you, itself, or an
+  id), cast time, and the sheet's shape. A borrowed shape is marked, and each line says whether the
+  cast counts as unavoidable.
+- `hp`: yours and your familiars' HP whenever it changes. `pos` only carries HP when you move.
+
+**Still open:** the ring sequence of Bedrock Uplift and the placed circles are dodged by BossMod's
+generic shapes. Whether that holds needs the `ecast` and `hp` lines of the next recording.
+Auto-attack (`GeneralAction 1`) is asked for once a frame for about 13 frames at the pull, and 421 times
+after the boss, always refused. It is not from a hotbar and not from BeastMastr; BossMod is the likely
+source.
+
+### The third automated test — 2026-09-16
+
+Board 1 again, 19:05–19:14, recorded in `captures/run-20260916-190511.txt`. Every fight started on its
+own now. The user's notes and the recording showed the following.
+
+**The first spoils were never confirmed.** The `SelectYesno` opened in the same frame as the spoils
+callback. `AddonReader.IsOpen` saw it visible before it had loaded, so `RoomActions.Send` refused it.
+The step moved on anyway and waited for a window that stayed open. The step now moves on only once the
+answer has really been sent. A yes that has not closed the question is sent again after a second. A
+window that is visible but not yet loaded is waited out for two seconds before the step gives up.
+
+**A dead familiar stopped the call.** Opo-opo died in the Banemite fight. At the next fight the call
+"as last time" toggled it anyway, and the game answered "Incapacitated familiars cannot be assigned to
+battlehorns." `Commence Battle` then brought up "At least one battlehorn has not been assigned. Commence
+battle anyway?", which nothing answered.
+- `PetPartyReader.Slot.IsDown` is now true for a familiar with 0 HP.
+- The fight selector leaves such a familiar out and fills its place with the healthiest familiar not
+  already wanted.
+- `Commence Battle` now answers yes to that question when it comes, since by then every familiar that
+  can fight has been called.
+
+**Beast Gear already held is refused.** The coffer offered a Ninja Eyepatch that was already held. Taking
+it brought up a `SelectOk` instead of the confirmation, and the run waited. The treasure window lists
+the gear held: blocks of five from value 75, with a Bool while the block is used, the `Item` row at +2,
+the `XBMItem` row at +3 and the name at +4. All three recordings with a coffer showed eight such
+blocks.
+- Offers of held gear are no longer picked.
+- If the game refuses an offer anyway, the `SelectOk` is closed with `[0]`, as recorded, and another
+  offer is chosen.
+- Shops are always left without buying, so they cannot run into this.
+
+**BossMod never walks in for a Beastmaster.** In `MiscAI.NormalMovement` the range "MaxRange" is melee
+range only for the roles Tank and Melee; anything else gets 25 yalms. BossMod does not give the
+Beastmaster a melee role. So after every dodge, and when the Piscodemon jumped back to the middle, the
+character stood still.
+- While no enemy casts anything a position avoids (`EnemyCasts.Dodging`) for 1.5 s, BossMod's
+  movement is now held. This uses the transient strategy `Presets.AddTransientStrategy(preset,
+  NormalMovement, "Destination", "None")`, which leaves the preset itself unchanged.
+- During the hold, vnavmesh walks into reach.
+- A cast with a shape clears the hold, and BossMod dodges again.
+- The hold is also cleared when you take over and when the fight ends.
+
+**BossMod ran the character out of the arena.** In the Banemite fight the player ran along a circle
+about 20.5 yalms from (120, −420). There Bleeding (3077, then 3078) set in and stacked: 70–80% HP and
+Opo-opo were lost.
+- BossMod read Bedrock Uplift correctly. Its `GuessDonutInner` gets the rings 6–12, 12–18 and 18–24
+  from the omens `gl_sircle_1005`, `3020` and `4836`.
+- What BossMod lacks is the arena's edge. With no module, its pathfinding bounds are the obstacle map's
+  square (`AIHintsBuilder.CalculateAutoHints` builds an `ArenaBoundsRect` from the map's view, and
+  `ObstacleMapManager.GenerateMap` sizes it as centre ± radius, capped at 60).
+- The map is now generated around the arena's middle (`Rules/CrucibleArena.cs`) with a half-width of
+  13.5, a setting. The square's corners, at 19.1, stay inside the safe circle.
+
+The known middles, by where the fights put the player (12–16 yalms from the middle):
+
+| Middle | Fights | Evidence |
+|---|---|---|
+| (120, −420) | Banemite, Ogre, Bone Bishop | helpers placed there; Bleeding at 20.5 |
+| (120, 0) | Piscodemon | helpers cast from there; the Piscodemon jumps back to it |
+| (520, −420) | the boss | adds placed around it |
+| (520, 0) | seen once in the first recording | taken by symmetry, not confirmed |
+
+The map only applies once the player is inside the square. The spawn, 16 yalms out, is not, but the
+pull walks in.
+
+**Void Blizzard III** is the Piscodemon's line of exaflares. Helpers move to (120, 0), then cast
+circles of radius 5 in rows at z −17.5, x 102.5 to 137.5 in steps of 7, one after the other. BossMod
+sees only the circles being cast, not the next steps. The arena limit and the walking in should make
+this better. Whether the rows still hit needs the next recording.
+
+**The opener** is now Battlehorn II (or III, or I below level 10), then Borrow from that familiar, then
+Battlehorn I, which comes in with One with Nature and starts the fight with its Release. Summons after
+the pull still take Battlehorn I first.
+
+The duty actions worked as intended:
+- Snarl for Arcane Blast, Deadly Thrust and Cold Caress.
+- Snarl at low HP.
+- Challenge twice, once the covering familiar dropped below 35%.
+
+A familiar that comes in hurt, like Opo-opo at 308/667, still loses a lot to a single Snarl.
+
+### The fourth automated test — 2026-09-16: dying to Bleeding, and dodging of its own
+
+Board 1, 21:17–21:21 (`captures/run-20260916-211658.txt`). The run ended in the Banemite fight (event 6)
+when the player died.
+
+**What killed the player.** Bedrock Uplift was cast at 21:20:11. BossMod ran the player out: 13.4
+yalms from the middle at 12.6 s, 21.8 at 14.7 s, then along x = 138.5, 18.5 yalms out. Bleeding
+(3077/3078) set in at 14.5 s, and it ended only with death. It took about 95 HP every three seconds,
+from 1098 HP to 0 in 33 seconds. Snarl covered for Deadly Thrust, but the Diremite came in at 290/667
+and died at 21:20:47, the same moment as the player.
+
+**The arena square did not hold BossMod.** `AIHintsBuilder.CalculateAutoHints` only uses an obstacle
+map while the player stands inside its box (`ObstacleMapManager.Find`). One step out, and BossMod's
+bounds are its default 30-yalm square around the player again. On top of that, the second fight
+logged `ObstacleMap.Generate failed`: `GenerateMap` rethrows the fault of the previous generation, so
+the first fight's map had failed too.
+
+**BossMod runs the wrong way.** In the first recording, where the fight was played by hand, the player
+stayed within 5–13 yalms of the Banemite through two Bedrock Uplifts and lost no HP. BossMod dodges
+all four hits at once. Every spot within 24 yalms is in one of them, so it runs out of the arena.
+
+**So BeastMastr dodges now, and BossMod is off by default** (config version 4 sets it off once; it can
+be turned back on in the Run tab).
+- `Rules/CastShapes.cs` reads a cast's shape the way BossMod does. From its IL: `CastType` 2 and 5 are
+  circles (5 adds the hitbox), 3 and 13 are cones (angle from the omen's "fanNNN"), 4 and 12 are lines,
+  10 is a donut (hole from the omen's "sircle_OOII"), 11 is a cross.
+- `Data/EnemyCasts.Zones` takes each cast's own shape. A placed hit is centred on
+  `BattleChara.CastInfo.TargetLocation`, and the facing comes from `CastInfo.Rotation`. It leaves out
+  single-target hits, hits placed on you (they follow you), and circles over the whole arena.
+- `Rules/Dodger.cs` dodges only the hits that land within 1.5 s of the first. It searches a 1-yalm
+  grid inside the safe circle (18 yalms, a setting) for a spot outside those hits with a yalm to spare.
+  Each spot is scored by the distance to walk plus half the distance past melee reach.
+  - Against Bedrock Uplift this steps 7 yalms out of the circle, then back to 4 yalms once the circle
+    has hit, and stays there through the rings. This is the hand-played line, and the harness checks it.
+- Outside the safe circle with nothing cast, it walks back in.
+- `CombatDriver` plans every 150 ms and walks straight to the spot with `Path.MoveTo`. It starts no
+  Battlehorn while it has somewhere to go, and walks in to the target only 1.5 s after the last dodge.
+  Each dodge is logged: "Dodging Bedrock Uplift: to (x, z)".
+
+**Still open:** the Void Blizzard III exaflare rows are dodged cast by cast. Their next steps are not
+known ahead of time.
+
+### The First Master's Board — 2026-09-16
+
+`/beastmastr run` refused the First Master's Board ("Start a board first"): the run only knew zone
+1339. Every board has a zone of its own, all marked `TerritoryIntendedUse` 62 in the TerritoryType
+sheet:
+
+| Zone | Board | Map |
+|---|---|---|
+| 1339 | First Board of the Unbroken | 1204 |
+| 1340 | Second Board of the Unbroken | 1209 |
+| 1341 | Third Board of the Unbroken | 1214 |
+| 1342 | First Master's Board | 1219 |
+| 1343 | Second Master's Board | 1224 |
+
+`BoardModel.IsRunTerritory` now asks the sheet. The master board recorded by hand
+(`captures/run-20260916-215152.txt`) has the same layout: start at (−700, 0, 0), columns at −705,
+−700 and −695, rows 7.5 yalms apart from z −9, and the map's y offset is −36 instead of −38. Its
+arenas use the same middles: the Strix, Corpse Flower and Treant at (120, −420), the Gargoyle at
+(120, 0).
+
+Its fights, by the `ecast` lines:
+- **Strix:** Plummet, circles of 10 in waves two seconds apart.
+- **Strix:** On the Properties of Quakes and of Floods, circles of 60 that cannot be dodged. Snarl
+  did not spare the player the 713 damage of Quakes.
+- **Corpse Flower:** Floral Trap, a circle of 80; Rotten Stench, a 45×12 line.
+- **Gargoyle:**
+  - Rippling Evisceration, a circle of 13, then a ring out to 30.
+  - Sweeping Evisceration, a cone.
+  - Malady, circles of 6 on a 7-yalm grid.
+  - Fivefold Fallout, circles of 60.
+- **Treant:**
+  - Rustling Breeze, cones.
+  - Arboreal Storm, a circle of 12, then rings out to 36 every two seconds; the dodger's line for
+    this is the same as for Bedrock Uplift.
+
+### The first runs on the First Master's Board — 2026-09-16
+
+Two runs, `captures/run-20260916-220836.txt` and `run-20260916-221153.txt`. Walking, scanning (15 rooms,
+17 links) and the room windows all worked on the new board.
+
+**The Morbol killed the first run, with BeastMastr dodging.** The player stood 0.6 yalms from the
+Morbol's middle, behind it. The breath (48672/48673, a cone of 50) counted that as outside, so the
+dodge answered "already clear". Then the helper's short breath (48675) came every two seconds for a
+fifth of a second, 650 damage each, under Poison, Toxicosis, Slow, Blind and Paralysis. It was always
+too short to react to.
+- A cone now hits everything within the caster's hitbox of its origin, at least 2 yalms (`Zone.Apex`).
+- A cast that `EnemyCasts` sees start again within six seconds is predicted between its casts: the
+  last shape, due an interval after the last start.
+- The recorder now writes each caster's facing and cast facing, so that a turning breath shows next
+  time.
+
+**Snarl does not cover hits on the whole arena.** Quakes did 713 damage and the breath 650 while
+Covered. Snarl is now pressed only for a hit aimed at the player, and at low HP.
+
+**The Gargoyle killed the second run, with BossMod dodging** (switched back on for that run). It ran to
+z 20.9, 21 yalms from (120, 0), into Bleeding, and the obstacle map failed again. Afterwards,
+BeastMastr's own dodging handled Rippling Evisceration correctly: out to 14 yalms from the 13-yalm
+circle, then in to 11 inside the ring from 13 to 30. Malady puts circles of 6 on a 7-yalm grid, so
+the dodge margin is now 0.5 instead of 1, which leaves the free cells usable.
+
+**Both deaths were revived** by the Ring of Sacrifice three seconds later. The run gave up anyway.
+Going down now waits up to 10 seconds for a revive.
+
+**After the campsite** the run walked on while "In Event" (1268) was still on from the rest. The walker
+took that as the next room beginning and stood waiting 15 seconds for a window. Settling now waits for
+the status to go, for up to 15 seconds. A walk that starts with the status already on ignores it until
+it has gone once.
+
+### The Gargoyle's Sweeping Evisceration — 2026-09-16
+
+`captures/run-20260916-222548.txt`. Board, campsite and revive all worked. The Gargoyle killed the run.
+
+**Every cone and line pointed north.** `BattleChara.CastInfo.Rotation` read 0 for every cast. Zones now
+take the caster's own facing, which the recorder logs as "facing" with every `ecast`. Desolation (48727,
+a line 60 long and 7 wide) had been placed wrong because of this.
+
+**Rippling Evisceration's ring had no hole.** 48721 is a ring out to 30 with no omen, so its hole could
+not be read and it was treated as a full circle. It follows the 13-yalm circle 48720, cast from the same
+spot. A ring without a hole now takes the largest circle of the same name cast from its origin.
+
+**Sweeping Evisceration** (`Rules/ScriptedMechanics.cs`): 48717 is cast for 7.9 s and has no shape of its
+own. Its hits (48718, a 60-yalm cone with no omen) are not cast. The player describes it: stretch the
+tether while it casts, get behind the Gargoyle after its dash, and go back through it after the first
+swing. The recording shows the timings, the same both times:
+
+| After | What |
+|---|---|
+| cast end + ~1.1 s | a 0.45 s dash of 6–7 yalms, towards the tethered player |
+| dash end + 1.96 s | the first swing — the player was hit |
+| dash end + 4.0 s | the second swing — the player was hit |
+
+`EnemyCasts` follows each Sweeping Evisceration from its cast through the dash (seen as the Gargoyle
+moving, then stopping). It hands the dodger:
+- a 14-yalm circle while the Gargoyle casts,
+- then a half-circle in front of the dash direction until the first swing,
+- then a half-circle behind it until the second.
+
+The dodger takes them in turn: out to 14 yalms, then behind the Gargoyle, then back through it to its
+front. The harness checks all three steps with the recorded positions. If no dash is seen within three
+seconds, the Gargoyle's own facing is used.
+
+Tethers are not recorded yet. If the swings turn out to be the other way round, swap the two cones
+in `SweepingEvisceration.Zones`.
+
+### Treant, shops and Borgny — 2026-09-16
+
+`captures/run-20260916-223448.txt`: the whole First Master's Board up to its boss. The Gargoyle was
+survived; Sweeping Evisceration logged its dash both times and was dodged in turn.
+
+**The Treant** keeps Sludge (3071) on the ground around its middle: an event object, base 2010106,
+sits under it. Sludge set in 8.0 yalms from the middle. Walking in went to 2.5 yalms of the middle,
+because `PathfindAndMoveCloseTo` was given melee reach from the middle rather than from the hitbox
+edge. The player died four seconds later, having entered with 937 of 6632 HP. Changes:
+- Walking in now stops at the hitbox's edge.
+- `GroundHazards` lists patches that hurt for as long as they are there: 2010106 at 8.5 yalms, and
+  Borgny's Poison Clouds (19674) at 6.5.
+- The dodger keeps such patches alongside whatever else is due (`Zone.Lasting`). When only patches
+  are around and none is underfoot, it does nothing.
+- The route now counts the player's own HP share next to the familiars' when choosing a campsite.
+
+**Shops buy Beast Gear** by default (`ShopBuysGear`). No full dump of the shop's values was ever taken,
+so the layout comes from diffs and hovers:
+
+| Value | Meaning |
+|---|---|
+| [1] | tokens, as text |
+| [2] | number of offers |
+| from [3], blocks of five | a Bool, the `XBMItem` row, the price as text, a Bool, and "bought" |
+
+- Hovering offer 13 showed row 14 (Ice Shield), and buying `[2, 13]` bought the Ice Shield.
+- Prices are five times `XBMItem` column 2: 140 → 700 and 91 → 455.
+- Rows 1–76 are gear (kind 1). Feed and potions are kinds 2 and 3.
+- `ShopBuyer` buys the dearest piece the tokens allow that is neither bought nor held. It answers the
+  game's "Purchase the ice shield?" only when the question names the piece (`XBMItem` column 3), and
+  answers no otherwise.
+- Gear held is found as any value that is a gear piece's `Item` id (243001–243076). Both the shop and
+  the coffer list what is held that way.
+- The recorder now writes a window's values out whole once they change by 40 or more after opening,
+  so the next shop leaves a full dump to check this against.
+
+**Borgny the Venomous**, the board's boss, fights in a fifth arena at (920, −420).
+- Toxic Breath (48807, 3 s) is followed by a leap back to the south wall (z −439.6), then a cleave
+  2.8–2.9 s after the cast ends. 48808 is a donut of 60 with no omen.
+- The player died standing 10 yalms in front of it. By the player's account, the one safe spot is
+  right behind Borgny, against the wall.
+- `ToxicBreath` gives the dodger a refuge: 6 yalms past where Borgny lands, straight back. It is
+  outside the safe circle, and the walk ends at the wall.
+- Fuming Vomit (48812) places circles of 6 that leave Poison Clouds behind; the clouds are ground
+  hazards now.
+
+### Two wipes on the second move — 2026-09-16
+
+`captures/run-20260916-225232.txt` took the right-hand room (a Corpse Flower), and
+`run-20260916-225756.txt` the left-hand one (a Morbol). Both ended in a wipe.
+
+**Both second fights began low.** The Strix leaves the player at 20–25% (1282 and 1603 of 6199 HP). Auto-
+heal is off for the whole run, and the second move has no campsite. No recording shows a crucible item
+(potion) being used, so the way to use one is not known yet.
+
+**The Morbol's breath turns.** The helper cast 48673 (a 90-degree cone of 50), then 48675 every 2.1 s,
+each 45 degrees on: facings 3.14, −2.36, −1.57, −0.79, 0.00, then 0.79 for the next 48673.
+- Repeats are now kept by caster and name, since the opening and repeating actions differ. Each
+  predicted repeat is turned by the last step (`TurningHits.Step`).
+- A cone's apex now takes the largest hitbox standing at its origin: the Morbol's, not its helper's.
+
+**The Corpse Flower's Floral Trap** (48683, 5 s, a circle of 80) drew the player in, bound (2518) and
+stunned (2656) them. Devour (48685, a cone of 8 in front) then ate them: Devoured (421) took 1100 HP to
+19. Sapling Pieces leave briar patches (event object 2015458) just before. Briar (5176) "prevents
+draw-in and knockback effects".
+- `FloralTrap` now sends the player into the nearest patch.
+- Refuges are walked to as soon as they are known, not only once they are the next hit.
+
+A run started after a death no longer says "Revived" at its start.
+
+### Drinking potions — 2026-09-16
+
+`captures/run-20260916-231237.txt` ends with a G3 Beast Potion drunk by hand, at 23:17:43. The first try, at
+23:16:33, came a moment too late: the player died with the menu open.
+
+The run's HUD, `XBMContentsMainHUD`, lists ten item slots in blocks of five from value 9: a Bool, a Bool
+while the slot holds something, the `Item` row, the `XBMItem` row and the name. Drinking goes like this:
+- The HUD sends `[Int 6, Int slot, Undefined]` with the window closing.
+- A `ContextMenu` opens offering "Use" and "Discard" (values 8 and 9, both managed strings).
+- `[Int 0, Int 0, UInt 0, Undefined, Undefined]` on the menu uses the item.
+- The slot's Bool turns false, and its name becomes "Crucible Item 1".
+
+`Automation/ItemUser.cs` does the same, looking for "Use" among the menu's strings. It only drinks
+healing items, by `XBMItem` row:
+
+| Rows | Item | Heals |
+|---|---|---|
+| 76–79 | G1–G4 Beast Potion | 10 / 23 / 36 / 50% |
+| 80–82 | G1–G3 Crucible Ash | 10 / 25 / 40%, familiars too |
+
+- In a fight it drinks the strongest item at 40% HP or below.
+- On the board, before walking on, it drinks up to 60%, using the smallest item that gets there.
+- Both thresholds are settings. After a failed try it waits ten seconds.
+
+Beast Gear is rows 1–75, not 1–76 as first assumed: row 76 is the G1 Beast Potion.
+
+The recording also holds a board being entered from the entrance (23:17:05): the board window's
+`[8]`, a `SelectYesno`, the duty finder's `ContentsFinderConfirm` `[8]`, and the load. That is what the
+re-entry for more than one board (M6) needs.
+
+### A run that would not start, and campsite overheal — 2026-09-16
+
+**"Not on the board."** `captures/run-20260916-232409.txt`: three starts in a row sat in Deciding until
+"The run is not on the board".
+- The plugin was reloaded at 23:21 while the player was in a fight's arena. The room icons were turned
+  into world positions with the arena's map: room 1 at (120, −393) instead of (−700, −9).
+- Back on the board, the raw icon positions were unchanged. The join's signature held only those, so
+  the rooms were never placed again. `OnBoard` stayed false, and the terrain was scanned around the
+  arena: 57 s and a 9 MB file.
+- The signature now includes the world positions. A wrong placement is replaced as soon as the map
+  reads right, and the terrain signature then asks for a fresh scan by itself.
+
+**Campsites share their healing.** The player alone recovers 90%. With one familiar, each recovers 45%:
+at 21:56 that was 2789 of 6199 and the Opo-opo's 1571 of 3492. So with two familiars each gets 30%.
+- `Rules/CampsiteRest.cs` picks the number of familiars that restores the most in total, counted as
+  shares of each one's HP. A share that heals past full counts only up to full, and fewer wins a tie.
+- The campsite's limit is read from its prompt ("You and 2 familiars can recover HP…").
+- `HealthSelector.RequestPick(avoidOverheal)` then picks only that many of the most hurt. The setting
+  `CampsiteAvoidOverheal` is on by default.
+
+**Which map places the board.** The fix above made it worse: with world positions in the signature,
+the join ran again in every fight's arena, and placed the rooms around the arena. The run then counted
+itself as on the board, and after Commence Battle "the fight had not begun" (both recordings of
+23:53 and 23:54). An arena shows another map of the same zone, with its own offsets. Markers now only
+get a world position while the map shown is the zone's own map (TerritoryType's `Map`, 1219 for the
+First Master's Board). Without any world positions the join keeps what it has.
+
+### Out of potions at the Treant — 2026-09-17
+
+`captures/run-20260916-235916.txt` (started 23:59): the fight started again. The recording shows:
+- shop purchases (Thunder Armor, Thief's Boots);
+- a campsite resting with one familiar ("you are missing 6%, the most hurt Cu Sith 13%");
+- the Gargoyle survived, with Sweeping Evisceration dodged in turn;
+- a G1 Crucible Ash drunk on the board.
+
+The run reached the Treant at 1654 of 6199 HP, with nothing left to drink.
+- Sludge set in at 8.4–8.7 yalms from the Treant while walking in. The patch is now 9.5.
+- Walking in to a target stops outside any lasting patch centred on it (`EnemyCasts.HazardAround`).
+
+**Healing is scarce, so it is bought and taken.**
+- With the gear bought, the shop spends the tokens left on healing items, strongest first
+  (`ShopBuysPotions`).
+- At or below half HP, a coffer's strongest healing item is taken instead of gear
+  (`TreasureHealBelow`).
+
+### As far as Borgny — 2026-09-17
+
+`captures/run-20260917-003214.txt` played the First Master's Board to its boss. What worked:
+- shops bought gear and a G2 Beast Potion;
+- the campsite rested with two familiars;
+- the Gargoyle and the Treant were survived;
+- potions were drunk in a fight and on the board;
+- a coffer gave a G3 Crucible Ash at low HP.
+
+At Borgny, the first Toxic Breath was dodged against the south wall without a scratch.
+
+**The death:** Borgny leapt back to the middle, and Shield Charge carried the player after it, through
+drifting Poison Clouds: two hits of about 850 and stacking Toxicosis. The clouds move; the ones placed at
+(920, −408) were gone from (920, −400.5).
+- Shield Charge now waits while any hit or patch is around (`BstState.MayDash`).
+- Poison Clouds count as 7.5 yalms.
+
+**The HP:** the run met Borgny at 45%, the last shop's 1100 tokens having gone on a Mystic Veil. At or
+below the board's drinking threshold (60%), the shop now buys healing items before gear.
+
+Borgny faced −0.77 when it cast the second Toxic Breath from the middle, so its refuge was predicted at the
+south-east wall. Whether it leaps straight back from its facing there is not shown yet: the player died
+before the leap.
+
+### Borgny's turn, and area items — 2026-09-17
+
+`captures/run-20260917-010634.txt` reached Borgny again, and the player ran into Toxic Breath twice.
+
+**Which way Borgny leaps.** The player's account: Borgny jumps to the middle, turns, leaps towards its back
+and cleaves. The recording pins it down:
+
+| Breath | Facing at cast start | Player at cast start | Leap |
+|---|---|---|---|
+| 01:13:46 | 0.74 | just south of Borgny (919.9, −420.6) | due north, to (920, −400.5) |
+| 01:14:37 | −3.12 | 16 yalms west (904.4, −413.9) | due east, to (939.6, −420) |
+
+- The facing at cast start is not the one Borgny leaps from.
+- Both leaps went along an axis, away from where the player stood as the cast began.
+- The leap follows the cast's end by about 0.6 s and takes about one second.
+- `ToxicBreath.FacingFor` now takes the axis towards the player at cast start. The refuge is the wall
+  behind the landing, across from the player. Once Borgny is seen leaping, the leap's own direction
+  replaces the guess.
+- The recorder writes the target's facing whenever it turns ("facing" lines), so the moment of the turn
+  shows next time.
+
+**Area items.** The first room's spoils brought a Fang of Ice ("ranged ice damage with a potency of
+2,000 to target and all enemies within 12 yalms"). The Fangs (`XBMItem` 128–134) and Celestial Sand
+(139, 18 yalms) are now thrown from the HUD the same way potions are drunk. The target is set to one of
+the adds first.
+- A throw happens once `AreaItemAtAdds` (3) enemies attack the player or a familiar within 8 yalms,
+  as the Treant's Slug Pieces do.
+- The strongest enemy, the boss, is not counted as an add.
+
+### Borgny again: its back, the opener, tornadoes — 2026-09-17
+
+`captures/run-20260917-012255.txt`.
+
+**Toxic Breath with the player on top of Borgny.** At 01:30:21 the player stood half a yalm from Borgny.
+The "towards the player" rule gave south, so the player ran north. Borgny had walked in from the south,
+still faced north, and leapt south, towards its back, as the player put it. Closer than 3 yalms, Borgny's
+own facing is now taken, snapped to an axis and followed until it leaps. Farther away, the axis towards
+the player still decides, which fits both earlier leaps. The "facing" lines were never written: the
+first comparison was against NaN. That is fixed.
+
+**The opener at the boss.** Shield Charge followed the first Battlehorn and pulled Borgny with one familiar
+out. Before the pull, only horns and Borrow go out now, and nothing is engaged until two horns are out,
+or one below the second horn's level, or no horn can still be used.
+
+**The tornadoes** are event objects named "Magitek Armor" (2012932). Four rise, three seconds apart, where
+Toxic Vomit (48809, a circle of 6 on the player) landed, and they stay until the next Toxic Vomit. One
+rose under the player at 01:32:18 (2527 → 1113 → 598 → dead).
+- They are ground hazards of 6.5 now.
+- While Toxic Vomit is cast on the player, the player carries it to the arena's edge on the far side
+  from Borgny (`ToxicVomit`, 15 yalms out).
+
+**The Fang was refused.** It was thrown 0.1 s after Shieldsplitter, and the menu's "Use" did nothing. Items
+are now only used without an animation lock and not while casting. If Fangs still fail, a recording of
+one thrown by hand will show whether they need a target picked on the ground.
+
+### Gargoyle tether, the Treant's two breezes, Borgny's clouds — 2026-09-17
+
+`captures/run-20260917-014231.txt` and `captures/run-20260917-015708.txt`.
+
+**Sweeping Evisceration** needs at least 20 yalms of tether (the user). A circle of 18 cannot hold that,
+and the Gargoyle's arena (120, 0) is a square anyway. Its Malady grid spans 102.5–137.5, and Bleeding
+began 21.5–22.5 yalms out along an axis. So `CrucibleArena.IsSquare` marks that centre, and the dodger
+searches a square of ±19.5 there. `StretchRadius` is 20.
+
+**Rustling Breeze** comes in two versions. The helpers all read facing 0, and the Treant turns to 0 as it
+casts.
+
+| Cast | Helpers | Shape | What the recordings show |
+|---|---|---|---|
+| 48776 | 48778 | One 90° cone ahead | The player stood 49° off the front and was not hit. |
+| 48777 | 48779 + 48780 | Two 150° cones | The player stood 76° off the front and was hit twice (01:48:21, 02:01:25). |
+
+The two 150° cones point to the sides, so they are turned ±90° (`RustlingBreeze.Turn`), and the middle in
+front is safe, as the user plays it.
+
+**Borgny, first death (01:50:00):**
+- **Shield Charge during Toxic Vomit.** The cast ended at 29.5 and the vomit landed at 31.8. In between,
+  the zone was gone and Shield Charge carried the player 13 yalms back to Borgny. The vomit now counts
+  until 2.5 s after its cast (`LandsAfterCast`). No dash is used within 3 s of a dodge.
+- **The tornadoes follow the player.** They rise every three seconds where the player just stood (4 in
+  all), not only where the vomit landed. After the landing the player now runs round a ring of 15 for
+  11 s, avoiding patches (`ToxicVomit.ChasePoint`).
+- **Poison Clouds.** Fuming Vomit places three circles. Eight clouds rise from each, stay about 2.3 s,
+  then drift outward along the eight compass ways at about 2.1 y/s and vanish at the edge. The dodger
+  used to see them standing still, at 7.5.
+  - The dodger now tracks each cloud's velocity and covers where it will be in 1.5 s
+    (`GroundHazards.Drifting`), with a radius of 6.5.
+  - The walk to a dodge spot goes round lasting patches (`Dodger.Route`, a grid search). Covered cells
+    are allowed, but each costs 10 yalms. The route is handed to vnavmesh as waypoints.
+
+**Borgny, second death (02:05:10):** Toxic Breath. The player walked from the middle straight to the
+south wall, through eight clouds that had just risen at (920, −432). Hits of 1050 and 758 followed, and
+the player died as Borgny landed. The leap direction (south, from its own facing) was right. The player
+reached the wall before Borgny landed. Whether the landing itself hurts is still open.
+
+**Chains of Condemnation (4562)** ("moving deals fire damage") came up at the Gargoyle and at Borgny. The
+player moved 19 yalms under it without losing HP, so nothing is done about it yet.
+
+### Starting the next board from the entrance (M6) — 2026-09-17
+
+Taken from the two recorded re-entries, `run-20260916-231237.txt` (23:16) and `run-20260917-014231.txt`
+(01:55). The steps are listed in `XbmColumns.Entrance`, and `Automation/Run/BoardEntrance.cs` plays them.
+
+**Leaving the board.** `XBMResult` opens after a win and after a wipe (88%).
+- By hand, the result's `[0]` was pressed every time (4 recordings). That opens `NeedGreed`, and the load
+  only came once Need was rolled. The Need click has no callback and was not recorded, so `NeedGreed` and
+  `XBMResult` are now watched for input events.
+- At 01:55 the result timed out and closed with `[-1]`. The load followed at once, and the loot was handed
+  over without a roll.
+- So the run closes the result with `[-1]`. If the run is still on the board 8 s later, it presses `[0]`
+  and hands the roll to the player.
+
+**The entrance.**
+- The load ends in Central Shroud (148) at 26.5/65.4. The NPC talked to is **Lauda** (EventNpc 1059759)
+  at 25.5/67.5, 2.3 yalms away. EventObj 2015511 next to her is not targetable.
+- Lauda's `SelectString` is answered `[0]`. Its options are logged, since they were not recorded.
+- `XBMStageList` lists the board count at `[1]`, then name and board row in turn from `[2]`. `[1, row]`
+  picks a board; `[2, row]` only previews it. The row is the one the run started on
+  (`configuration.LastBoardRowId`).
+- The board window opens with the team (`XBMPetParty` mode 0). After 2 s for the Crucible mode, `[8]` is
+  sent. That is the same command as Commence Battle, and it is followed by a `SelectYesno`.
+- `ContentsFinderConfirm` `[8]`.
+- After the load comes a short cutscene, then `XBMContentsMainHUD` opens. "In Event" (1268) stays until
+  the first room, so it is not waited for. The run goes back to Preflight.
+
+**A lost board** counts as played when "go on after a lost board" is on (the default), and the next one
+is started.
+
+### Borgny at 19:29, the lag, and a Debug tab — 2026-09-19
+
+`captures/run-20260917-191334.txt`. Boards 1 → 2 → 3 were started from the entrance on their own. The
+boss was won, mostly by luck.
+
+**No dodging without a target.** Borgny is untargetable while it charges with Cauterize. At 19:30:48 the
+Toxic Mass had just died, so nothing was targetable, and the combat tick returned before planning a
+dodge. The player stood 2 yalms off the charge's line and took 963 + 924. The second Toxic Breath
+(19:30:17) went the same way. Dodges are now planned with no target too (`PlanDodge(player, null)`).
+
+**The walk in.** The player stood 15–25 yalms from Borgny for most of the fight. With only patches on
+the ground and the target out of reach, the dodger now searches a clear spot by the target.
+- `TargetWeight` is 1.5, aimed half a step inside the reach.
+- The walk there goes round the patches.
+- While hits are still being cast, a clear player still stays put, as Bedrock Uplift needs.
+
+**The lag.** Dalamud logged `CombatDriver::OnUpdate` at up to 740 ms. The causes:
+- A zone was tested with 9 samples.
+- Each cloud had three zones.
+- The route search re-tested cells.
+
+The fixes:
+- `Zone.Covers(point, margin)` tests the grown shape once.
+- A drifting cloud is one `Capsule`.
+- Stacked clouds and tornadoes are merged.
+- The route caches each cell's price and is bounded.
+
+The harness times 34 patches at 4.4 ms for plan and route.
+
+**Wriggling Phlegm** (48817 on Borgny) is the drop the user wants at the edge. Its helper places 48819,
+a circle of 6, on the player 5.3 s in, and a Toxic Mass rises there. Until it is placed, the player goes
+to a spot on the ring of 15, away from Borgny and clear of patches (`EdgeBait`). Toxic Vomit's spot uses
+the same rule. **Cauterize** leaves a line of ten Poison Clouds along the charge; they are ordinary
+hazards.
+
+**The boards field** is read live (`BoardRunner.RunsWanted` is `configuration.RunCount`), so it can be
+changed mid-run.
+
+**Players from the repo had no Run tab.** The workflow had only ever run for `beastmastr-implementation`,
+so the repository offered `v0.1.0.0` on both channels, and that version predates the automation.
+Enabling testing builds changed nothing.
+
+**UI.** The tab layout for players:
+
+| Tab | What it holds |
+|---|---|
+| Beasts | As before. |
+| Run | Start and stop, boards, what happens in the rooms, fight choices, what counts as taking over, the route and fork picks. |
+| Settings | As before, plus "Show the Debug tab". |
+| Debug | Hidden by default. Its pages are listed below. |
+
+The Debug tab's pages:
+- **Run:** plugins, the recorder, the run state, single steps, the fight driver, dodging and BossMod,
+  the ground scan and the map.
+- **Board:** the board captures.
+- **Windows:** the window inspector.
+- **Sheets:** the sheet explorer.
+
+The setting is still stored as `ShowDataTab`, so old configs keep it. It takes effect at once: `ITab`
+has a `Visible` property.

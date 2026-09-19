@@ -439,6 +439,31 @@ public static class XbmColumns
         /// </summary>
         public const uint FightMode = 2;
 
+        /// <summary>
+        /// Read off the log's mode lines: 1 while the board layout is open over it, 4 at a campsite
+        /// ("You and 3 familiars can recover HP at this campsite."). The shop's number is still
+        /// missing.
+        /// </summary>
+        public const uint BoardLayoutMode = 1;
+
+        public const uint CampsiteMode = 4;
+
+        /// <summary>Picking the familiar a bought feed goes to, at a shop ("Feed the grape simular to whom?").</summary>
+        public const uint ShopFeedMode = 3;
+
+        /// <summary>
+        /// Outside a fight the row click is <c>[1, row]</c> with the row as an **Int** and the window
+        /// told it closes — recorded at a campsite and at a shop's feeding. In a fight the row is a UInt
+        /// and nothing closes. Same command, different payload per job.
+        /// </summary>
+        public const int PickedOffset = 75;
+
+        /// <summary>
+        /// The window's confirm button outside team composition — "Rest" at a campsite, the feeding at a
+        /// shop: <c>[3]</c>, sent with the window closing, answered by a <c>SelectYesno</c>.
+        /// </summary>
+        public const int ConfirmCommand = 3;
+
         /// <summary>A beast's HP as the row shows it, "2943/2943". Offset 5 carries the first number alone.</summary>
         public const int HpTextOffset = 4;
 
@@ -543,6 +568,23 @@ public static class XbmColumns
 
         public const int LowerModeCommand = 4;
 
+        /// <summary>
+        /// Inside a run the briefing carries "Commence Battle" and "Flee" here (nodes 33 and 32, both
+        /// hidden in every capture so far); before a run the first reads "Challenge This Board".
+        /// </summary>
+        public const int CommenceBattleValue = 40056;
+
+        /// <summary>
+        /// What "Commence Battle" sends: <c>[8]</c>, one Int, with the window closing. Recorded on all five
+        /// fights of a run. The run then loads into a separate arena in the same zone.
+        /// </summary>
+        public const int CommenceBattleCommand = 8;
+
+        public const int FleeValue = 40057;
+
+        /// <summary>-1 before a run; in a run the room list index of the room the board marks.</summary>
+        public const int CurrentRoomValue = 40032;
+
         public static int Value(int block, int offset) =>
             FirstBlock + (block * BlockStride) + offset;
     }
@@ -560,6 +602,241 @@ public static class XbmColumns
         Campsite = 4,
         Treasure = 5,
         RandomEnemyOrTreasure = 6,
+    }
+
+    /// <summary>
+    /// The board as a graph, <c>XBMContentStageEventMap</c> — a subrow sheet with one row per board
+    /// and one subrow per cell the board window draws. Five UInt8 columns, and the live component
+    /// (<c>AtkComponentXBMContentStageEventMap.EventMapEntries</c>) carries the same five bytes.
+    ///
+    /// Read offline against game 2026.09.01: a room is a cell of <see cref="RoomCellType"/>, every
+    /// other type is a piece of a link from its event to <see cref="LinkedEventIndex"/>. Y counts
+    /// down the screen, so the start (event 0) has the largest Y and the boss the smallest. X is the
+    /// column, 6 in the middle of a three column board. A link can take several cells — the fifth
+    /// board draws sideways links two cells wide — so edges are deduplicated rather than counted.
+    /// </summary>
+    public static class StageEventMap
+    {
+        public const string Sheet = "XBMContentStageEventMap";
+        public const int ColumnCount = 5;
+
+        public const int X = 0;
+        public const int Y = 1;
+        public const int Type = 2;
+        public const int EventIndex = 3;
+        public const int LinkedEventIndex = 4;
+
+        /// <summary>
+        /// A room. Links are 6 (straight up), 4/9 and 5/10 (the two diagonals) and 7/8 (sideways on
+        /// the fifth board); only "not a room" matters for the graph.
+        /// </summary>
+        public const int RoomCellType = 1;
+    }
+
+    /// <summary>
+    /// What each event on a board is, <c>XBMContentStageEvent</c> — a subrow sheet, one row per board,
+    /// subrow index = event index. Columns 0 and 1 settled against the room lists captured at the
+    /// entrance, move for move and kind for kind; 2 and 3 are not identified.
+    /// </summary>
+    public static class StageEvent
+    {
+        public const string Sheet = "XBMContentStageEvent";
+        public const int ColumnCount = 4;
+
+        public const int Move = 0;
+
+        /// <summary>1 is the start; 2 onward is <see cref="RoomKind"/> plus two.</summary>
+        public const int EventType = 1;
+
+        public const int StartEventType = 1;
+        public const int FirstRoomEventType = 2;
+
+        /// <summary>
+        /// Rises with the number of enemy groups on a board — 1..6 for enemies — but the elite rooms
+        /// read 3 and 6 while being labelled #1 and #2, so it is not the label's number.
+        /// </summary>
+        public const int Unknown2 = 2;
+
+        /// <summary>Strictly increasing per board. Some id; not identified.</summary>
+        public const int Unknown3 = 3;
+    }
+
+    /// <summary>
+    /// The Crucible as a place. Numbers read off captures in `captures/`, each one named where it is
+    /// used.
+    /// </summary>
+    public static class Crucible
+    {
+        /// <summary>
+        /// The Crucible's boards each have a zone of their own: 1339–1341 the First to Third Board of the
+        /// Unbroken, 1342 and 1343 the First and Second Master's Board. The TerritoryType sheet marks all
+        /// of them with this intended use, and nothing else with it.
+        /// </summary>
+        public const uint RunIntendedUse = 62;
+
+        /// <summary>Central Shroud, where the boards are chosen.</summary>
+        public const uint EntranceTerritory = 148;
+
+        /// <summary>
+        /// An unnamed event object that sits on the room the player is on or has just finished. The
+        /// only object in the run besides the player, seen on five different rooms.
+        /// </summary>
+        public const uint RoomTriggerDataId = 2015483;
+
+        /// <summary>
+        /// "In Event": on the player the moment a room starts — together with the condition flag
+        /// SufferingStatusAffliction2 — about two seconds before the room's windows open. A room
+        /// starts when the player is within 0.4 to 1.8 yalms of its centre (one recorded run, nine
+        /// rooms).
+        /// </summary>
+        public const uint InEventStatus = 1268;
+
+        /// <summary>The event object at the entrance that opens the board selection.</summary>
+        public const uint EntranceDataId = 2015511;
+
+        /// <summary>The board's room icons run from 63850; 63853 is not yet seen and assumed to be Random.</summary>
+        public const uint FirstRoomIcon = 63850;
+
+        public const uint LastRoomIcon = 63859;
+    }
+
+    /// <summary>
+    /// Getting back onto a board from the entrance, as recorded twice (2026-09-16 23:16 and 2026-09-17
+    /// 01:56) after a board ended:
+    /// 1. The load puts you in Central Shroud (148) at 26.5/65.4, 2.3 yalms from the NPC Lauda (1059759).
+    ///    The event object 2015511 beside her is not targetable; Lauda is what is talked to.
+    /// 2. A <c>SelectString</c> answered <c>[0]</c>.
+    /// 3. <c>XBMStageList</c>: <c>[1]</c> the board count, then name and board row in turn from
+    ///    <c>[2]</c> ("First Master's Board", 4). <c>[2, row]</c> previews a board, <c>[1, row]</c> picks it.
+    /// 4. The board window with the team (<c>XBMPetParty</c> mode 0): <c>[8]</c>, the same as Commence
+    ///    Battle, then a <c>SelectYesno</c> answered yes.
+    /// 5. <c>ContentsFinderConfirm</c> <c>[8]</c>, and the board loads. A short cutscene follows, then
+    ///    <c>XBMContentsMainHUD</c> opens and "… has begun." is said.
+    /// </summary>
+    public static class Entrance
+    {
+        public const uint Territory = 148;
+        public const uint Npc = 1059759;
+
+        /// <summary>How close to Lauda talking to her worked: the arrival spot is 2.3 yalms away.</summary>
+        public const float TalkRange = 4.5f;
+
+        public const string Menu = "SelectString";
+        public const int MenuChoice = 0;
+
+        public const string BoardList = "XBMStageList";
+        public const int BoardCount = 1;
+        public const int FirstBoard = 2;
+        public const int BoardStride = 2;
+        public const int BoardRowOffset = 1;
+        public const int PickBoardCommand = 1;
+
+        public const int ChallengeCommand = 8;
+
+        public const string DutyConfirm = "ContentsFinderConfirm";
+        public const int CommenceDutyCommand = 8;
+    }
+
+    /// <summary>Windows only seen by name so far. What they hold is for the run recorder to find out.</summary>
+    public static class RunWindows
+    {
+        public const string ItemShop = "XBMContentsItemShop";
+        public const string Treasure = "XBMContentsTreasure";
+
+        /// <summary>Appears about ninety seconds after a fight starts, so taken to be the spoils.</summary>
+        public const string Booty = "XBMContentsBooty";
+
+        public const string Result = "XBMResult";
+
+        /// <summary>The job's own gauge on the HUD, in two parts: JobHudXBM0 and JobHudXBM1.</summary>
+        public const string JobHud = "JobHudXBM";
+
+        /// <summary>
+        /// The spoils: <c>[1]</c>, with the window closing, takes everything; a <c>SelectYesno</c>
+        /// ("You will receive:") confirms it.
+        /// </summary>
+        public const int TakeSpoilsCommand = 1;
+
+        /// <summary>
+        /// A treasure coffer offers four items. <c>[2, n]</c> — both Ints, n counted from 0, with the
+        /// window closing — picks one, and a <c>SelectYesno</c> ("Choose the angel robe?") confirms it;
+        /// answering No leaves the choice open. The offers are blocks of five values from
+        /// <see cref="TreasureFirstOffer"/>, the <c>XBMItem</c> row at +3.
+        /// </summary>
+        public const int ChooseTreasureCommand = 2;
+
+        public const int TreasureOffers = 4;
+        public const int TreasureFirstOffer = 3;
+        public const int TreasureOfferStride = 5;
+        public const int TreasureItemOffset = 3;
+
+        /// <summary>
+        /// The Beast Gear already held, listed by the treasure window: blocks of five from here — a Bool
+        /// while the block is used, the <c>Item</c> row at +2, the <c>XBMItem</c> row at +3, the name at
+        /// +4. Eight were held in the recordings. Taking one of these again brings up a
+        /// <c>SelectOk</c> instead of the confirmation, closed with <c>[0]</c>.
+        /// </summary>
+        public const int TreasureFirstHeldGear = 75;
+
+        public const int TreasureHeldGearStride = 5;
+        public const int TreasureHeldGearItemOffset = 3;
+        public const int TreasureHeldGearMax = 12;
+
+        public const string SelectOk = "SelectOk";
+
+        /// <summary>
+        /// The shop's own close: <c>[0]</c>, with the window closing, then a <c>SelectYesno</c>
+        /// ("Conclude purchasing and leave the shop?"). <c>[2, n]</c> buys or feeds item n, and the
+        /// window sends itself <c>[8]</c> after every change.
+        /// </summary>
+        public const int LeaveShopCommand = 0;
+
+        /// <summary>A <c>SelectYesno</c>'s answers: <c>[0]</c> yes, <c>[1]</c> no, both closing it.</summary>
+        public const int Yes = 0;
+
+        public const int No = 1;
+
+        /// <summary>
+        /// The shop's values, read off the diffs of <c>captures/run-20260916-215152.txt</c> (no full dump
+        /// was ever taken). [1] is the tokens held, as text ("1,500"); [2] is how many items are offered
+        /// (16). Each offer is a block of five from [3]: a Bool, the <c>XBMItem</c> row (+1), the price
+        /// as text (+2), a Bool, and a Bool that turned true when the item was bought (+4) — offer 12
+        /// flipped [67], offer 13 [72]. <c>[2, n]</c>, with the window closing, buys offer n and asks
+        /// "Purchase the ice shield?"; yes buys it, and the shop refreshes itself with <c>[8]</c>.
+        /// </summary>
+        public const int ShopTokens = 1;
+
+        public const int ShopOfferCount = 2;
+        public const int ShopFirstOffer = 3;
+        public const int ShopOfferStride = 5;
+        public const int ShopOfferRow = 1;
+        public const int ShopOfferPrice = 2;
+        public const int ShopOfferBought = 4;
+        public const int BuyItemCommand = 2;
+
+        /// <summary>The <c>Item</c> rows of Beast Gear: 243000 plus the <c>XBMItem</c> row, rows 1 to 75 (76 is a potion).</summary>
+        public const uint GearItemBase = 243000;
+
+        public const uint LastGearRow = 75;
+    }
+
+    /// <summary>
+    /// The run's items, <c>XBMItem</c>: 206 rows, 14 columns. Column 0 is the kind — 1 Beast Gear,
+    /// 2 Crucible Item, 3 Feed, as <c>XBMItemType</c> names them — and column 11 the name as shown.
+    /// </summary>
+    public static class XbmItem
+    {
+        public const string Sheet = "XBMItem";
+        public const int ColumnCount = 14;
+
+        public const int Kind = 0;
+
+        /// <summary>The name with its article as a question uses it: "ice shield", "pair of mystic boots".</summary>
+        public const int Singular = 3;
+
+        public const int DisplayName = 11;
+
+        public const int GearKind = 1;
     }
 
     /// <summary>

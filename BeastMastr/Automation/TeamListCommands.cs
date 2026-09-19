@@ -21,17 +21,25 @@ public static unsafe class TeamListCommands
     /// **The types matter.** The recording reads <c>[0] Int=1 [1] UInt=0</c>: the command is an Int
     /// and the row is a UInt. Sending the row as an Int too was silently ignored — nothing errored,
     /// the window simply never took the familiar, which is what the read-back kept reporting.
+    ///
+    /// Outside a fight the same click was recorded with the row as an **Int** and the window told it
+    /// closes — at a campsite and at a shop's feeding — so that is what is sent there.
     /// </summary>
     public static bool ToggleRow(int row)
     {
         if (row < 0 || !AddonReader.TryGet(XbmColumns.PetParty.Addon, out var addon))
             return false;
 
+        var fight = PetPartyReader.Mode() == XbmColumns.PetParty.FightMode;
         var values = stackalloc AtkValue[2];
         values[0].SetInt(ToggleCommand);
-        values[1].SetUInt((uint)row);
 
-        addon->FireCallback(2, values);
+        if (fight)
+            values[1].SetUInt((uint)row);
+        else
+            values[1].SetInt(row);
+
+        addon->FireCallback(2, values, !fight);
         return true;
     }
 }

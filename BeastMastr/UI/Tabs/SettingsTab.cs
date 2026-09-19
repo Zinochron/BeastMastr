@@ -64,22 +64,25 @@ public sealed class SettingsTab : ITab
 
         ImGui.Separator();
 
-        var showData = configuration.ShowDataTab;
-        if (ImGui.Checkbox("Show the Data tab", ref showData))
+        var showDebug = configuration.ShowDataTab;
+        if (ImGui.Checkbox("Show the Debug tab", ref showDebug))
         {
-            configuration.ShowDataTab = showData;
+            configuration.ShowDataTab = showDebug;
             configuration.Save();
         }
 
         Widgets.HelpMarker(
-            "The raw sheet and addon explorer. It exists to pin down the Beastmaster sheets, whose " +
-            "columns are unnamed upstream. Takes effect the next time the plugin loads.");
+            "Tools for testing and for reporting a problem: the run recorder, single steps, the fight " +
+            "driver's decisions, the ground scan and map, and the sheet and window explorers.");
 
-        var pageSize = configuration.SheetPageSize;
-        if (ImGui.SliderInt("Sheet rows per page", ref pageSize, 10, 500))
+        if (configuration.ShowDataTab)
         {
-            configuration.SheetPageSize = pageSize;
-            configuration.Save();
+            var pageSize = configuration.SheetPageSize;
+            if (ImGui.SliderInt("Sheet rows per page", ref pageSize, 10, 500))
+            {
+                configuration.SheetPageSize = pageSize;
+                configuration.Save();
+            }
         }
     }
 

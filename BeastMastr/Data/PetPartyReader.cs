@@ -20,10 +20,20 @@ public static class PetPartyReader
     /// <param name="CallSlot">0, 1 or 2 while this beast is called into a fight; otherwise null.</param>
     /// <param name="Hp">Current HP, zero when the window did not give one.</param>
     /// <param name="Beast">Resolved from the icon, which is what the window hands out.</param>
+    /// <param name="Picked">Chosen at a campsite or for a shop's feed, which the window marks apart from a fight's call.</param>
     public sealed record Slot(int Index, uint IconId, string Name, int Rank, int? CallSlot, int Hp, int MaxHp,
-                              Beast? Beast)
+                              Beast? Beast, bool Picked = false)
     {
         public bool IsCalled => CallSlot is not null;
+
+        /// <summary>Taken by the window in whichever job it is doing.</summary>
+        public bool IsChosen => IsCalled || Picked;
+
+        /// <summary>
+        /// Incapacitated: no HP left. The game refuses to call it into a fight ("Incapacitated familiars
+        /// cannot be assigned to battlehorns.") until a campsite has healed it.
+        /// </summary>
+        public bool IsDown => MaxHp > 0 && Hp <= 0;
 
         /// <summary>Share of HP left. 1 when the window gave none, so an unknown is never the most hurt.</summary>
         public float HealthShare => MaxHp > 0 ? (float)Hp / MaxHp : 1f;
@@ -92,8 +102,11 @@ public static class PetPartyReader
             var called = Number(values, XbmColumns.PetParty.Value(block, XbmColumns.PetParty.CallSlotOffset));
             var callSlot = called is null or XbmColumns.PetParty.NotCalled ? (int?)null : called;
 
+            var pickedIndex = XbmColumns.PetParty.Value(block, XbmColumns.PetParty.PickedOffset);
+            var picked = pickedIndex < values.Count && values[pickedIndex].GetValue() is true;
+
             slots.Add(new Slot(block, (uint)icon, name, rank, callSlot, hp?.Left ?? 0, hp?.Right ?? 0,
-                               catalog.ByIcon.GetValueOrDefault((uint)icon)));
+                               catalog.ByIcon.GetValueOrDefault((uint)icon), picked));
         }
 
         return slots;

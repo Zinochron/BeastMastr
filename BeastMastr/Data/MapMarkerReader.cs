@@ -32,8 +32,13 @@ public static unsafe class MapMarkerReader
             [63856] = XbmColumns.RoomKind.Boss,
         };
 
-    /// <summary>Is this one of the board's rooms, rather than a landmark of the zone around it?</summary>
-    public static bool IsRoom(uint iconId) => RoomIcons.ContainsKey(iconId);
+    /// <summary>
+    /// Is this one of the board's rooms, rather than a landmark of the zone around it? The whole icon
+    /// range counts, not only the icons already identified: a room whose icon is not in the table yet
+    /// still takes a place on the board, and leaving it out would shift every row after it.
+    /// </summary>
+    public static bool IsRoom(uint iconId) =>
+        iconId >= XbmColumns.Crucible.FirstRoomIcon && iconId <= XbmColumns.Crucible.LastRoomIcon;
 
     /// <param name="Source">Which list it came from — the two behave differently and it matters which is which.</param>
     /// <param name="World">Where the icon floats, in world units, or null when the map offers no transform.</param>
@@ -77,6 +82,21 @@ public static unsafe class MapMarkerReader
                $"sizeFactor={agent->CurrentMapSizeFactor} " +
                $"offsetX={agent->CurrentOffsetX} offsetY={agent->CurrentOffsetY} " +
                $"player={at}";
+    }
+
+    private static uint zoneMapTerritory;
+    private static uint zoneMap;
+
+    /// <summary>The map the TerritoryType sheet gives a zone.</summary>
+    private static uint ZoneMap(uint territory)
+    {
+        if (territory != zoneMapTerritory)
+        {
+            zoneMapTerritory = territory;
+            zoneMap = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.TerritoryType>().GetRowOrDefault(territory)?.Map.RowId ?? 0;
+        }
+
+        return zoneMap;
     }
 
     public static List<Marker> Read()
@@ -128,7 +148,10 @@ public static unsafe class MapMarkerReader
     /// </summary>
     private static Vector3? ToWorld(MapMarkerBase marker, AgentMap* agent)
     {
-        if (agent->CurrentMapId == 0)
+        // Only the zone's own map places the board. A fight's arena shows another map of the same zone,
+        // and its offsets put every room around the arena instead — which made the run think it was
+        // still on the board after Commence Battle, and the fight never counted as begun.
+        if (agent->CurrentMapId == 0 || agent->CurrentMapId != ZoneMap(agent->CurrentTerritoryId))
             return null;
 
         var height = Services.Objects.LocalPlayer?.Position.Y ?? 0f;

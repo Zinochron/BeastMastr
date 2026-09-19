@@ -42,6 +42,9 @@ public sealed class MainWindow : Window, IDisposable
 
         foreach (var tab in tabs)
         {
+            if (!tab.Visible)
+                continue;
+
             var flags = ImGuiTabItemFlags.None;
             if (pendingTabId == tab.Id)
             {
