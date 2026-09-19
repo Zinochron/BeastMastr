@@ -28,6 +28,9 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool CallLastFamiliarsOnOpen { get; set; } = true;
 
+    /// <summary>A fight calls the carries first, those that are not down, then the last fight's familiars.</summary>
+    public bool CallCarriesFirst { get; set; } = true;
+
     /// <summary>
     /// Put the Crucible mode back to the one last used as the board window opens — once. The game
     /// forgets the choice between visits, which is the only reason this exists.

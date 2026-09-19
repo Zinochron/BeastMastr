@@ -167,6 +167,18 @@ Check("a carry does not have to be least advanced to stay", levelled.Count == 3)
 
 // The tie-break that matters: two beasts at rank 1, one already on the team. Without preferring it,
 // the lower bestiary number wins and the team churns for nothing.
+// A fight: the carries that can fight first, then last time's familiars.
+var fightCall = TeamPlanner.ForFight(ranked, [4, 1], [2, 3, 5]);
+Check("a fight calls the carries first, in their order, then last time's",
+      fightCall.SequenceEqual(new uint[] { 4, 1, 2 }), string.Join(",", fightCall));
+var carryDown = TeamPlanner.ForFight(ranked.Where(c => c.BeastNumber != 4), [4, 1], [2, 3, 5]);
+Check("a carry that is down is left out and last time's fill its place",
+      carryDown.SequenceEqual(new uint[] { 1, 2, 3 }), string.Join(",", carryDown));
+Check("with nothing remembered, the carries alone",
+      TeamPlanner.ForFight(ranked, [1, 4], []).SequenceEqual(new uint[] { 1, 4 }));
+Check("never more than three",
+      TeamPlanner.ForFight(ranked, [1, 2, 3], [4, 5]).Count == TeamPlanner.FightSlots);
+
 var tie = new[]
 {
     new TeamPlanner.Candidate(10, "OffTeam", 1),
