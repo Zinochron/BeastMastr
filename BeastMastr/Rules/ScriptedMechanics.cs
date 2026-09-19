@@ -104,6 +104,18 @@ public static class ToxicBreath
     /// <summary>A leap is seen once Borgny is this far from where it cast.</summary>
     public const float LeapSeenAt = 5f;
 
+    /// <summary>The cast, 2.7 s as recorded.</summary>
+    public const float CastTime = 2.7f;
+
+    /// <summary>
+    /// Borgny turns for up to 0.65 s after the cast starts (sixteen breaths in four recordings). Its facing is
+    /// trusted once it has held this long…
+    /// </summary>
+    public const float SettleFor = 0.3f;
+
+    /// <summary>…or once the cast has gone on this long.</summary>
+    public const float TrustAfter = 1f;
+
     /// <summary>
     /// How far past Borgny to head. The wall stops the walk before it; the aim only has to lie beyond
     /// Borgny, straight back.

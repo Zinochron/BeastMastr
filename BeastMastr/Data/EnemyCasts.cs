@@ -108,20 +108,20 @@ public static class EnemyCasts
         {
             if (caster.CastActionId == ToxicBreath.Cast && !Breaths.ContainsKey(caster.GameObjectId))
             {
+                // Borgny's own facing, followed as it turns after the cast starts, until it leaps: across sixteen
+                // breaths in four recordings it leapt exactly away from the way it settled, wherever the player
+                // stood. The "towards the player" rule sent the player the wrong way from the second breath on.
                 var from = new Vector2(caster.Position.X, caster.Position.Z);
-                var here = new Vector2(player.Position.X, player.Position.Z);
-                var follows = Vector2.Distance(from, here) < ToxicBreath.TurnsToPlayerBeyond;
-                var facing = follows ? ToxicBreath.Snap(caster.Rotation) : ToxicBreath.FacingFor(from, here);
+                var facing = ToxicBreath.Snap(caster.Rotation);
                 Breaths[caster.GameObjectId] = new Breath
                 {
                     CastEnd = now + TimeSpan.FromSeconds(caster.TotalCastTime - caster.CurrentCastTime),
                     From = from,
                     Facing = facing,
-                    FollowsBorgny = follows,
+                    FollowsBorgny = true,
                 };
-                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} " +
-                                         (follows ? "(its own way; the player stands on it)" : "towards the player") +
-                                         "; behind it is the wall to go to.");
+                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} as it starts; its back is " +
+                                         "followed as it turns, and the wall behind it is where to go.");
             }
 
             if (caster.CastActionId == SweepingEvisceration.Cast)
@@ -430,8 +430,11 @@ public static class EnemyCasts
         public Vector2 From;
         public float Facing;
 
-        /// <summary>The player stood too close to turn Borgny: its own facing counts, followed until it leaps.</summary>
+        /// <summary>Borgny's own facing counts, followed until it leaps.</summary>
         public bool FollowsBorgny;
+
+        /// <summary>Since when the snapped facing has held.</summary>
+        public DateTime SettledSince = DateTime.Now;
     }
 
     private static readonly Dictionary<ulong, Breath> Breaths = [];
@@ -454,9 +457,25 @@ public static class EnemyCasts
             // Once it leaps, its way is known for certain: straight back. Before that, with the player on
             // top of it, its own facing is followed as it settles.
             if (landed)
+            {
                 breath.Facing = SweepingEvisceration.Facing(breath.From - here);
+            }
             else if (breath.FollowsBorgny)
-                breath.Facing = ToxicBreath.Snap(borgny.Rotation);
+            {
+                // It turns for up to 0.65 s after the cast starts. Its facing only counts once it has held
+                // still a moment, or the cast has gone on long enough; before that nothing is planned.
+                var facing = ToxicBreath.Snap(borgny.Rotation);
+                if (MathF.Abs(TurningHits.Step(breath.Facing, facing)) > 0.01f)
+                {
+                    breath.Facing = facing;
+                    breath.SettledSince = now;
+                }
+
+                var sinceStart = ToxicBreath.CastTime - (float)(breath.CastEnd - now).TotalSeconds;
+                if ((now - breath.SettledSince).TotalSeconds < ToxicBreath.SettleFor && sinceStart < ToxicBreath.TrustAfter)
+                    continue;
+            }
+
             zones.Add(ToxicBreath.Zone(landed ? here : breath.From, breath.Facing, landed, MathF.Max(0f, untilCleave)));
         }
     }

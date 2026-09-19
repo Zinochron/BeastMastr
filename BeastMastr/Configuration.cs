@@ -188,6 +188,9 @@ public class Configuration : IPluginConfiguration
     /// <summary>Boards finished, counted when their result window opens; see <c>LootTracker</c>.</summary>
     public int BoardsFinished { get; set; }
 
+    /// <summary>Boards finished with the boss beaten (the result reads 100%).</summary>
+    public int BoardsWon { get; set; }
+
     /// <summary>Boards timed from entering to their result, and the seconds they took in all.</summary>
     public int TimedBoards { get; set; }
 

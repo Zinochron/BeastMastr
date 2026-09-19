@@ -168,7 +168,8 @@ public sealed class RunTab : ITab
         if (!ImGui.CollapsingHeader("Boards and loot", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        ImGui.TextUnformatted($"Boards finished: {loot.BoardsThisSession} this session, {configuration.BoardsFinished} in all.");
+        ImGui.TextUnformatted($"Boards finished: {loot.BoardsThisSession} this session ({loot.WonThisSession} won), " +
+                              $"{configuration.BoardsFinished} in all ({configuration.BoardsWon} won).");
         Widgets.HelpMarker("Counted when a board's result window opens, won or lost. The loot is what is rolled " +
                            "for at the end — the remnants of resilience and the Modern Aesthetics items — not a " +
                            "room's spoils.");

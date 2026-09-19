@@ -2522,3 +2522,19 @@ Borgny (`Bosses.Borgny`, 19672) and three familiars have been summoned. The fini
   lines).
 - **Boards:** a board counts as finished when its result window opens.
 - **Totals:** kept in the configuration, and for the session.
+
+### Toxic Breath follows Borgny's back, and boards won — 2026-09-19
+
+**From the second Toxic Breath on the player ran to Borgny's front.** Standing farther than 3 yalms off,
+the facing was taken as "towards the player", snapped to an axis. Sixteen breaths in four recordings say
+otherwise: Borgny turns for up to 0.65 s after the cast starts, and leaps exactly away from the way it
+settles, wherever the player stands. For example, at 16:01:54 it settled at −1.51 and leapt east while
+the player stood south.
+
+Its facing is now followed for every breath, snapped to an axis until it leaps. It is only trusted once
+it has held for 0.3 s or the cast is 1 s old; until then nothing is planned. The leap follows the cast
+by more than a second, and the cleave comes 2.8 s after that, so there is time.
+
+**Boards won.** The result window's value 3 is the board's completion: "100%" when the boss fell, "88%"
+when it did not, in every recording. "Boards finished" now says how many were won
+(`Configuration.BoardsWon`, and for the session).

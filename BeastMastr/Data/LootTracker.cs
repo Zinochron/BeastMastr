@@ -45,6 +45,8 @@ public sealed class LootTracker : IDisposable
     {
         ThisSession.Clear();
         BoardsThisSession = 0;
+        WonThisSession = 0;
+        configuration.BoardsWon = 0;
         BoardTimes.Clear();
         SessionStartedAt = BoardStartedAt;
         LastFinishedAt = null;
@@ -104,10 +106,38 @@ public sealed class LootTracker : IDisposable
             }
 
             configuration.Save();
+            resultToRead = true;
         }
+
+        // Won or lost: the result shows the board's completion in value 3, "100%" when the boss fell and
+        // "88%" when it did not (every recording). Read once the window has its values.
+        if (open && resultToRead && AddonReader.Values(XbmColumns.RunWindows.Result) is { Count: > ResultCompletion } values &&
+            values[ResultCompletion].Text.EndsWith('%'))
+        {
+            resultToRead = false;
+            if (values[ResultCompletion].Text.Trim() == "100%")
+            {
+                WonThisSession++;
+                configuration.BoardsWon++;
+                configuration.Save();
+            }
+
+            Services.Log.Information($"Loot: the board ended at {values[ResultCompletion].Text}.");
+        }
+
+        if (!open)
+            resultToRead = false;
 
         resultWasOpen = open;
     }
+
+    /// <summary>The result's completion, "100%" for a board whose boss fell.</summary>
+    private const int ResultCompletion = 3;
+
+    private bool resultToRead;
+
+    /// <summary>Boards finished with the boss beaten, since the plugin loaded.</summary>
+    public int WonThisSession { get; private set; }
 
     private void OnChat(IHandleableChatMessage message)
     {
