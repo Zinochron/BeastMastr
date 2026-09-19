@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Numerics;
 using BeastMastr.Data;
+using BeastMastr.Ipc;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
@@ -49,8 +50,23 @@ public sealed unsafe class BoardEntrance
     private int stage;
     private int attempts;
 
+    private readonly TeamSelector teamSelector;
+    private readonly RunTeam team;
+
+    /// <summary>0: the team not asked for yet; 1: being set; 2: set, or left as it is.</summary>
+    private int teamStage;
+
+    private DateTime teamSetAt;
+
     /// <param name="boardRow">The board to play again, as <c>XBMStageList</c> numbers it.</param>
-    public BoardEntrance(uint boardRow) => this.boardRow = boardRow;
+    /// <param name="team">The team to set in the board window before challenging.</param>
+    public BoardEntrance(uint boardRow, TeamSelector teamSelector, RunTeam team)
+    {
+        this.boardRow = boardRow;
+        this.teamSelector = teamSelector;
+        this.team = team;
+        teamStage = team == RunTeam.Keep ? 2 : 0;
+    }
 
     public bool Done { get; private set; }
 
@@ -92,6 +108,12 @@ public sealed unsafe class BoardEntrance
                 if (AddonReader.IsOpen(XbmColumns.Entrance.Menu))
                 {
                     Next(2, "Choosing to start a board.");
+                    return;
+                }
+
+                if (!NearLauda())
+                {
+                    stageSince = now;
                     return;
                 }
 
@@ -173,6 +195,28 @@ public sealed unsafe class BoardEntrance
 
                 if (challenge == null)
                 {
+                    // The team first, leveling or farming. The fill opens the bestiary beside the team
+                    // list, so the board window may look closed until it is done.
+                    if (teamStage == 1)
+                    {
+                        if (teamSelector.Busy)
+                        {
+                            Status = $"Setting the team: {teamSelector.Status}";
+                            stageSince = now;
+                            return;
+                        }
+
+                        if (teamSelector.GaveUp)
+                        {
+                            Fail($"The team could not be set: {teamSelector.Status}");
+                            return;
+                        }
+
+                        teamStage = 2;
+                        teamSetAt = now;
+                        Services.Log.Information($"Entrance: team set for {team}: {teamSelector.Status}");
+                    }
+
                     if (CrucibleModeReader.Read() is not { Index: >= 0 } ||
                         PetPartyReader.Mode() != XbmColumns.PetParty.TeamCompositionMode)
                     {
@@ -182,7 +226,16 @@ public sealed unsafe class BoardEntrance
                         return;
                     }
 
-                    if (since < ModeTime)
+                    if (teamStage == 0)
+                    {
+                        teamStage = 1;
+                        teamSelector.RequestFill(team == RunTeam.Farming);
+                        Status = team == RunTeam.Farming ? "Setting the team to the carries." : "Filling the team for leveling.";
+                        Services.Log.Information($"Entrance: {Status}");
+                        return;
+                    }
+
+                    if (since < ModeTime || now - teamSetAt < ModeTime)
                         return;
 
                     challenge = new ConfirmedStep(Challenge);
@@ -242,6 +295,63 @@ public sealed unsafe class BoardEntrance
         Services.Objects.LocalPlayer != null && !RunSafety.Waiting() &&
         !Services.Condition[ConditionFlag.OccupiedInQuestEvent];
 
+    /// <summary>
+    /// Walks to Lauda with vnavmesh when she is out of reach: a run started anywhere in Central Shroud
+    /// begins there. True once she is close enough to talk to.
+    /// </summary>
+    private bool NearLauda()
+    {
+        if (Services.Objects.LocalPlayer is not { } player)
+            return false;
+
+        var lauda = Services.Objects.FirstOrDefault(obj => obj.ObjectKind == ObjectKind.EventNpc &&
+                                                            obj.BaseId == XbmColumns.Entrance.Npc);
+        var at = lauda?.Position ?? XbmColumns.Entrance.NpcPosition;
+        var distance = Vector3.Distance(player.Position, at);
+        if (distance <= XbmColumns.Entrance.TalkRange && lauda != null)
+        {
+            if (walkingSince != null)
+            {
+                NavmeshIpc.Stop();
+                walkingSince = null;
+            }
+
+            return true;
+        }
+
+        var now = DateTime.Now;
+        if (walkingSince is { } since && now - since > WalkTimeout)
+        {
+            NavmeshIpc.Stop();
+            Fail($"Could not walk to Lauda; {distance:0.0} yalms short.");
+            return false;
+        }
+
+        if (!NavmeshIpc.IsLoaded)
+        {
+            Fail($"Lauda is {distance:0.0} yalms away, and vnavmesh is needed to walk there.");
+            return false;
+        }
+
+        // Asked again now and then, in case the first order was lost or the mesh was still building.
+        if (walkingSince == null || now - lastWalkOrder > WalkReorder && !NavmeshIpc.IsRunning() &&
+            !NavmeshIpc.PathfindInProgress())
+        {
+            walkingSince ??= now;
+            lastWalkOrder = now;
+            NavmeshIpc.PathfindAndMoveCloseTo(at, XbmColumns.Entrance.TalkRange - 1.5f);
+            Status = $"Walking to Lauda, {distance:0} yalms.";
+            Services.Log.Information($"Entrance: {Status}");
+        }
+
+        return false;
+    }
+
+    private DateTime? walkingSince;
+    private DateTime lastWalkOrder;
+    private static readonly TimeSpan WalkTimeout = TimeSpan.FromSeconds(120);
+    private static readonly TimeSpan WalkReorder = TimeSpan.FromSeconds(3);
+
     private bool TalkToLauda()
     {
         var player = Services.Objects.LocalPlayer;
@@ -250,13 +360,6 @@ public sealed unsafe class BoardEntrance
         if (player == null || lauda == null)
         {
             Fail("Lauda is not here.");
-            return false;
-        }
-
-        var distance = Vector3.Distance(player.Position, lauda.Position);
-        if (distance > XbmColumns.Entrance.TalkRange)
-        {
-            Fail($"Lauda is {distance:0.0} yalms away; stand next to her.");
             return false;
         }
 

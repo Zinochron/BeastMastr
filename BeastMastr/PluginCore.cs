@@ -106,7 +106,7 @@ public sealed class PluginCore : IDisposable
         healthSelector = new HealthSelector(Catalog);
         worldRoute = new WorldRouteOverlay(Configuration, boardModel, boardTerrain, routeKeeper, walker);
         runner = new BoardRunner(Configuration, boardModel, boardTerrain, routeKeeper, walker, combat, fightSelector,
-                                 healthSelector, Catalog);
+                                 healthSelector, Catalog, teamSelector);
         difficultySelector = new DifficultySelector(Configuration);
         rankPuller = new RankPuller(rankWatcher);
 

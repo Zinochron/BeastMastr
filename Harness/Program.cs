@@ -771,6 +771,20 @@ var tornado = new Zone(ZoneKind.Circle, chase1, 0f, 6.5f, 0f, "ground hazard", L
 var chase2 = ToxicVomit.ChasePoint(borgnyArena, new Vector2(905f, -420f), chaseTurn, [tornado]);
 Check("and a covered step is swapped for a clear one", !tornado.Contains(chase2), $"to {chase2}");
 
+// Toxic Vomit's four tornadoes in a T round Borgny, in melee reach, one side left free to fight from.
+foreach (var borgnyAt in new[] { borgnyArena, new Vector2(930f, -412f) })
+{
+    var t = ToxicVomit.TSpots(borgnyArena, borgnyAt, 3.5f, 18f, []);
+    var reachT = 3.5f + ToxicVomit.DropPastHitbox;
+    var inArena = t.TrueForAll(spot => Vector2.Distance(spot, borgnyArena) <= 18f);
+    var barInReach = Vector2.Distance(t[0], borgnyAt) <= reachT + 0.01f && Vector2.Distance(t[1], borgnyAt) <= reachT + 0.01f;
+    // The side across from the stem, in reach of Borgny and clear of all four tornadoes.
+    var free = borgnyAt - (t[2] - borgnyAt);
+    var freeClear = t.TrueForAll(spot => Vector2.Distance(spot, free) > 6.5f + 0.5f);
+    Check($"the tornado T round Borgny at {borgnyAt} stays in the arena and leaves a side to fight from",
+          t.Count == ToxicVomit.Drops && inArena && barInReach && freeClear, string.Join(" ", t));
+}
+
 var cloud = GroundHazards.Drifting(new Vector2(920f, -432f), new Vector2(0f, -2.1f), 6.5f);
 Check("a drifting cloud covers where it will be", cloud.Contains(new Vector2(920f, -441f)) &&
       !cloud.Contains(new Vector2(920f, -424f)) && cloud.Contains(new Vector2(920f, -432f)));

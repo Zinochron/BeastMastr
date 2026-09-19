@@ -57,10 +57,11 @@ public sealed class RunTab : ITab
         if (!ImGui.CollapsingHeader("Run the board", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        ImGui.TextWrapped("Stand on a Crucible board's start platform and press Run. BeastMastr walks from room to " +
-                          "room, fights, shops, rests and takes treasure until the boss is done — and with more " +
-                          "than one board, starts the next one from the entrance. Moving, jumping, targeting or " +
-                          "pressing an action yourself pauses it; it carries on once you let go.");
+        ImGui.TextWrapped("Press Run on a Crucible board's start platform, or anywhere in Central Shroud to walk " +
+                          "to Lauda and start the board last played. BeastMastr walks from room to room, fights, " +
+                          "shops, rests and takes treasure until the boss is done — and with more than one board, " +
+                          "starts the next one from the entrance. Moving, jumping, targeting or pressing an action " +
+                          "yourself pauses it; it carries on once you let go.");
         ImGuiHelpers.ScaledDummy(2f);
 
         if (!NavmeshIpc.IsLoaded)
@@ -111,6 +112,31 @@ public sealed class RunTab : ITab
         Toggle("go on after a lost board", configuration.ContinueAfterLostBoard,
                value => configuration.ContinueAfterLostBoard = value);
         Widgets.HelpMarker("When on, a board lost to a wipe counts as played and the next one is started.");
+
+        ImGui.SetNextItemWidth(160f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("team for each board", TeamName(configuration.RunTeam)))
+        {
+            if (combo.Success)
+            {
+                foreach (var mode in Enum.GetValues<RunTeam>())
+                {
+                    if (ImGui.Selectable(TeamName(mode), mode == configuration.RunTeam))
+                    {
+                        configuration.RunTeam = mode;
+                        configuration.Save();
+                    }
+                }
+            }
+        }
+
+        Widgets.HelpMarker("Set in the board window before every board started from the entrance:\n" +
+                           "Farming: the three carries alone, for the board's bonus.\n" +
+                           "Leveling: the carries, then the least advanced beasts, picked anew each board.\n" +
+                           "Keep: the team as it is.\n" +
+                           "Carries are marked with \"Add as carry\" in the bestiary's right-click menu.");
+
+        if (configuration.RunTeam != RunTeam.Keep && configuration.CarryBeasts.Count == 0)
+            ImGui.TextColored(Attention, "No carries are marked yet; mark them in the bestiary's right-click menu.");
 
         var failed = runner.State == Automation.Run.BoardRunner.Phase.Failed;
         ImGui.TextColored(failed ? Bad : runner.Running ? Good : Muted,
@@ -235,6 +261,16 @@ public sealed class RunTab : ITab
                 configuration.Save();
             }
 
+            var wait = configuration.AreaItemWaitSeconds;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("…and have been for", ref wait, 0f, 5f, "%.1f s"))
+            {
+                configuration.AreaItemWaitSeconds = wait;
+                configuration.Save();
+            }
+
+            Widgets.HelpMarker("The Treant's adds arrive over a second or two; waiting lets one throw catch them all.");
+
             ImGui.Unindent();
         }
     }
@@ -332,6 +368,14 @@ public sealed class RunTab : ITab
 
         ImGui.Unindent();
     }
+
+    private static string TeamName(RunTeam team) => team switch
+    {
+        RunTeam.Farming => "Farming (carries only)",
+        RunTeam.Leveling => "Leveling (carries + lowest)",
+        RunTeam.Keep => "Keep the team",
+        _ => team.ToString(),
+    };
 
     private static string TankName(DutyTank tank) => tank switch
     {

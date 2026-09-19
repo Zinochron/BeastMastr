@@ -237,41 +237,47 @@ public static class EnemyCasts
                 continue;
 
             var left = borgny.TotalCastTime - borgny.CurrentCastTime;
+            var at = new Vector2(borgny.Position.X, borgny.Position.Z);
+            if (Vomit is { } running && running.Borgny == at && running.Spots.Count > 0)
+            {
+                running.CastEnd = now + TimeSpan.FromSeconds(left);
+                continue;
+            }
+
+            // The T is laid out once, as the cast starts, and the tornadoes already down are noted so
+            // only this vomit's are counted.
+            var arenaCentre = CrucibleArena.CentreNear(here) ?? at;
             Vomit = new VomitState
             {
                 CastEnd = now + TimeSpan.FromSeconds(left),
-                Borgny = new Vector2(borgny.Position.X, borgny.Position.Z),
+                Borgny = at,
+                Spots = ToxicVomit.TSpots(arenaCentre, at, borgny.HitboxRadius, CrucibleArena.SafeRadius - 2f,
+                                          zones.Where(zone => zone.Lasting).ToList()),
+                Before = Tornadoes().ToHashSet(),
             };
+            Services.Log.Information($"{ToxicVomit.Name}: laying the tornadoes in a T round Borgny: " +
+                                     string.Join(" ", Vomit.Spots.Select(spot => $"{spot.X:0.0}/{spot.Y:0.0}")));
         }
 
-        if (Vomit is not { } vomit || CrucibleArena.CentreNear(here) is not { } centre)
+        if (Vomit is not { } vomit)
             return;
 
+        // How many of this vomit's tornadoes are down: the next one goes on the next spot of the T.
+        var dropped = Tornadoes().Count(tornado => !vomit.Before.Contains(tornado));
         var sinceEnd = (float)(now - vomit.CastEnd).TotalSeconds;
-        if (sinceEnd < ToxicVomit.LandsAfterCast)
-        {
-            zones.Add(ToxicVomit.Zone(centre, vomit.Borgny, here, -sinceEnd, zones.Where(zone => zone.Lasting).ToList()));
-            return;
-        }
-
-        var chasing = sinceEnd - ToxicVomit.LandsAfterCast;
-        if (chasing > ToxicVomit.ChaseFor)
+        if (dropped >= ToxicVomit.Drops || sinceEnd - ToxicVomit.LandsAfterCast > ToxicVomit.ChaseFor)
         {
             Vomit = null;
             return;
         }
 
-        if (vomit.Turn == 0)
-        {
-            vomit.Turn = ToxicVomit.ChaseTurn(centre, vomit.Borgny, here);
-            Services.Log.Information($"{ToxicVomit.Name} landed: keeping on the move round the arena " +
-                                     (vomit.Turn > 0 ? "clockwise" : "anticlockwise") + " while the tornadoes follow.");
-        }
-
-        var hazards = zones.Where(zone => zone.Lasting).ToList();
-        zones.Add(ToxicVomit.Chase(ToxicVomit.ChasePoint(centre, here, vomit.Turn, hazards),
-                                   ToxicVomit.ChaseFor - chasing));
+        var left2 = MathF.Max(0f, ToxicVomit.LandsAfterCast - sinceEnd);
+        zones.Add(ToxicVomit.Drop(vomit.Spots[dropped], dropped, left2));
     }
+
+    /// <summary>The tornadoes Toxic Vomit leaves ("Magitek Armor", 2012932) that are standing now.</summary>
+    private static IEnumerable<ulong> Tornadoes() =>
+        Services.Objects.Where(obj => obj.BaseId == ToxicVomit.Tornado).Select(obj => obj.GameObjectId);
 
     /// <summary>
     /// Wriggling Phlegm: carried to the edge while Borgny casts it, until its circle is placed on the
@@ -300,8 +306,11 @@ public static class EnemyCasts
         public DateTime CastEnd;
         public Vector2 Borgny;
 
-        /// <summary>The way round the ring, chosen as it lands; 0 until then.</summary>
-        public int Turn;
+        /// <summary>Where the four tornadoes go, in order.</summary>
+        public List<Vector2> Spots = [];
+
+        /// <summary>The tornadoes standing as the cast began: an earlier vomit's.</summary>
+        public HashSet<ulong> Before = [];
     }
 
     private static VomitState? Vomit;

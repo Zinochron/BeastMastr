@@ -135,10 +135,53 @@ public sealed unsafe class CombatDriver : IDisposable
         }
         else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0 && use.At - lastBattlehorn > TimeSpan.FromSeconds(1))
         {
-            // The game reports a cast twice — pressed, then queued — so a second report within the cast is the same horn.
+            // The game reports a cast twice — pressed, then queued — so a second report within the cast is the
+            // same horn. It is only counted once its familiar is there: at Borgny on 2026-09-19 16:17 the horn
+            // pressed as the opening cutscene ended was cut off after 0.09 s, nobody came, and the opener went
+            // on as if one had.
             lastBattlehorn = use.At;
-            hornsThisFight++;
+            hornPending = true;
+            summonedAtHorn = GaugeReader.Read()?.SummonedBeast ?? 0;
+            familiarsAtHorn = Services.Objects.LocalPlayer is { } player ? Familiars(player).Count() : 0;
         }
+    }
+
+    /// <summary>How many familiars stood out as the pending horn was pressed.</summary>
+    private int familiarsAtHorn;
+
+    /// <summary>Since when enough adds have been on the player, or null.</summary>
+    private DateTime? addsSince;
+
+    /// <summary>A Battlehorn pressed whose familiar has not shown yet.</summary>
+    private bool hornPending;
+
+    /// <summary>The gauge's summon count as the pending horn was pressed.</summary>
+    private int summonedAtHorn;
+
+    /// <summary>The last time a cutscene or event held the character; nothing is pressed until a moment after.</summary>
+    private DateTime lastHeld = DateTime.MinValue;
+
+    private static readonly TimeSpan AfterHeld = TimeSpan.FromSeconds(1);
+
+    /// <summary>Counts a horn once its familiar is there, and forgets one that was cut off.</summary>
+    private void ConfirmHorn(IPlayerCharacter player)
+    {
+        if (!hornPending)
+            return;
+
+        if ((GaugeReader.Read()?.SummonedBeast ?? 0) != summonedAtHorn || Familiars(player).Count() > familiarsAtHorn)
+        {
+            hornPending = false;
+            hornsThisFight++;
+            return;
+        }
+
+        if (player.IsCasting || DateTime.Now - lastBattlehorn < ArrivingFor)
+            return;
+
+        hornPending = false;
+        lastBattlehorn = DateTime.MinValue;
+        Services.Log.Information("A Battlehorn summoned nobody (its cast was cut off); it is pressed again.");
     }
 
     /// <summary>Parting Blow went off after the last summon, and not long ago.</summary>
@@ -169,6 +212,7 @@ public sealed unsafe class CombatDriver : IDisposable
     {
         if (!Enabled)
             hornsThisFight = FamiliarOut(Services.Objects.LocalPlayer) ? 1 : 0;
+            hornPending = false;
 
         Enabled = true;
         input.Reset();
@@ -230,6 +274,20 @@ public sealed unsafe class CombatDriver : IDisposable
             lastMovedAt = DateTime.Now;
         }
 
+        ConfirmHorn(player);
+
+        // Nothing is pressed during a cutscene or event, nor for a moment after: a Battlehorn pressed the
+        // instant Borgny's opening cutscene let go was cut off.
+        if (Services.Condition[ConditionFlag.OccupiedInCutSceneEvent] || Services.Condition[ConditionFlag.Occupied33] ||
+            Services.Condition[ConditionFlag.WatchingCutscene])
+            lastHeld = DateTime.Now;
+
+        if (DateTime.Now - lastHeld < AfterHeld)
+        {
+            Status = "Waiting for the cutscene to let go.";
+            return;
+        }
+
         if (input.Holding)
         {
             Hold(player);
@@ -248,9 +306,16 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
-        // Adds on the player — the Treant's Slug Pieces — get an area item thrown at them.
-        if (configuration.UseAreaItems && inCombat && itemsFree && AddsOnPlayer(player) is { } add &&
-            ItemUser.TickAttack(add))
+        // Adds on the player — the Treant's Slug Pieces — get an area item thrown at them, once they have been
+        // on the player a moment: the rest of the wave is still arriving, and one throw should catch them all.
+        var adds = configuration.UseAreaItems && inCombat ? AddsOnPlayer(player) : null;
+        if (adds == null)
+            addsSince = null;
+        else
+            addsSince ??= DateTime.Now;
+
+        var addsWaited = DateTime.Now - addsSince >= TimeSpan.FromSeconds(configuration.AreaItemWaitSeconds);
+        if (adds != null && itemsFree && (ItemUser.Busy || addsWaited) && ItemUser.TickAttack(adds))
         {
             Status = "Throwing an area item at the adds.";
             return;
@@ -273,7 +338,10 @@ public sealed unsafe class CombatDriver : IDisposable
                 bossMod.Disengage();
 
             if (!MayPull)
+            {
                 hornsThisFight = 0;
+                hornPending = false;
+            }
         }
 
         var target = Target(player, inCombat);

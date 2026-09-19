@@ -328,6 +328,62 @@ public static class ToxicVomit
     public static Zone Chase(Vector2 point, float left) =>
         new(ZoneKind.Circle, point, 0f, 0f, left, Name + " (keep moving, tornadoes follow)", Refuge: point);
 
+    /// <summary>How many tornadoes follow a Toxic Vomit: four, three seconds apart.</summary>
+    public const int Drops = 4;
+
+    /// <summary>The tornadoes' base id: event objects named "Magitek Armor".</summary>
+    public const uint Tornado = 2012932;
+
+    /// <summary>How far past Borgny's hitbox the drops are laid: in melee reach, to keep hitting it.</summary>
+    public const float DropPastHitbox = 2.5f;
+
+    /// <summary>
+    /// Where to lay the four tornadoes, in order, so the fight goes on (the user: "around the boss, so
+    /// uptime is kept — about a T"). A T on Borgny: the bar left and right of it, the stem out on one
+    /// side in two steps. The side across from the stem stays clear, and the player fights from there.
+    /// Of the eight ways the T can point, the one that stays inside the arena and off the patches wins.
+    /// </summary>
+    public static List<Vector2> TSpots(Vector2 centre, Vector2 borgny, float hitbox, float arenaRadius,
+                                       IReadOnlyList<Zone> hazards)
+    {
+        var reach = MathF.Max(4f, hitbox + DropPastHitbox);
+        List<Vector2>? best = null;
+        var bestScore = float.MaxValue;
+
+        for (var k = 0; k < 8; k++)
+        {
+            var angle = k * MathF.PI / 4f;
+            var stem = new Vector2(MathF.Sin(angle), MathF.Cos(angle));
+            var bar = new Vector2(stem.Y, -stem.X);
+            List<Vector2> spots = [borgny + (bar * reach), borgny - (bar * reach), borgny + (stem * reach),
+                                   borgny + (stem * reach * 2f)];
+            var free = borgny - (stem * reach);
+
+            var score = 0f;
+            foreach (var spot in new List<Vector2>(spots) { free })
+            {
+                score += MathF.Max(0f, Vector2.Distance(spot, centre) - (arenaRadius - 1f)) * 100f;
+                score += Dodger.Hits(hazards, spot, Dodger.Margin) * 10f;
+            }
+
+            // The free side towards the middle, so the fight is not pinned to the wall.
+            score += Vector2.Distance(free, centre) * 0.1f;
+
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = spots;
+            }
+        }
+
+        return best!;
+    }
+
+    /// <summary>The spot to stand on for the next drop, as a refuge.</summary>
+    public static Zone Drop(Vector2 spot, int index, float left) =>
+        new(ZoneKind.Circle, spot, 0f, 0f, left, $"{Name} (tornado {index + 1} of {Drops}, in a T round Borgny)",
+            Refuge: spot);
+
     /// <param name="castLeft">Seconds of the cast left; below 0 once it has ended and the vomit is on its way.</param>
     /// <param name="hazards">Patches on the ground the spot at the edge keeps clear of.</param>
     public static Zone Zone(Vector2 centre, Vector2 borgny, Vector2 player, float castLeft,

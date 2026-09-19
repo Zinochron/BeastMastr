@@ -718,6 +718,9 @@ public static class XbmColumns
         public const uint Territory = 148;
         public const uint Npc = 1059759;
 
+        /// <summary>Where Lauda stands, for walking to her before she is in the object table.</summary>
+        public static readonly System.Numerics.Vector3 NpcPosition = new(25.5f, -6.0f, 67.5f);
+
         /// <summary>How close to Lauda talking to her worked: the arrival spot is 2.3 yalms away.</summary>
         public const float TalkRange = 4.5f;
 

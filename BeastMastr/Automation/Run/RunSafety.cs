@@ -31,13 +31,32 @@ public static class RunSafety
             return "Switch to Beastmaster first.";
 
         if (!board.InRunZone)
-            return "Start a board first — a run begins on the board's start platform.";
+            return "Start a board, or stand at the Crucible entrance in Central Shroud — a run begins on a " +
+                   "board's start platform or at Lauda.";
 
         if (!NavmeshIpc.IsLoaded)
             return "vnavmesh is not loaded.";
 
         if (board.Graph is not { IsValid: true })
             return "The board is not known: " + board.Status;
+
+        return null;
+    }
+
+    /// <summary>Why a run cannot start at the entrance and now, or null.</summary>
+    public static string? CannotStartAtEntrance(Configuration configuration)
+    {
+        if (Services.Objects.LocalPlayer == null)
+            return "There is no character.";
+
+        if (!GaugeReader.IsBeastmaster)
+            return "Switch to Beastmaster first.";
+
+        if (!NavmeshIpc.IsLoaded)
+            return "vnavmesh is not loaded.";
+
+        if (configuration.LastBoardRowId == 0)
+            return "No board is known yet. Open a board's window once (talk to Lauda), then press Run again.";
 
         return null;
     }

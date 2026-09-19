@@ -2464,3 +2464,39 @@ spot, the player stays.
 **Opener at Borgny.** No recording yet. Battlehorn, Borrow and Parting Blow are now logged ("Pressed …",
 "before the pull") so the next run shows what happened. In the recording of 17.09, 19:29, Parting Blow
 sent off the first familiar four seconds after the pull.
+
+### Horns at Borgny, a T of tornadoes, Run from Lauda, farming teams — 2026-09-19
+
+`captures/run-20260919-155513.txt`.
+
+**The opener at Borgny.** Horn II was pressed at 16:17:36.32, the moment Borgny's opening cutscene let
+go, and its cast was cut off after 0.09 s. Nobody came (`SummonedBeast` stayed 0). The driver counted
+the horn anyway, went on to Horn I and Borrow, and pulled with one familiar.
+- A horn is now only counted once its familiar is there (the gauge's summon count changes, or a
+  familiar appears). One that summons nobody is forgotten, so it is pressed again.
+- Nothing is pressed during a cutscene or event, nor for a second after.
+
+**Toxic Vomit's tornadoes in a T** (the user: lay them round the boss for uptime). The four drops go on a
+T round Borgny, in melee reach:
+1. bar left,
+2. bar right,
+3. stem,
+4. stem, one step further out.
+
+The side across from the stem stays clear to fight from. The T is laid out as the cast starts, turned
+the way that stays inside the arena and off the patches. The next spot is taken once the previous drop's
+tornado has risen (the new "Magitek Armor" objects are counted).
+
+**Area items at the Treant** wait until the adds have been on the player for 1.5 s (a slider), so one
+throw catches the whole wave.
+
+**Run from the entrance.** In Central Shroud, Run walks to Lauda with vnavmesh (her spot is known before
+she is in the object table), then starts the board last played (`LastBoardRowId`).
+
+**Team per board** (`RunTeam`), set in the board window before Challenge, by the TeamSelector:
+
+| Setting | Team |
+|---|---|
+| Farming (default) | The carries alone. |
+| Leveling | The carries, then the least advanced beasts, anew each board. |
+| Keep | The team as it is. |

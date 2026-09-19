@@ -94,6 +94,7 @@ public sealed class BoardRunner : IDisposable
     private readonly FightSelector fightSelector;
     private readonly HealthSelector healthSelector;
     private readonly BeastCatalog catalog;
+    private readonly TeamSelector teamSelector;
 
     private readonly List<string> log = [];
 
@@ -123,8 +124,9 @@ public sealed class BoardRunner : IDisposable
 
     public BoardRunner(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
                        BoardWalker walker, CombatDriver combat, FightSelector fightSelector,
-                       HealthSelector healthSelector, BeastCatalog catalog)
+                       HealthSelector healthSelector, BeastCatalog catalog, TeamSelector teamSelector)
     {
+        this.teamSelector = teamSelector;
         this.catalog = catalog;
         this.configuration = configuration;
         this.board = board;
@@ -170,7 +172,9 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        if (RunSafety.CannotStart(board) is { } problem)
+        // At the entrance, the run begins by walking to Lauda and starting the board last played.
+        var atEntrance = Services.ClientState.TerritoryType == XbmColumns.Entrance.Territory;
+        if ((atEntrance ? RunSafety.CannotStartAtEntrance(configuration) : RunSafety.CannotStart(board)) is { } problem)
         {
             Fail(problem);
             return;
@@ -194,6 +198,14 @@ public sealed class BoardRunner : IDisposable
         var collisions = RunSafety.LoadedCollisions();
         if (collisions.Count > 0)
             Say($"Also loaded, and able to get in the way: {string.Join(", ", collisions)}.");
+
+        if (atEntrance)
+        {
+            boardRow = configuration.LastBoardRowId;
+            entrance = new BoardEntrance(boardRow, teamSelector, configuration.RunTeam);
+            Enter(Phase.Reentering, $"Starting board 1 of {RunsWanted} from the entrance.");
+            return;
+        }
 
         Enter(Phase.Preflight, $"Starting {RunsWanted} run(s) on board {board.BoardRowId}.");
     }
@@ -947,7 +959,7 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        entrance = new BoardEntrance(boardRow);
+        entrance = new BoardEntrance(boardRow, teamSelector, configuration.RunTeam);
         Enter(Phase.Reentering, $"Starting board {RunsDone + 1} of {RunsWanted} from the entrance.");
     }
 

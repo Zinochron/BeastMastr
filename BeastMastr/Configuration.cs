@@ -158,6 +158,12 @@ public class Configuration : IPluginConfiguration
 
     public int AreaItemAtAdds { get; set; } = 3;
 
+    /// <summary>
+    /// How long the adds have to be on the player before the item is thrown: the Treant's wave comes in
+    /// over a second or two, and one throw should catch all of it.
+    /// </summary>
+    public float AreaItemWaitSeconds { get; set; } = 1.5f;
+
     /// <summary>In a fight, drink the strongest at or below this share of HP.</summary>
     public float PotionInFightBelow { get; set; } = 0.4f;
 
@@ -175,6 +181,9 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>A board lost to a wipe counts as played, and the next one is started.</summary>
     public bool ContinueAfterLostBoard { get; set; } = true;
+
+    /// <summary>What team a board started from the entrance is given.</summary>
+    public RunTeam RunTeam { get; set; } = RunTeam.Farming;
 
     // ---- When you take over ----------------------------------------------
     // Whatever the automation is doing, your own input wins at once. These decide what happens after.
@@ -389,4 +398,17 @@ public enum BossModRole
 
     /// <summary>BossMod moves and presses the combo; BeastMastr spends the resources.</summary>
     DodgeAndRotation,
+}
+
+/// <summary>The team a board started from the entrance is given, set in the board window before Challenge.</summary>
+public enum RunTeam
+{
+    /// <summary>Whatever the team is.</summary>
+    Keep,
+
+    /// <summary>The carries, then the least advanced beasts, anew for every board.</summary>
+    Leveling,
+
+    /// <summary>The three carries alone, for the board's bonus.</summary>
+    Farming,
 }
