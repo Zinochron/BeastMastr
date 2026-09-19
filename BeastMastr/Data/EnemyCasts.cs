@@ -204,6 +204,7 @@ public static class EnemyCasts
         AddTraps(zones, player, now);
         AddVomit(zones, player, now);
         AddPhlegm(zones, player);
+        AddLevitation(zones, player, now);
         return zones;
     }
 
@@ -273,6 +274,114 @@ public static class EnemyCasts
 
         var left2 = MathF.Max(0f, ToxicVomit.LandsAfterCast - sinceEnd);
         zones.Add(ToxicVomit.Drop(vomit.Spots[dropped], dropped, left2));
+    }
+
+    /// <summary>Where learned puddles are kept; set once by the fight driver.</summary>
+    public static Configuration? Settings { get; set; }
+
+    /// <summary>The player is being sent into the Strix's levitation puddle: the boss should be brought along.</summary>
+    public static bool LevitationWanted { get; private set; }
+
+    private static bool quakeSeen;
+    private static bool quakeDone;
+
+    /// <summary>The puddle the player stands in, what the player had then, and since when; learned from once.</summary>
+    private static (uint Base, HashSet<uint> Before, DateTime Since, bool Learned)? inPuddle;
+
+    /// <summary>
+    /// The Strix's puddles: into the levitating one from the moment they appear until its quake is over,
+    /// and what each one gives is learned the first time the player stands in it.
+    /// </summary>
+    private static void AddLevitation(List<Zone> zones, IPlayerCharacter player, DateTime now)
+    {
+        LevitationWanted = false;
+        if (Settings is not { } settings)
+            return;
+
+        var puddles = Services.Objects.Where(obj => Array.IndexOf(StrixPuddles.Puddles, obj.BaseId) >= 0).ToList();
+        if (puddles.Count == 0)
+        {
+            quakeSeen = false;
+            quakeDone = false;
+            inPuddle = null;
+            return;
+        }
+
+        var here = new Vector2(player.Position.X, player.Position.Z);
+        Learn(settings, player, here, puddles, now);
+
+        if (Services.Objects.OfType<IBattleChara>().FirstOrDefault(obj => obj.BaseId == StrixPuddles.Strix && !obj.IsDead)
+            is not { } strix)
+            return;
+
+        var quaking = strix.IsCasting && strix.CastActionId == StrixPuddles.Quakes;
+        if (quaking)
+            quakeSeen = true;
+        else if (quakeSeen)
+            quakeDone = true;
+
+        if (quakeDone ||
+            StrixPuddles.Levitating(settings.StrixLevitationPuddle, settings.StrixNotLevitation) is not { } wanted ||
+            puddles.FirstOrDefault(obj => obj.BaseId == wanted) is not { } puddle)
+            return;
+
+        var left = quaking ? strix.TotalCastTime - strix.CurrentCastTime : 10f;
+        zones.Add(StrixPuddles.Zone(new Vector2(puddle.Position.X, puddle.Position.Z), left));
+        LevitationWanted = true;
+    }
+
+    /// <summary>
+    /// What a puddle gives, read off the statuses the player gains standing in it, and kept: which one floats
+    /// is in no sheet.
+    /// </summary>
+    private static void Learn(Configuration settings, IPlayerCharacter player, Vector2 here,
+                              List<Dalamud.Game.ClientState.Objects.Types.IGameObject> puddles, DateTime now)
+    {
+        var statuses = player.StatusList.Where(status => status.StatusId != 0).Select(status => status.StatusId).ToHashSet();
+        var standing = puddles.FirstOrDefault(obj => Vector2.Distance(here, new Vector2(obj.Position.X, obj.Position.Z)) < 1.5f);
+        if (standing == null)
+        {
+            inPuddle = null;
+            return;
+        }
+
+        if (inPuddle is not { } state || state.Base != standing.BaseId)
+        {
+            inPuddle = (standing.BaseId, statuses, now, false);
+            return;
+        }
+
+        if (state.Learned || (now - state.Since).TotalSeconds < 1.5)
+            return;
+
+        inPuddle = state with { Learned = true };
+        var sheet = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.Status>();
+        var gained = statuses.Where(id => !state.Before.Contains(id))
+                             .Select(id => sheet.GetRowOrDefault(id)?.Name.ExtractText() ?? $"status {id}")
+                             .ToList();
+        if (gained.Count == 0)
+        {
+            Services.Log.Information($"{StrixPuddles.Name}: puddle {state.Base} gave nothing yet.");
+            return;
+        }
+
+        if (gained.Any(StrixPuddles.Floats))
+        {
+            settings.StrixLevitationPuddle = state.Base;
+            settings.StrixNotLevitation.Remove(state.Base);
+        }
+        else
+        {
+            if (!settings.StrixNotLevitation.Contains(state.Base))
+                settings.StrixNotLevitation.Add(state.Base);
+
+            if (settings.StrixLevitationPuddle == state.Base)
+                settings.StrixLevitationPuddle = 0;
+        }
+
+        settings.Save();
+        Services.Log.Information($"{StrixPuddles.Name}: puddle {state.Base} gave {string.Join(", ", gained)}; " +
+                                 $"the levitating one is now taken to be {settings.StrixLevitationPuddle}.");
     }
 
     /// <summary>The tornadoes Toxic Vomit leaves ("Magitek Armor", 2012932) that are standing now.</summary>

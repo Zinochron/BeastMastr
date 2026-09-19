@@ -462,3 +462,45 @@ public static class EdgeBait
     public static Zone Zone(Vector2 spot, float placedIn, string name) =>
         new(ZoneKind.Circle, spot, 0f, 0f, placedIn, name + " (to the edge)", Refuge: spot);
 }
+
+/// <summary>
+/// The Strix (the First Master's Board's first fight): after Plummet it leaves three puddles on three of
+/// the four spots (110|130, −410|−430), then casts On the Properties of Quakes (48657, the whole arena).
+/// One puddle lifts the player off the ground and so out of the quake; the other two protect against later
+/// mechanics but stop the player attacking (the user). The puddles' event objects are 2004354, 2015456 and
+/// 2015457, shuffled over the spots from fight to fight. Which one levitates is not in the data: 2004354
+/// uses a shared battle effect (<c>btl/shared/…b0483</c>), the other two effects of this board, so it is
+/// tried first, and what the player is given on stepping in is learned.
+/// </summary>
+public static class StrixPuddles
+{
+    public const uint Strix = 19638;
+    public const uint Quakes = 48657;
+    public const string Name = "Levitation puddle";
+
+    public static readonly uint[] Puddles = [2004354, 2015456, 2015457];
+
+    /// <summary>The puddle to stand in: the one learned to levitate, else the first not learned to be wrong.</summary>
+    public static uint? Levitating(uint learned, ICollection<uint> wrong)
+    {
+        if (learned != 0)
+            return learned;
+
+        foreach (var puddle in Puddles)
+        {
+            if (!wrong.Contains(puddle))
+                return puddle;
+        }
+
+        return null;
+    }
+
+    public static Zone Zone(Vector2 puddle, float left) =>
+        new(ZoneKind.Circle, puddle, 0f, 0f, left, Name + " (float over the quake)", Refuge: puddle);
+
+    /// <summary>A status that floats the player, by its name.</summary>
+    public static bool Floats(string statusName) =>
+        statusName.Contains("Levitat", System.StringComparison.OrdinalIgnoreCase) ||
+        statusName.Contains("Float", System.StringComparison.OrdinalIgnoreCase) ||
+        statusName.Contains("Airborne", System.StringComparison.OrdinalIgnoreCase);
+}

@@ -162,6 +162,14 @@ public class Configuration : IPluginConfiguration
     public bool UseBossItems { get; set; } = true;
 
     /// <summary>
+    /// The Strix's puddle learned to levitate (0 until learned), and the puddles learned not to, by event
+    /// object base id. Learned from the statuses gained standing in them; see <c>StrixPuddles</c>.
+    /// </summary>
+    public uint StrixLevitationPuddle { get; set; }
+
+    public List<uint> StrixNotLevitation { get; set; } = [];
+
+    /// <summary>
     /// How long the adds have to be on the player before the item is thrown: the Treant's wave comes in
     /// over a second or two, and one throw should catch all of it.
     /// </summary>

@@ -914,6 +914,17 @@ Check("the antidote when poisoned, again and again",
       BossItems.Next([BossItems.Antidote], new HashSet<uint> { BossItems.Antidote }, new HashSet<uint> { 5183 }) == BossItems.Antidote &&
       BossItems.Next([BossItems.Antidote], new HashSet<uint>(), noStatus) == null);
 
+// The Strix's puddles: the learned one, else the first not learned to be wrong.
+Check("the levitation puddle: the shared-effect one first, a learned one always",
+      StrixPuddles.Levitating(0, new List<uint>()) == 2004354 &&
+      StrixPuddles.Levitating(0, new List<uint> { 2004354 }) == 2015456 &&
+      StrixPuddles.Levitating(2015457, new List<uint> { 2004354 }) == 2015457);
+Check("a floating status is told by its name",
+      StrixPuddles.Floats("Levitation") && StrixPuddles.Floats("Magnetic Levitation") && !StrixPuddles.Floats("Haste"));
+var toPuddle = Dodger.Plan(new Vector2(120f, -420f), new Vector2(120f, -428f), 6f,
+                           [StrixPuddles.Zone(new Vector2(110f, -430f), 5f)], arena, 18f)!;
+Check("into the puddle before the quake", toPuddle.Point == new Vector2(110f, -430f), $"to {toPuddle.Point}");
+
 // Campsites: the 90% is shared, and what heals past full is lost.
 Check("a familiar missing a tenth is not worth half the heal", CampsiteRest.HowMany(0.6f, [0.1f], 2) == 0);
 Check("one missing half is", CampsiteRest.HowMany(0.6f, [0.5f, 0.05f], 2) == 1);

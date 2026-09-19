@@ -121,6 +121,7 @@ public sealed unsafe class CombatDriver : IDisposable
         this.bossMod = bossMod;
         this.actions = actions;
         actions.ActionUsed += OnActionUsed;
+        EnemyCasts.Settings = configuration;
         Services.Framework.Update += OnUpdate;
     }
 
@@ -148,6 +149,12 @@ public sealed unsafe class CombatDriver : IDisposable
 
     /// <summary>How many familiars stood out as the pending horn was pressed.</summary>
     private int familiarsAtHorn;
+
+    /// <summary>The pet command "Heel" (<c>PetAction</c> 2): the familiar comes back to the player.</summary>
+    private const uint HeelCommand = 2;
+
+    private static readonly TimeSpan HeelEvery = TimeSpan.FromSeconds(4);
+    private DateTime nextHeel;
 
     /// <summary>Since when enough adds have been on the player, or null.</summary>
     private DateTime? addsSince;
@@ -321,6 +328,20 @@ public sealed unsafe class CombatDriver : IDisposable
             addsSince = null;
         else
             addsSince ??= DateTime.Now;
+
+        // The Strix's levitation puddle: the player stands in it, and the boss has to come too so the fight
+        // goes on. With the familiar tanking, Heel brings the familiar — and the boss after it — to the player.
+        if (EnemyCasts.LevitationWanted && inCombat && DateTime.Now >= nextHeel &&
+            Services.Targets.Target is IBattleChara { IsDead: false } strix &&
+            Vector3.Distance(strix.Position, player.Position) - strix.HitboxRadius > MeleeReach + 1f &&
+            Familiars(player).Any(familiar => familiar.GameObjectId == strix.TargetObjectId))
+        {
+            nextHeel = DateTime.Now + HeelEvery;
+            var heelManager = ActionManager.Instance();
+            if (heelManager != null && heelManager->GetActionStatus(ActionType.PetAction, HeelCommand) == 0 &&
+                heelManager->UseAction(ActionType.PetAction, HeelCommand))
+                Services.Log.Information("Heel: bringing the familiar, and the boss it holds, to the levitation puddle.");
+        }
 
         var addsWaited = DateTime.Now - addsSince >= TimeSpan.FromSeconds(configuration.AreaItemWaitSeconds);
         if (adds != null && itemsFree && (ItemUser.Busy || addsWaited) && ItemUser.TickAttack(adds))

@@ -2574,3 +2574,28 @@ The healing items still go by HP.
 The runner marks the boss room's fight (`CombatDriver.BossFight`). Items only go once two horns have
 brought their familiars (`hornsThisFight >= 2`, no horn pending). "In the final fight, use every useful
 item" on the Run tab switches it off.
+
+### The Strix's levitation puddle, and 0.3.0.0 — 2026-09-19
+
+`captures/run-20260919-224253.txt`. After Plummet the Strix (19638) leaves three puddles on three of the
+four spots (110|130, −410|−430). It then casts On the Properties of Quakes (48657, 60 yalms, 7.7 s),
+then Magical Mallet Theory. The user: one puddle floats the player over the quake; the other two
+protect against later mechanics but stop the player attacking. The boss has to be pulled to the
+floating one, which Heel does while the familiar tanks.
+
+- **The puddles:** event objects 2004354, 2015456 and 2015457, shuffled over the spots from fight to
+  fight. None has a name. `EObj` column 11 leads through `ExportedSG` to their effects:
+  - 2004354: `bgcommon/world/btl/shared/for_vfx/sgvf_w_btl_b0483.sgb`, an effect shared across the game;
+  - 2015456 and 2015457: this board's own (`fst_f1/…b4224`, `…b4223`), like the briar patch (`…b4225`).
+
+  No recording has the player standing in one, so which one floats is learned. 2004354 is tried first.
+  Standing in a puddle for 1.5 s, the statuses gained are named in the log. A name with "Levitat",
+  "Float" or "Airborne" marks the puddle as the one (`StrixLevitationPuddle`); anything else marks it
+  as wrong (`StrixNotLevitation`), and the next fight tries another.
+- **The plan:** from the moment the puddles appear until the quake is over, the puddle is a refuge
+  (`StrixPuddles`). While the player is sent there and the familiar holds the Strix out of reach, Heel
+  (`PetAction` 2) goes out every 4 s.
+
+The Beast Potion Kit worked: Auto-potion at 22:50:33 and 22:59:46.
+
+Version 0.3.0.0 has everything since 0.2.0.0.
