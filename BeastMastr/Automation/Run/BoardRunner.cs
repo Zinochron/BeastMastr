@@ -582,6 +582,7 @@ public sealed class BoardRunner : IDisposable
     {
         combat.Start();
         combat.MayPull = true;
+        combat.BossFight = IsBoss(Target) || IsBoss(board.PositionEvent);
     }
 
     private void Fighting()

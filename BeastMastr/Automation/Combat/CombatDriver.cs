@@ -193,6 +193,12 @@ public sealed unsafe class CombatDriver : IDisposable
     /// <summary>Whether it may pick a fight itself. Only the run grants that, once it has started one.</summary>
     public bool MayPull { get; set; }
 
+    /// <summary>The fight in hand is a board's final one: every useful item may go, once the horns are out.</summary>
+    public bool BossFight { get; set; }
+
+    /// <summary>The final fight's items used or tried, each buff once.</summary>
+    private readonly HashSet<uint> bossItemsTried = [];
+
     public string Status { get; private set; } = "Off.";
 
     public string LastDecision { get; private set; } = string.Empty;
@@ -212,7 +218,9 @@ public sealed unsafe class CombatDriver : IDisposable
     {
         if (!Enabled)
             hornsThisFight = FamiliarOut(Services.Objects.LocalPlayer) ? 1 : 0;
-            hornPending = false;
+
+        hornPending = false;
+        bossItemsTried.Clear();
 
         Enabled = true;
         input.Reset();
@@ -321,6 +329,31 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
+        // The final fight: every item worth using — the Beast Potion Kit first — once the horns are out, so
+        // nothing pulls before them (the user). Each buff once; the antidote whenever Borgny has poisoned.
+        if (BossFight && configuration.UseBossItems && itemsFree && hornsThisFight >= 2 && !hornPending)
+        {
+            var statuses = player.StatusList.Where(status => status.StatusId != 0)
+                                 .Select(status => status.StatusId).ToHashSet();
+            var held = ItemUser.HeldItems().Select(item => item.Row).ToList();
+            if (BossItems.Next(held, bossItemsTried, statuses) is { } row && ItemUser.TickUse(row))
+            {
+                if (row != BossItems.Antidote)
+                    bossItemsTried.Add(row);
+
+                Status = "Using an item for the final fight.";
+                return;
+            }
+
+            // The Fangs and Celestial Sand on the boss itself, once the fight is on.
+            if (inCombat && Services.Targets.Target is IBattleChara { IsDead: false } boss && Hostile(boss) &&
+                ItemUser.TickAttack(boss))
+            {
+                Status = "Throwing an area item at the boss.";
+                return;
+            }
+        }
+
         if (pausedBossMod)
         {
             pausedBossMod = false;
@@ -341,6 +374,7 @@ public sealed unsafe class CombatDriver : IDisposable
             {
                 hornsThisFight = 0;
                 hornPending = false;
+                bossItemsTried.Clear();
             }
         }
 

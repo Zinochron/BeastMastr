@@ -2538,3 +2538,39 @@ by more than a second, and the cleave comes 2.8 s after that, so there is time.
 **Boards won.** The result window's value 3 is the board's completion: "100%" when the boss fell, "88%"
 when it did not, in every recording. "Boards finished" now says how many were won
 (`Configuration.BoardsWon`, and for the session).
+
+### Every useful item in the final fight — 2026-09-19
+
+The user asked for every item in the final fight, the Beast Potion Kit above all, but nothing before the
+horns are out, so nothing pulls early. `Rules/BossItems.cs` picks from the `XBMItem` rows (kind 2 are
+the consumables).
+
+In order, each once per fight:
+1. the Beast Potion Kit (140, "Grants Auto-potion to self"),
+2. the reraisers (99, 98),
+3. the antipoison serums (87, 86),
+4. the remedy kit (141),
+5. tannin (102) and stimulant (103),
+6. the tempered potions (104–112),
+7. breathtaking swiftness (114),
+8. vampiric essence (135),
+9. the tomes of reflection (136) and the impervious (137),
+10. the feather (115),
+11. the weakeners (116–127).
+
+The antidote (83) is used again whenever one of Borgny's Toxicosis forms is on the player. The Fangs and
+Celestial Sand go at the boss.
+
+Never used:
+- the feral potions (each also stuns, blinds, petrifies or puts to sleep the user),
+- the smokebomb,
+- the Spellforge and Steelsting tomes,
+- Temporal Sand,
+- the eyes,
+- the needle and the Blessed Horn.
+
+The healing items still go by HP.
+
+The runner marks the boss room's fight (`CombatDriver.BossFight`). Items only go once two horns have
+brought their familiars (`hornsThisFight >= 2`, no horn pending). "In the final fight, use every useful
+item" on the Run tab switches it off.

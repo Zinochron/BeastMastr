@@ -902,6 +902,18 @@ Check("the third familiar's Parting Blow is not spent on Borgny",
 Check("unless it finishes it",
       BstRotation.Next(thirdFamiliar with { KeepLastPartingBlow = true, TargetHpShare = 0.05f }, plain).Ogcd == Bst.PartingBlow);
 
+// The final fight's items: the Beast Potion Kit first, each buff once, the antidote whenever poisoned.
+var noStatus = new HashSet<uint>();
+Check("the Beast Potion Kit goes first",
+      BossItems.Next([137, BossItems.BeastPotionKit, 104], new HashSet<uint>(), noStatus) == BossItems.BeastPotionKit);
+Check("then the next buff not yet used",
+      BossItems.Next([137, BossItems.BeastPotionKit, 104], new HashSet<uint> { BossItems.BeastPotionKit }, noStatus) == 104);
+Check("feral potions and the smokebomb never",
+      BossItems.Next([105, 97, 142, 138, 100], new HashSet<uint>(), noStatus) == null);
+Check("the antidote when poisoned, again and again",
+      BossItems.Next([BossItems.Antidote], new HashSet<uint> { BossItems.Antidote }, new HashSet<uint> { 5183 }) == BossItems.Antidote &&
+      BossItems.Next([BossItems.Antidote], new HashSet<uint>(), noStatus) == null);
+
 // Campsites: the 90% is shared, and what heals past full is lost.
 Check("a familiar missing a tenth is not worth half the heal", CampsiteRest.HowMany(0.6f, [0.1f], 2) == 0);
 Check("one missing half is", CampsiteRest.HowMany(0.6f, [0.5f, 0.05f], 2) == 1);

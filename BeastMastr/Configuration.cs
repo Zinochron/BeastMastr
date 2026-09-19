@@ -158,6 +158,9 @@ public class Configuration : IPluginConfiguration
 
     public int AreaItemAtAdds { get; set; } = 3;
 
+    /// <summary>In a board's final fight, use every item worth using once the horns are out — the Beast Potion Kit first.</summary>
+    public bool UseBossItems { get; set; } = true;
+
     /// <summary>
     /// How long the adds have to be on the player before the item is thrown: the Treant's wave comes in
     /// over a second or two, and one throw should catch all of it.

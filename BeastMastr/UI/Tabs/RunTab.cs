@@ -324,6 +324,15 @@ public sealed class RunTab : ITab
             ImGui.Unindent();
         }
 
+        Toggle("In the final fight, use every useful item once the horns are out", configuration.UseBossItems,
+               value => configuration.UseBossItems = value);
+        Widgets.HelpMarker("Beast Potion Kit first, then reraisers, antipoison serums, the remedy kit, tannin, " +
+                           "stimulant, the tempered potions, vampiric essence, the tomes of reflection and the " +
+                           "impervious, the feather and the weakeners — each once — and an antidote whenever you are " +
+                           "poisoned. Fangs and Celestial Sand go at the boss. Nothing before both horns are out, so " +
+                           "nothing pulls early. Feral potions, smokebombs, the spellforge and steelsting tomes, " +
+                           "temporal sand and the eyes are never used.");
+
         Toggle("Throw Fangs and Celestial Sand at adds", configuration.UseAreaItems,
                value => configuration.UseAreaItems = value);
         if (configuration.UseAreaItems)
