@@ -858,6 +858,17 @@ var toBriar = Dodger.Plan(new Vector2(118f, -424f), flower, 6f, [elsewhere, trap
 Check("Floral Trap: into the nearest briar, even with another hit sooner", toBriar.Point == briars[2],
       $"to {toBriar.Point}");
 
+var afterTrap = FloralTrap.Zone(flower, new Vector2(112.4f, -428.2f), briars, 0f, waitingOutDevour: true)!;
+var stayInBriar = Dodger.Plan(new Vector2(112.4f, -428.2f), flower, 6f, [afterTrap], arena, 18f)!;
+Check("after Floral Trap, the briar is held until Devour instead of walking back to the flower",
+      stayInBriar.Point == briars[2], $"to {stayInBriar.Point}");
+
+// Casts under way far off do not keep the player out of reach: a spot clear of all of them is walked to.
+var farCast = CastShapes.Shape(2, 6, 0, "", 0f, new Vector2(905f, -405f), 0f, 3f, "far circle")!;
+var walkIn = Dodger.Plan(new Vector2(935f, -420f), farBorgny, 6f, [farCast], borgnyArena, 18f)!;
+Check("clear of a cast far off, the player still closes in on the target",
+      Vector2.Distance(walkIn.Point, farBorgny) <= 6f && !farCast.Covers(walkIn.Point, 0.5f), $"{walkIn.Point} {walkIn.Why}");
+
 // Campsites: the 90% is shared, and what heals past full is lost.
 Check("a familiar missing a tenth is not worth half the heal", CampsiteRest.HowMany(0.6f, [0.1f], 2) == 0);
 Check("one missing half is", CampsiteRest.HowMany(0.6f, [0.5f, 0.05f], 2) == 1);

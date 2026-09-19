@@ -201,7 +201,7 @@ public static class EnemyCasts
         AddSweeps(zones, now);
         AddBreaths(zones, now);
         AddHazards(zones, player, now);
-        AddTraps(zones, player);
+        AddTraps(zones, player, now);
         AddVomit(zones, player, now);
         AddPhlegm(zones, player);
         return zones;
@@ -307,21 +307,37 @@ public static class EnemyCasts
     private static VomitState? Vomit;
 
     /// <summary>Floral Trap: into the nearest briar patch before it resolves.</summary>
-    private static void AddTraps(List<Zone> zones, IPlayerCharacter player)
+    private static void AddTraps(List<Zone> zones, IPlayerCharacter player, DateTime now)
     {
+        var here = new Vector2(player.Position.X, player.Position.Z);
         foreach (var flower in Casting(player))
         {
             if (flower.CastActionId != FloralTrap.Cast)
                 continue;
 
-            var patches = Services.Objects.Where(obj => obj.BaseId == FloralTrap.BriarPatch)
-                                  .Select(obj => new Vector2(obj.Position.X, obj.Position.Z));
-            if (FloralTrap.Zone(new Vector2(flower.Position.X, flower.Position.Z),
-                                new Vector2(player.Position.X, player.Position.Z), patches,
-                                flower.TotalCastTime - flower.CurrentCastTime) is { } zone)
-                zones.Add(zone);
+            var left = flower.TotalCastTime - flower.CurrentCastTime;
+            Trap = (now + TimeSpan.FromSeconds(left), new Vector2(flower.Position.X, flower.Position.Z));
         }
+
+        if (Trap is not { } trap)
+            return;
+
+        // The briar is held until Devour has gone by: walking back to the flower at once was walking into it.
+        var sinceEnd = (float)(now - trap.CastEnd).TotalSeconds;
+        if (sinceEnd > FloralTrap.DevourAfterTrap)
+        {
+            Trap = null;
+            return;
+        }
+
+        var patches = Services.Objects.Where(obj => obj.BaseId == FloralTrap.BriarPatch)
+                              .Select(obj => new Vector2(obj.Position.X, obj.Position.Z));
+        if (FloralTrap.Zone(trap.Flower, here, patches, MathF.Max(0f, -sinceEnd), sinceEnd > 0f) is { } zone)
+            zones.Add(zone);
     }
+
+    /// <summary>The Floral Trap under way or just over: when it ends, and where the flower stands.</summary>
+    private static (DateTime CastEnd, Vector2 Flower)? Trap;
 
     /// <summary>The widest lasting patch centred on a point, or 0: walking in to a target stops outside it.</summary>
     public static float HazardAround(Vector3 point)

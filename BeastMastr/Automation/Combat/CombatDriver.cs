@@ -359,8 +359,12 @@ public sealed unsafe class CombatDriver : IDisposable
 
         if (decision.Ogcd != 0 && Use(manager, player, target, decision.Ogcd))
         {
-            if (decision.Ogcd is Bst.Snarl or Bst.Challenge)
-                Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}.");
+            // The familiars' comings and goings are logged too, so an opener gone wrong can be read back
+            // without a recording.
+            if (decision.Ogcd is Bst.Snarl or Bst.Challenge or Bst.Borrow or Bst.PartingBlow ||
+                Array.IndexOf(Bst.Battlehorns, decision.Ogcd) >= 0)
+                Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}" +
+                                         $"{(MayPull && !inCombat ? " (before the pull)" : string.Empty)}.");
 
             return;
         }

@@ -203,8 +203,33 @@ public static class FloralTrap
     public const uint BriarPatch = 2015458;
     public const string Name = "Floral Trap";
 
+    /// <summary>
+    /// How long the briar is held once the trap has gone off. The flower turns to the player and Devour (a
+    /// cone of 8 in front of it) comes about five seconds after the trap: on 2026-09-17 19:15 the trap
+    /// ended at 21.0, the player walked straight back, and was Devoured 5 yalms in front of it at 25.96.
+    /// </summary>
+    public const float DevourAfterTrap = 6.5f;
+
     /// <summary>The briar patch to stand in: the nearest to the player.</summary>
-    public static Zone? Zone(Vector2 flower, Vector2 player, IEnumerable<Vector2> patches, float castLeft)
+    /// <param name="waitingOutDevour">The trap has gone off; the briar is held until Devour has too.</param>
+    public static Zone? Zone(Vector2 flower, Vector2 player, IEnumerable<Vector2> patches, float castLeft,
+                             bool waitingOutDevour = false)
+    {
+        if (waitingOutDevour)
+        {
+            var near = Nearest(player, patches);
+            return near is { } patch
+                       ? new Zone(ZoneKind.Circle, flower, 0f, 9f, castLeft, Name + " (in the briar until Devour)",
+                                  Refuge: patch)
+                       : null;
+        }
+
+        return Nearest(player, patches) is { } refuge
+                   ? new Zone(ZoneKind.Circle, flower, 0f, 80f, castLeft, Name + " (into the briar)", Refuge: refuge)
+                   : null;
+    }
+
+    private static Vector2? Nearest(Vector2 player, IEnumerable<Vector2> patches)
     {
         Vector2? best = null;
         foreach (var patch in patches)
@@ -213,9 +238,7 @@ public static class FloralTrap
                 best = patch;
         }
 
-        return best is { } refuge
-                   ? new Zone(ZoneKind.Circle, flower, 0f, 80f, castLeft, Name + " (into the briar)", Refuge: refuge)
-                   : null;
+        return best;
     }
 }
 

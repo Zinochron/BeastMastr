@@ -2443,3 +2443,24 @@ Exactly one copy builds its core. The order of preference is:
 The others stay idle and say so in chat. When a preferred copy arrives, the active one disposes its core
 first, and the newcomer builds only once no other copy is active. Copies older than 0.2.1.0 do not take
 part.
+
+### Second treasure picks, Devour, walking in during casts — 2026-09-19
+
+**Two picks from a coffer.** An item lets a coffer be picked from twice. The pick goes through, the window
+stays open, and at 15:32 the run handed the coffer to the player. Now the run tries again: when the window
+is still open after a confirmed pick, that offer counts as taken and another is picked. It tries up to
+four times before handing over.
+
+**Corpse Flower, Devour.** The briar stopped the draw-in. Then the flower turned to the player, and the
+walk back to it went straight into Devour, a cone of 8 in front: the trap ended at 21.0, and the player
+was Devoured 5 yalms in front of it at 25.96 (17.09, 19:15). The briar is now held for 6.5 s after the
+trap (`FloralTrap.DevourAfterTrap`).
+
+**Walking in at Borgny.** A clear player stood still whenever anything was being cast, which at Borgny
+is most of the time. Out of reach, a spot by the target is now walked to during casts too, as long as
+it is clear of every cast under way, not only the soonest (Bedrock Uplift's next ring). With no such
+spot, the player stays.
+
+**Opener at Borgny.** No recording yet. Battlehorn, Borrow and Parting Blow are now logged ("Pressed …",
+"before the pull") so the next run shows what happened. In the recording of 17.09, 19:29, Parting Blow
+sent off the first familiar four seconds after the pull.

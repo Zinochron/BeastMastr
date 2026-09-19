@@ -216,21 +216,32 @@ public static class Dodger
         var clearHere = !outside && Hits(active, player, Margin) == 0;
         var inReach = target is not { } aim || Vector2.Distance(player, aim) <= reach;
 
-        // Clear of hits still being cast: stay — a step in could land in the next ring of Bedrock Uplift.
-        // Clear with only patches on the ground about: nothing to dodge when in reach; out of reach, a clear
-        // spot by the target is searched for, so the walk in goes round the patches instead of stopping
-        // short of them — in the recording of 2026-09-17 19:29 the player stood 15 to 25 yalms from
-        // Borgny for most of the fight.
+        // Clear and in reach: stay, or with only patches about, nothing to do at all.
         var onlyPatches = active.TrueForAll(zone => zone.Lasting);
-        if (clearHere && !onlyPatches)
-            return new DodgePlan(player, true, $"already clear of {names}");
-
         if (clearHere && inReach)
-            return null;
+            return onlyPatches ? null : new DodgePlan(player, true, $"already clear of {names}");
 
+        // Clear but out of reach: a spot by the target, walked to round the patches. While hits are still
+        // being cast it has to be clear of every one of them, not only the soonest — a step in could land
+        // in the next ring of Bedrock Uplift. With none, stay: at Borgny, staying whenever anything was
+        // being cast left the player 15 to 25 yalms off for most of the fight (2026-09-17 19:29, 09-19 15:39).
         if (clearHere)
-            names = $"closing in, clear of {names}";
+        {
+            var closer = Search(player, target, reach, onlyPatches ? active : zones, arenaCentre, arenaRadius, square,
+                                $"closing in, clear of {names}");
+            return closer is { Safe: true } ? closer : new DodgePlan(player, true, $"already clear of {names}");
+        }
 
+        return Search(player, target, reach, active, arenaCentre, arenaRadius, square, names);
+    }
+
+    /// <summary>
+    /// The grid spot touching the fewest of <paramref name="avoid"/>, then the nearest one — nearest to walk
+    /// to, and nearest to being in reach of the target.
+    /// </summary>
+    private static DodgePlan? Search(Vector2 player, Vector2? target, float reach, IReadOnlyList<Zone> avoid,
+                                     Vector2 arenaCentre, float arenaRadius, bool square, string why)
+    {
         DodgePlan? best = null;
         var bestScore = float.MaxValue;
         var bestHits = int.MaxValue;
@@ -244,7 +255,7 @@ public static class Dodger
                     continue;
 
                 var point = arenaCentre + offset;
-                var hits = Hits(active, point, Margin);
+                var hits = Hits(avoid, point, Margin);
                 // Aimed half a grid step inside the reach, so the spot found is in it and not at its rim.
                 var score = Vector2.Distance(point, player) +
                             (target is { } t
@@ -255,7 +266,7 @@ public static class Dodger
                 {
                     bestHits = hits;
                     bestScore = score;
-                    best = new DodgePlan(point, hits == 0, names);
+                    best = new DodgePlan(point, hits == 0, why);
                 }
             }
         }

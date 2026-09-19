@@ -111,6 +111,11 @@ public sealed class BoardRunner : IDisposable
 
     private int treasureChoice;
 
+    /// <summary>Picks made from the coffer in hand; a second-pick item leaves it open after the first.</summary>
+    private int treasurePicks;
+
+    private const int MostTreasurePicks = 4;
+
     /// <summary>Whether the fight in hand has been seen in combat, and away from the board.</summary>
     private bool sawCombat;
 
@@ -757,11 +762,32 @@ public sealed class BoardRunner : IDisposable
                  (held.Count > 0 ? $" Already held: {string.Join(", ", held)}." : string.Empty));
         }
 
-        if (Carry(RoomActions.ChooseTreasure(treasureChoice), "Pick your treasure — the run carries on when the window closes."))
+        // An item lets a coffer be picked from twice: the pick goes through and the window stays open. Then
+        // another offer is picked, until the window is gone.
+        step ??= new ConfirmedStep(RoomActions.ChooseTreasure(treasureChoice));
+        step.Tick();
+
+        if (step.Done)
         {
             RoomDone("Took the treasure.");
             return;
         }
+
+        if (step.Failure != null)
+        {
+            if (AddonReader.IsOpen(XbmColumns.RunWindows.Treasure) && ++treasurePicks < MostTreasurePicks)
+            {
+                Note($"The coffer is still open after offer {treasureChoice + 1}; picking another.");
+                refusedOffers.Add(treasureChoice);
+                step = null;
+                return;
+            }
+
+            Ask($"{step.Failure} Pick your treasure — the run carries on when the window closes.");
+            return;
+        }
+
+        Status = $"Sending \"{step.Label}\".";
 
         if (step is { Refused: true })
         {
@@ -1015,7 +1041,10 @@ public sealed class BoardRunner : IDisposable
         step = null;
 
         if (phase == Phase.Treasure)
+        {
             refusedOffers.Clear();
+            treasurePicks = 0;
+        }
 
         if (phase == Phase.Shop)
             shopBuyer = null;
