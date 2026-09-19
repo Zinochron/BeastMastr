@@ -2500,3 +2500,25 @@ she is in the object table), then starts the board last played (`LastBoardRowId`
 | Farming (default) | The carries alone. |
 | Leveling | The carries, then the least advanced beasts, anew each board. |
 | Keep | The team as it is. |
+
+### No opener at the Treant, Borgny's last Parting Blow, a loot count — 2026-09-19
+
+**The Treant was pulled before a horn** (three times, `run-20260919-155513.txt`). The Sludge lies under
+the Treant from the start, so the dodger saw a patch and the target out of reach, and walked in with
+"closing in" the moment the arena loaded (15:59:14). The ordinary walk-in waits for the opener; the
+dodger's did not. Dodges are now planned without a target while the opener is not done, so only real
+hits move the player before the pull.
+
+**Borgny's third familiar** (the user): its Parting Blow is not spent on Borgny unless it finishes it.
+`BstState.KeepLastPartingBlow` holds back the "make room for the next familiar" blow when the target is
+Borgny (`Bosses.Borgny`, 19672) and three familiars have been summoned. The finishing blow
+(`PartingBlowFinisherShare`) still goes. On the adds, nothing changes.
+
+**Boards and loot** (`LootTracker`, Run tab):
+- **Loot:** at a board's end the chat puts items on the loot list ("3 bright remnants of resilience have
+  been added to the loot list."), then "You obtain 3 bright remnants of resilience." Only items that
+  were on the list are counted. A room's spoils ("… as loot."), gil and tokens are not. Names are
+  turned into the item's own name through the Item sheet's singular and plural (`LootLog` parses the
+  lines).
+- **Boards:** a board counts as finished when its result window opens.
+- **Totals:** kept in the configuration, and for the session.

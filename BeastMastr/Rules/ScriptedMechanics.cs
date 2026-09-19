@@ -67,6 +67,19 @@ public static class SweepingEvisceration
     public static float Facing(Vector2 direction) => MathF.Atan2(direction.X, direction.Y);
 }
 
+/// <summary>Bosses some rules single out, by base id.</summary>
+public static class Bosses
+{
+    /// <summary>Borgny the Venomous, the First Master's Board's boss.</summary>
+    public const uint Borgny = 19672;
+
+    /// <summary>
+    /// With this many familiars summoned in the fight, Borgny's Parting Blow is kept for finishing it: the
+    /// third familiar's blow is not spent on Borgny unless it kills it before the add phase.
+    /// </summary>
+    public const int BorgnyKeepsBlowFromHorn = 3;
+}
+
 /// <summary>
 /// Borgny the Venomous (the First Master's Board's boss): Toxic Breath. Borgny walks to the middle, casts,
 /// turns to the player, leaps backwards 19.6 yalms to the wall, and cleaves everything in front. The one

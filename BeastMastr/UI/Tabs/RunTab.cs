@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using BeastMastr.Data;
@@ -26,13 +27,16 @@ public sealed class RunTab : ITab
     private readonly BoardModel board;
     private readonly RouteKeeper route;
     private readonly Automation.Run.BoardRunner runner;
+    private readonly LootTracker loot;
 
-    public RunTab(Configuration configuration, BoardModel board, RouteKeeper route, Automation.Run.BoardRunner runner)
+    public RunTab(Configuration configuration, BoardModel board, RouteKeeper route, Automation.Run.BoardRunner runner,
+                  LootTracker loot)
     {
         this.configuration = configuration;
         this.board = board;
         this.route = route;
         this.runner = runner;
+        this.loot = loot;
     }
 
     public string Title => "Run";
@@ -41,6 +45,8 @@ public sealed class RunTab : ITab
     public void Draw()
     {
         DrawRun();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawLoot();
         ImGuiHelpers.ScaledDummy(4f);
         DrawRooms();
         ImGuiHelpers.ScaledDummy(4f);
@@ -154,6 +160,51 @@ public sealed class RunTab : ITab
 
         foreach (var line in runner.Log)
             ImGui.TextDisabled(line);
+    }
+
+    /// <summary>Boards finished and the loot rolled for at their end, this session and in all.</summary>
+    private void DrawLoot()
+    {
+        if (!ImGui.CollapsingHeader("Boards and loot", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        ImGui.TextUnformatted($"Boards finished: {loot.BoardsThisSession} this session, {configuration.BoardsFinished} in all.");
+        Widgets.HelpMarker("Counted when a board's result window opens, won or lost. The loot is what is rolled " +
+                           "for at the end — the remnants of resilience and the Modern Aesthetics items — not a " +
+                           "room's spoils.");
+
+        if (configuration.LootTotals.Count == 0)
+        {
+            ImGui.TextDisabled("No loot counted yet.");
+            return;
+        }
+
+        using (var table = ImRaii.Table("##loot", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH))
+        {
+            if (table.Success)
+            {
+                ImGui.TableSetupColumn("Item");
+                ImGui.TableSetupColumn("This session", ImGuiTableColumnFlags.WidthFixed, 90f * ImGuiHelpers.GlobalScale);
+                ImGui.TableSetupColumn("In all", ImGuiTableColumnFlags.WidthFixed, 70f * ImGuiHelpers.GlobalScale);
+                ImGui.TableHeadersRow();
+
+                foreach (var (name, total) in configuration.LootTotals.OrderBy(pair => pair.Key))
+                {
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(name);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(loot.ThisSession.GetValueOrDefault(name).ToString());
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(total.ToString());
+                }
+            }
+        }
+
+        if (ImGui.SmallButton("Reset the count") && ImGui.GetIO().KeyCtrl)
+            loot.Reset();
+
+        Widgets.HelpMarker("Hold Ctrl while clicking: it forgets the boards and the loot counted, saved totals too.");
     }
 
     /// <summary>What the run does in the rooms that offer a choice.</summary>

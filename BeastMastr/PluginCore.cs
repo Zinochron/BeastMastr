@@ -54,6 +54,7 @@ public sealed class PluginCore : IDisposable
     private readonly CarryContextMenu carryMenu;
     private readonly NextRoomPanel nextRoom;
     private readonly RankPuller rankPuller;
+    private readonly LootTracker lootTracker;
 
     /// <summary>
     /// Assigned in the constructor body, never as a field initializer. Field initializers run
@@ -109,6 +110,7 @@ public sealed class PluginCore : IDisposable
                                  healthSelector, Catalog, teamSelector);
         difficultySelector = new DifficultySelector(Configuration);
         rankPuller = new RankPuller(rankWatcher);
+        lootTracker = new LootTracker(Configuration);
 
         kamiToolKitReady = KamiToolKitLibrary.InitializeAsync(pluginInterface);
         notebook = new MonsterNotebookDecorator(Configuration, Catalog, Filter,
@@ -124,7 +126,7 @@ public sealed class PluginCore : IDisposable
         var tabs = new List<ITab>
         {
             new BeastsTab(Catalog, Filter, Configuration, rankWatcher, rankPuller),
-            new RunTab(Configuration, boardModel, routeKeeper, runner),
+            new RunTab(Configuration, boardModel, routeKeeper, runner, lootTracker),
             new SettingsTab(Configuration, fightSelector, teamSelector, difficultySelector, nextRoom),
             new DebugTab(Configuration,
             [
@@ -289,6 +291,7 @@ public sealed class PluginCore : IDisposable
         nextRoom.Dispose();
         routeOverlay.Dispose();
         rankPuller.Dispose();
+        lootTracker.Dispose();
         KamiToolKitLibrary.Dispose();
     }
 }

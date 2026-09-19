@@ -883,6 +883,25 @@ var walkIn = Dodger.Plan(new Vector2(935f, -420f), farBorgny, 6f, [farCast], bor
 Check("clear of a cast far off, the player still closes in on the target",
       Vector2.Distance(walkIn.Point, farBorgny) <= 6f && !farCast.Covers(walkIn.Point, 0.5f), $"{walkIn.Point} {walkIn.Why}");
 
+// The loot rolled for at a board's end, as the chat has it; a room's spoils are not it.
+Check("loot put on the list is read",
+      LootLog.Added("3 bright remnants of resilience have been added to the loot list.") is { Count: 3, Name: "bright remnants of resilience" } &&
+      LootLog.Added("A bright remnant of resilience has been added to the loot list.") is { Count: 1, Name: "bright remnant of resilience" });
+Check("and obtaining it",
+      LootLog.Obtained("You obtain 3 bright remnants of resilience.") is { Count: 3 } &&
+      LootLog.Obtained("You obtain a bright remnant of resilience.") is { Count: 1 });
+Check("a room's spoils and gil are not loot",
+      LootLog.Obtained("You obtain a fang of fire as loot.") == null &&
+      LootLog.Added("You obtain 4,500 gil.") == null);
+
+// Borgny, third familiar: its Parting Blow is only for finishing Borgny.
+var thirdFamiliar = Fight(distance: 2f, notReady: AllBut(Bst.PartingBlow)) with { OtherHornReadyIn = 2f, TargetHpShare = 0.4f };
+Check("the third familiar's Parting Blow is not spent on Borgny",
+      BstRotation.Next(thirdFamiliar with { KeepLastPartingBlow = true }, plain).Ogcd != Bst.PartingBlow &&
+      BstRotation.Next(thirdFamiliar, plain).Ogcd == Bst.PartingBlow);
+Check("unless it finishes it",
+      BstRotation.Next(thirdFamiliar with { KeepLastPartingBlow = true, TargetHpShare = 0.05f }, plain).Ogcd == Bst.PartingBlow);
+
 // Campsites: the 90% is shared, and what heals past full is lost.
 Check("a familiar missing a tenth is not worth half the heal", CampsiteRest.HowMany(0.6f, [0.1f], 2) == 0);
 Check("one missing half is", CampsiteRest.HowMany(0.6f, [0.5f, 0.05f], 2) == 1);

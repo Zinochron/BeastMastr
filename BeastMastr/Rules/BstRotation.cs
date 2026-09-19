@@ -146,6 +146,10 @@ public enum DutyTank
 /// Shield Charge may be used: nothing is on the ground or on its way. Against Borgny it carried the
 /// player through the Poison Clouds and the run died of it.
 /// </param>
+/// <param name="KeepLastPartingBlow">
+/// Parting Blow is only for finishing the target, not for making room for the next familiar. Borgny with
+/// the third familiar out (the user): its blow is not spent on Borgny unless it finishes it before the adds.
+/// </param>
 /// <param name="FamiliarLeaving">
 /// Parting Blow has sent the familiar off and no new one has come yet. It stays on the field for a few
 /// seconds, but the next Battlehorn is already usable, and that is when it was pressed in the recording.
@@ -172,7 +176,8 @@ public sealed record BstState(
     float FamiliarHpShare = 1f,
     bool TargetOnFamiliar = false,
     string? UnavoidableHit = null,
-    bool MayDash = true);
+    bool MayDash = true,
+    bool KeepLastPartingBlow = false);
 
 /// <param name="Gcd">The weaponskill to press, or 0.</param>
 /// <param name="Ogcd">The ability to press alongside it, or 0.</param>
@@ -353,7 +358,7 @@ public static class BstRotation
         {
             // Only with a familiar to follow: another Battlehorn ready soon. The last familiar of a
             // cycle goes only when the blow finishes the target.
-            if (state.OtherHornReadyIn <= options.PartingBlowHornWithin)
+            if (state.OtherHornReadyIn <= options.PartingBlowHornWithin && !state.KeepLastPartingBlow)
             {
                 why.Add("Parting Blow, to summon the next familiar");
                 return Bst.PartingBlow;

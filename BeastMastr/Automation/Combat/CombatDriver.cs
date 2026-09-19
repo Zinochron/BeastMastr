@@ -395,7 +395,9 @@ public sealed unsafe class CombatDriver : IDisposable
         if (ownDodging && DateTime.Now >= nextDodgePlan)
         {
             nextDodgePlan = DateTime.Now + DodgePlanInterval;
-            dodge = PlanDodge(player, target);
+            // Before the pull, with the opener not done, nothing is walked in to: at the Treant the Sludge made a
+            // "closing in" plan the moment the arena loaded, and the Treant was pulled before a single horn.
+            dodge = PlanDodge(player, decision.Engage ? target : null);
         }
         else if (!ownDodging)
         {
@@ -512,7 +514,9 @@ public sealed unsafe class CombatDriver : IDisposable
             UnavoidableHit: configuration.UseDutyActions ? EnemyCasts.Unavoidable(player) : null,
             // Not straight after a dodge either: Toxic Vomit's cast ends 2.3 s before it lands, and Shield
             // Charge in between carried the player back to Borgny.
-            MayDash: dodge == null && zonesAround == 0 && DateTime.Now - lastDodgeAt > DashAfterDodge);
+            MayDash: dodge == null && zonesAround == 0 && DateTime.Now - lastDodgeAt > DashAfterDodge,
+            KeepLastPartingBlow: target is IBattleChara { BaseId: Bosses.Borgny } &&
+                                 hornsThisFight >= Bosses.BorgnyKeepsBlowFromHorn);
     }
 
     private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;
