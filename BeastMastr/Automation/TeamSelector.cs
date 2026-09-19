@@ -109,12 +109,25 @@ public sealed unsafe class TeamSelector : IDisposable
     /// a mode that fires on its own the moment a window opens — you press it when you mean it, and
     /// pressing it again after a failure is how you retry.
     /// </summary>
-    public void RequestFill()
+    public void RequestFill() => RequestFill(false);
+
+    /// <param name="forFarming">The carries alone, rather than the carries and the least advanced.</param>
+    public void RequestFill(bool forFarming)
     {
         Reset();
         requested = true;
         givenUp = false;
+        farming = forFarming;
     }
+
+    /// <summary>Farming asked for: the team is the carries alone.</summary>
+    private bool farming;
+
+    /// <summary>A fill asked for and not yet over.</summary>
+    public bool Busy => requested || phase != Phase.Idle;
+
+    /// <summary>The last fill stopped short; <see cref="Status"/> says why.</summary>
+    public bool GaveUp => givenUp;
 
     private static bool BestiaryOpen => AddonReader.IsOpen(XbmColumns.MonsterNotebook.Addon);
 
@@ -165,6 +178,30 @@ public sealed unsafe class TeamSelector : IDisposable
         requested = false;
 
         var current = TeamNow();
+
+        // Farming: the carries alone, for the board's bonus. No ranks needed.
+        if (farming)
+        {
+            plan = configuration.CarryBeasts.Take(TeamPlanner.MaxCarries).ToList();
+            if (plan.Count == 0)
+            {
+                Tell("No carries are marked, so the team is left as it is. Mark them in the bestiary's right-click menu.");
+                return;
+            }
+
+            if (plan.ToHashSet().SetEquals(current))
+            {
+                Tell($"Team already matches: the {plan.Count} carries.");
+                return;
+            }
+
+            Status = $"Emptying the team ({current.Count}), then adding the {plan.Count} carries.";
+            Services.Log.Information(Status);
+            phase = Phase.Emptying;
+            emptyStep = EmptyStep.OpenMenu;
+            framesWaited = 0;
+            return;
+        }
 
         var known = catalog.Beasts
                            .Select(beast => (beast, rank: ranks.RankOf(beast.Number)))

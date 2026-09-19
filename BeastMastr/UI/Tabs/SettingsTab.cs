@@ -128,6 +128,23 @@ public sealed class SettingsTab : ITab
             "list does the same again whenever you press it. At shops and campsites the team list " +
             "gets a \"Pick lowest HP\" button instead.");
 
+        var carriesFirst = configuration.CallCarriesFirst;
+        if (ImGui.Checkbox("Call the carries first, unless they are down", ref carriesFirst))
+        {
+            configuration.CallCarriesFirst = carriesFirst;
+            configuration.Save();
+        }
+
+        Widgets.HelpMarker(
+            "The beasts marked \"Add as carry\" in the bestiary's right-click menu are called into " +
+            "every fight first, as long as they are in the team and not incapacitated. The rest of " +
+            "the call is the last fight's familiars; one that is down is replaced by the healthiest " +
+            "familiar left.");
+
+        ImGui.TextDisabled(configuration.CarryBeasts.Count == 0
+                               ? "No carries marked."
+                               : $"Carries: {configuration.CarryBeasts.Count}.");
+
         ImGui.TextDisabled(configuration.LastFightBeasts.Count == 0
                                ? "Nothing remembered yet — call familiars by hand once."
                                : $"Remembered: {configuration.LastFightBeasts.Count} familiar(s).");

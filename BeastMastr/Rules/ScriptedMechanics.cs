@@ -67,6 +67,19 @@ public static class SweepingEvisceration
     public static float Facing(Vector2 direction) => MathF.Atan2(direction.X, direction.Y);
 }
 
+/// <summary>Bosses some rules single out, by base id.</summary>
+public static class Bosses
+{
+    /// <summary>Borgny the Venomous, the First Master's Board's boss.</summary>
+    public const uint Borgny = 19672;
+
+    /// <summary>
+    /// With this many familiars summoned in the fight, Borgny's Parting Blow is kept for finishing it: the
+    /// third familiar's blow is not spent on Borgny unless it kills it before the add phase.
+    /// </summary>
+    public const int BorgnyKeepsBlowFromHorn = 3;
+}
+
 /// <summary>
 /// Borgny the Venomous (the First Master's Board's boss): Toxic Breath. Borgny walks to the middle, casts,
 /// turns to the player, leaps backwards 19.6 yalms to the wall, and cleaves everything in front. The one
@@ -90,6 +103,18 @@ public static class ToxicBreath
 
     /// <summary>A leap is seen once Borgny is this far from where it cast.</summary>
     public const float LeapSeenAt = 5f;
+
+    /// <summary>The cast, 2.7 s as recorded.</summary>
+    public const float CastTime = 2.7f;
+
+    /// <summary>
+    /// Borgny turns for up to 0.65 s after the cast starts (sixteen breaths in four recordings). Its facing is
+    /// trusted once it has held this long…
+    /// </summary>
+    public const float SettleFor = 0.3f;
+
+    /// <summary>…or once the cast has gone on this long.</summary>
+    public const float TrustAfter = 1f;
 
     /// <summary>
     /// How far past Borgny to head. The wall stops the walk before it; the aim only has to lie beyond
@@ -203,8 +228,33 @@ public static class FloralTrap
     public const uint BriarPatch = 2015458;
     public const string Name = "Floral Trap";
 
+    /// <summary>
+    /// How long the briar is held once the trap has gone off. The flower turns to the player and Devour (a
+    /// cone of 8 in front of it) comes about five seconds after the trap: on 2026-09-17 19:15 the trap
+    /// ended at 21.0, the player walked straight back, and was Devoured 5 yalms in front of it at 25.96.
+    /// </summary>
+    public const float DevourAfterTrap = 6.5f;
+
     /// <summary>The briar patch to stand in: the nearest to the player.</summary>
-    public static Zone? Zone(Vector2 flower, Vector2 player, IEnumerable<Vector2> patches, float castLeft)
+    /// <param name="waitingOutDevour">The trap has gone off; the briar is held until Devour has too.</param>
+    public static Zone? Zone(Vector2 flower, Vector2 player, IEnumerable<Vector2> patches, float castLeft,
+                             bool waitingOutDevour = false)
+    {
+        if (waitingOutDevour)
+        {
+            var near = Nearest(player, patches);
+            return near is { } patch
+                       ? new Zone(ZoneKind.Circle, flower, 0f, 9f, castLeft, Name + " (in the briar until Devour)",
+                                  Refuge: patch)
+                       : null;
+        }
+
+        return Nearest(player, patches) is { } refuge
+                   ? new Zone(ZoneKind.Circle, flower, 0f, 80f, castLeft, Name + " (into the briar)", Refuge: refuge)
+                   : null;
+    }
+
+    private static Vector2? Nearest(Vector2 player, IEnumerable<Vector2> patches)
     {
         Vector2? best = null;
         foreach (var patch in patches)
@@ -213,9 +263,7 @@ public static class FloralTrap
                 best = patch;
         }
 
-        return best is { } refuge
-                   ? new Zone(ZoneKind.Circle, flower, 0f, 80f, castLeft, Name + " (into the briar)", Refuge: refuge)
-                   : null;
+        return best;
     }
 }
 
@@ -305,6 +353,62 @@ public static class ToxicVomit
     public static Zone Chase(Vector2 point, float left) =>
         new(ZoneKind.Circle, point, 0f, 0f, left, Name + " (keep moving, tornadoes follow)", Refuge: point);
 
+    /// <summary>How many tornadoes follow a Toxic Vomit: four, three seconds apart.</summary>
+    public const int Drops = 4;
+
+    /// <summary>The tornadoes' base id: event objects named "Magitek Armor".</summary>
+    public const uint Tornado = 2012932;
+
+    /// <summary>How far past Borgny's hitbox the drops are laid: in melee reach, to keep hitting it.</summary>
+    public const float DropPastHitbox = 2.5f;
+
+    /// <summary>
+    /// Where to lay the four tornadoes, in order, so the fight goes on (the user: "around the boss, so
+    /// uptime is kept — about a T"). A T on Borgny: the bar left and right of it, the stem out on one
+    /// side in two steps. The side across from the stem stays clear, and the player fights from there.
+    /// Of the eight ways the T can point, the one that stays inside the arena and off the patches wins.
+    /// </summary>
+    public static List<Vector2> TSpots(Vector2 centre, Vector2 borgny, float hitbox, float arenaRadius,
+                                       IReadOnlyList<Zone> hazards)
+    {
+        var reach = MathF.Max(4f, hitbox + DropPastHitbox);
+        List<Vector2>? best = null;
+        var bestScore = float.MaxValue;
+
+        for (var k = 0; k < 8; k++)
+        {
+            var angle = k * MathF.PI / 4f;
+            var stem = new Vector2(MathF.Sin(angle), MathF.Cos(angle));
+            var bar = new Vector2(stem.Y, -stem.X);
+            List<Vector2> spots = [borgny + (bar * reach), borgny - (bar * reach), borgny + (stem * reach),
+                                   borgny + (stem * reach * 2f)];
+            var free = borgny - (stem * reach);
+
+            var score = 0f;
+            foreach (var spot in new List<Vector2>(spots) { free })
+            {
+                score += MathF.Max(0f, Vector2.Distance(spot, centre) - (arenaRadius - 1f)) * 100f;
+                score += Dodger.Hits(hazards, spot, Dodger.Margin) * 10f;
+            }
+
+            // The free side towards the middle, so the fight is not pinned to the wall.
+            score += Vector2.Distance(free, centre) * 0.1f;
+
+            if (score < bestScore)
+            {
+                bestScore = score;
+                best = spots;
+            }
+        }
+
+        return best!;
+    }
+
+    /// <summary>The spot to stand on for the next drop, as a refuge.</summary>
+    public static Zone Drop(Vector2 spot, int index, float left) =>
+        new(ZoneKind.Circle, spot, 0f, 0f, left, $"{Name} (tornado {index + 1} of {Drops}, in a T round Borgny)",
+            Refuge: spot);
+
     /// <param name="castLeft">Seconds of the cast left; below 0 once it has ended and the vomit is on its way.</param>
     /// <param name="hazards">Patches on the ground the spot at the edge keeps clear of.</param>
     public static Zone Zone(Vector2 centre, Vector2 borgny, Vector2 player, float castLeft,
@@ -357,4 +461,46 @@ public static class EdgeBait
     /// <summary>The spot to carry a drop to, as a refuge until it is placed.</summary>
     public static Zone Zone(Vector2 spot, float placedIn, string name) =>
         new(ZoneKind.Circle, spot, 0f, 0f, placedIn, name + " (to the edge)", Refuge: spot);
+}
+
+/// <summary>
+/// The Strix (the First Master's Board's first fight): after Plummet it leaves three puddles on three of
+/// the four spots (110|130, −410|−430), then casts On the Properties of Quakes (48657, the whole arena).
+/// One puddle lifts the player off the ground and so out of the quake; the other two protect against later
+/// mechanics but stop the player attacking (the user). The puddles' event objects are 2004354, 2015456 and
+/// 2015457, shuffled over the spots from fight to fight. Which one levitates is not in the data: 2004354
+/// uses a shared battle effect (<c>btl/shared/…b0483</c>), the other two effects of this board, so it is
+/// tried first, and what the player is given on stepping in is learned.
+/// </summary>
+public static class StrixPuddles
+{
+    public const uint Strix = 19638;
+    public const uint Quakes = 48657;
+    public const string Name = "Levitation puddle";
+
+    public static readonly uint[] Puddles = [2004354, 2015456, 2015457];
+
+    /// <summary>The puddle to stand in: the one learned to levitate, else the first not learned to be wrong.</summary>
+    public static uint? Levitating(uint learned, ICollection<uint> wrong)
+    {
+        if (learned != 0)
+            return learned;
+
+        foreach (var puddle in Puddles)
+        {
+            if (!wrong.Contains(puddle))
+                return puddle;
+        }
+
+        return null;
+    }
+
+    public static Zone Zone(Vector2 puddle, float left) =>
+        new(ZoneKind.Circle, puddle, 0f, 0f, left, Name + " (float over the quake)", Refuge: puddle);
+
+    /// <summary>A status that floats the player, by its name.</summary>
+    public static bool Floats(string statusName) =>
+        statusName.Contains("Levitat", System.StringComparison.OrdinalIgnoreCase) ||
+        statusName.Contains("Float", System.StringComparison.OrdinalIgnoreCase) ||
+        statusName.Contains("Airborne", System.StringComparison.OrdinalIgnoreCase);
 }

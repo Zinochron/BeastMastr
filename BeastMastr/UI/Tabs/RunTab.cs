@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using BeastMastr.Data;
@@ -26,13 +27,16 @@ public sealed class RunTab : ITab
     private readonly BoardModel board;
     private readonly RouteKeeper route;
     private readonly Automation.Run.BoardRunner runner;
+    private readonly LootTracker loot;
 
-    public RunTab(Configuration configuration, BoardModel board, RouteKeeper route, Automation.Run.BoardRunner runner)
+    public RunTab(Configuration configuration, BoardModel board, RouteKeeper route, Automation.Run.BoardRunner runner,
+                  LootTracker loot)
     {
         this.configuration = configuration;
         this.board = board;
         this.route = route;
         this.runner = runner;
+        this.loot = loot;
     }
 
     public string Title => "Run";
@@ -41,6 +45,8 @@ public sealed class RunTab : ITab
     public void Draw()
     {
         DrawRun();
+        ImGuiHelpers.ScaledDummy(4f);
+        DrawLoot();
         ImGuiHelpers.ScaledDummy(4f);
         DrawRooms();
         ImGuiHelpers.ScaledDummy(4f);
@@ -57,10 +63,11 @@ public sealed class RunTab : ITab
         if (!ImGui.CollapsingHeader("Run the board", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        ImGui.TextWrapped("Stand on a Crucible board's start platform and press Run. BeastMastr walks from room to " +
-                          "room, fights, shops, rests and takes treasure until the boss is done — and with more " +
-                          "than one board, starts the next one from the entrance. Moving, jumping, targeting or " +
-                          "pressing an action yourself pauses it; it carries on once you let go.");
+        ImGui.TextWrapped("Press Run on a Crucible board's start platform, or anywhere in Central Shroud to walk " +
+                          "to Lauda and start the board last played. BeastMastr walks from room to room, fights, " +
+                          "shops, rests and takes treasure until the boss is done — and with more than one board, " +
+                          "starts the next one from the entrance. Moving, jumping, targeting or pressing an action " +
+                          "yourself pauses it; it carries on once you let go.");
         ImGuiHelpers.ScaledDummy(2f);
 
         if (!NavmeshIpc.IsLoaded)
@@ -112,6 +119,31 @@ public sealed class RunTab : ITab
                value => configuration.ContinueAfterLostBoard = value);
         Widgets.HelpMarker("When on, a board lost to a wipe counts as played and the next one is started.");
 
+        ImGui.SetNextItemWidth(160f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("team for each board", TeamName(configuration.RunTeam)))
+        {
+            if (combo.Success)
+            {
+                foreach (var mode in Enum.GetValues<RunTeam>())
+                {
+                    if (ImGui.Selectable(TeamName(mode), mode == configuration.RunTeam))
+                    {
+                        configuration.RunTeam = mode;
+                        configuration.Save();
+                    }
+                }
+            }
+        }
+
+        Widgets.HelpMarker("Set in the board window before every board started from the entrance:\n" +
+                           "Farming: the three carries alone, for the board's bonus.\n" +
+                           "Leveling: the carries, then the least advanced beasts, picked anew each board.\n" +
+                           "Keep: the team as it is.\n" +
+                           "Carries are marked with \"Add as carry\" in the bestiary's right-click menu.");
+
+        if (configuration.RunTeam != RunTeam.Keep && configuration.CarryBeasts.Count == 0)
+            ImGui.TextColored(Attention, "No carries are marked yet; mark them in the bestiary's right-click menu.");
+
         var failed = runner.State == Automation.Run.BoardRunner.Phase.Failed;
         ImGui.TextColored(failed ? Bad : runner.Running ? Good : Muted,
                           $"{runner.State}{(runner.Paused ? " (paused)" : string.Empty)}: {runner.Status}");
@@ -129,6 +161,76 @@ public sealed class RunTab : ITab
         foreach (var line in runner.Log)
             ImGui.TextDisabled(line);
     }
+
+    /// <summary>Boards finished and the loot rolled for at their end, this session and in all.</summary>
+    private void DrawLoot()
+    {
+        if (!ImGui.CollapsingHeader("Boards and loot", ImGuiTreeNodeFlags.DefaultOpen))
+            return;
+
+        ImGui.TextUnformatted($"Boards finished: {loot.BoardsThisSession} this session ({loot.WonThisSession} won), " +
+                              $"{configuration.BoardsFinished} in all ({configuration.BoardsWon} won).");
+        Widgets.HelpMarker("Counted when a board's result window opens, won or lost. The loot is what is rolled " +
+                           "for at the end — the remnants of resilience and the Modern Aesthetics items — not a " +
+                           "room's spoils.");
+
+        // The speed: how long a board takes, entering to result, and how many an hour with the way back in.
+        if (loot.BoardStartedAt is { } started)
+            ImGui.TextDisabled($"This board: {Clock(DateTime.Now - started)}.");
+
+        if (loot.BoardTimes.Count > 0)
+        {
+            var average = TimeSpan.FromSeconds(loot.BoardTimes.Average(time => time.TotalSeconds));
+            var fastest = loot.BoardTimes.Min();
+            var line = $"Average board this session: {Clock(average)} over {loot.BoardTimes.Count} " +
+                       $"(fastest {Clock(fastest)}, last {Clock(loot.BoardTimes[^1])})";
+
+            if (loot.SessionStartedAt is { } first && loot.LastFinishedAt is { } last && last > first)
+                line += $", {loot.BoardsThisSession / (last - first).TotalHours:0.0} boards an hour with the way in";
+
+            ImGui.TextUnformatted(line + ".");
+        }
+
+        if (configuration.TimedBoards > 0)
+            ImGui.TextDisabled($"Average board in all: {Clock(TimeSpan.FromSeconds(configuration.TimedBoardSeconds / configuration.TimedBoards))} " +
+                               $"over {configuration.TimedBoards}.");
+
+        if (configuration.LootTotals.Count == 0)
+        {
+            ImGui.TextDisabled("No loot counted yet.");
+            return;
+        }
+
+        using (var table = ImRaii.Table("##loot", 3, ImGuiTableFlags.RowBg | ImGuiTableFlags.BordersInnerH))
+        {
+            if (table.Success)
+            {
+                ImGui.TableSetupColumn("Item");
+                ImGui.TableSetupColumn("This session", ImGuiTableColumnFlags.WidthFixed, 90f * ImGuiHelpers.GlobalScale);
+                ImGui.TableSetupColumn("In all", ImGuiTableColumnFlags.WidthFixed, 70f * ImGuiHelpers.GlobalScale);
+                ImGui.TableHeadersRow();
+
+                foreach (var (name, total) in configuration.LootTotals.OrderBy(pair => pair.Key))
+                {
+                    ImGui.TableNextRow();
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(name);
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(loot.ThisSession.GetValueOrDefault(name).ToString());
+                    ImGui.TableNextColumn();
+                    ImGui.TextUnformatted(total.ToString());
+                }
+            }
+        }
+
+        if (ImGui.SmallButton("Reset the count") && ImGui.GetIO().KeyCtrl)
+            loot.Reset();
+
+        Widgets.HelpMarker("Hold Ctrl while clicking: it forgets the boards and the loot counted, saved totals too.");
+    }
+
+    private static string Clock(TimeSpan time) =>
+        time.TotalHours >= 1 ? time.ToString(@"h\:mm\:ss") : time.ToString(@"m\:ss");
 
     /// <summary>What the run does in the rooms that offer a choice.</summary>
     private void DrawRooms()
@@ -222,6 +324,15 @@ public sealed class RunTab : ITab
             ImGui.Unindent();
         }
 
+        Toggle("In the final fight, use every useful item once the horns are out", configuration.UseBossItems,
+               value => configuration.UseBossItems = value);
+        Widgets.HelpMarker("Beast Potion Kit first, then reraisers, antipoison serums, the remedy kit, tannin, " +
+                           "stimulant, the tempered potions, vampiric essence, the tomes of reflection and the " +
+                           "impervious, the feather and the weakeners — each once — and an antidote whenever you are " +
+                           "poisoned. Fangs and Celestial Sand go at the boss. Nothing before both horns are out, so " +
+                           "nothing pulls early. Feral potions, smokebombs, the spellforge and steelsting tomes, " +
+                           "temporal sand and the eyes are never used.");
+
         Toggle("Throw Fangs and Celestial Sand at adds", configuration.UseAreaItems,
                value => configuration.UseAreaItems = value);
         if (configuration.UseAreaItems)
@@ -234,6 +345,16 @@ public sealed class RunTab : ITab
                 configuration.AreaItemAtAdds = adds;
                 configuration.Save();
             }
+
+            var wait = configuration.AreaItemWaitSeconds;
+            ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
+            if (ImGui.SliderFloat("…and have been for", ref wait, 0f, 5f, "%.1f s"))
+            {
+                configuration.AreaItemWaitSeconds = wait;
+                configuration.Save();
+            }
+
+            Widgets.HelpMarker("The Treant's adds arrive over a second or two; waiting lets one throw catch them all.");
 
             ImGui.Unindent();
         }
@@ -332,6 +453,14 @@ public sealed class RunTab : ITab
 
         ImGui.Unindent();
     }
+
+    private static string TeamName(RunTeam team) => team switch
+    {
+        RunTeam.Farming => "Farming (carries only)",
+        RunTeam.Leveling => "Leveling (carries + lowest)",
+        RunTeam.Keep => "Keep the team",
+        _ => team.ToString(),
+    };
 
     private static string TankName(DutyTank tank) => tank switch
     {

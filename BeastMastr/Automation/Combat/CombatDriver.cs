@@ -121,6 +121,7 @@ public sealed unsafe class CombatDriver : IDisposable
         this.bossMod = bossMod;
         this.actions = actions;
         actions.ActionUsed += OnActionUsed;
+        EnemyCasts.Settings = configuration;
         Services.Framework.Update += OnUpdate;
     }
 
@@ -135,10 +136,59 @@ public sealed unsafe class CombatDriver : IDisposable
         }
         else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0 && use.At - lastBattlehorn > TimeSpan.FromSeconds(1))
         {
-            // The game reports a cast twice — pressed, then queued — so a second report within the cast is the same horn.
+            // The game reports a cast twice — pressed, then queued — so a second report within the cast is the
+            // same horn. It is only counted once its familiar is there: at Borgny on 2026-09-19 16:17 the horn
+            // pressed as the opening cutscene ended was cut off after 0.09 s, nobody came, and the opener went
+            // on as if one had.
             lastBattlehorn = use.At;
-            hornsThisFight++;
+            hornPending = true;
+            summonedAtHorn = GaugeReader.Read()?.SummonedBeast ?? 0;
+            familiarsAtHorn = Services.Objects.LocalPlayer is { } player ? Familiars(player).Count() : 0;
         }
+    }
+
+    /// <summary>How many familiars stood out as the pending horn was pressed.</summary>
+    private int familiarsAtHorn;
+
+    /// <summary>The pet command "Heel" (<c>PetAction</c> 2): the familiar comes back to the player.</summary>
+    private const uint HeelCommand = 2;
+
+    private static readonly TimeSpan HeelEvery = TimeSpan.FromSeconds(4);
+    private DateTime nextHeel;
+
+    /// <summary>Since when enough adds have been on the player, or null.</summary>
+    private DateTime? addsSince;
+
+    /// <summary>A Battlehorn pressed whose familiar has not shown yet.</summary>
+    private bool hornPending;
+
+    /// <summary>The gauge's summon count as the pending horn was pressed.</summary>
+    private int summonedAtHorn;
+
+    /// <summary>The last time a cutscene or event held the character; nothing is pressed until a moment after.</summary>
+    private DateTime lastHeld = DateTime.MinValue;
+
+    private static readonly TimeSpan AfterHeld = TimeSpan.FromSeconds(1);
+
+    /// <summary>Counts a horn once its familiar is there, and forgets one that was cut off.</summary>
+    private void ConfirmHorn(IPlayerCharacter player)
+    {
+        if (!hornPending)
+            return;
+
+        if ((GaugeReader.Read()?.SummonedBeast ?? 0) != summonedAtHorn || Familiars(player).Count() > familiarsAtHorn)
+        {
+            hornPending = false;
+            hornsThisFight++;
+            return;
+        }
+
+        if (player.IsCasting || DateTime.Now - lastBattlehorn < ArrivingFor)
+            return;
+
+        hornPending = false;
+        lastBattlehorn = DateTime.MinValue;
+        Services.Log.Information("A Battlehorn summoned nobody (its cast was cut off); it is pressed again.");
     }
 
     /// <summary>Parting Blow went off after the last summon, and not long ago.</summary>
@@ -149,6 +199,12 @@ public sealed unsafe class CombatDriver : IDisposable
 
     /// <summary>Whether it may pick a fight itself. Only the run grants that, once it has started one.</summary>
     public bool MayPull { get; set; }
+
+    /// <summary>The fight in hand is a board's final one: every useful item may go, once the horns are out.</summary>
+    public bool BossFight { get; set; }
+
+    /// <summary>The final fight's items used or tried, each buff once.</summary>
+    private readonly HashSet<uint> bossItemsTried = [];
 
     public string Status { get; private set; } = "Off.";
 
@@ -169,6 +225,9 @@ public sealed unsafe class CombatDriver : IDisposable
     {
         if (!Enabled)
             hornsThisFight = FamiliarOut(Services.Objects.LocalPlayer) ? 1 : 0;
+
+        hornPending = false;
+        bossItemsTried.Clear();
 
         Enabled = true;
         input.Reset();
@@ -230,6 +289,20 @@ public sealed unsafe class CombatDriver : IDisposable
             lastMovedAt = DateTime.Now;
         }
 
+        ConfirmHorn(player);
+
+        // Nothing is pressed during a cutscene or event, nor for a moment after: a Battlehorn pressed the
+        // instant Borgny's opening cutscene let go was cut off.
+        if (Services.Condition[ConditionFlag.OccupiedInCutSceneEvent] || Services.Condition[ConditionFlag.Occupied33] ||
+            Services.Condition[ConditionFlag.WatchingCutscene])
+            lastHeld = DateTime.Now;
+
+        if (DateTime.Now - lastHeld < AfterHeld)
+        {
+            Status = "Waiting for the cutscene to let go.";
+            return;
+        }
+
         if (input.Holding)
         {
             Hold(player);
@@ -248,12 +321,58 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
-        // Adds on the player — the Treant's Slug Pieces — get an area item thrown at them.
-        if (configuration.UseAreaItems && inCombat && itemsFree && AddsOnPlayer(player) is { } add &&
-            ItemUser.TickAttack(add))
+        // Adds on the player — the Treant's Slug Pieces — get an area item thrown at them, once they have been
+        // on the player a moment: the rest of the wave is still arriving, and one throw should catch them all.
+        var adds = configuration.UseAreaItems && inCombat ? AddsOnPlayer(player) : null;
+        if (adds == null)
+            addsSince = null;
+        else
+            addsSince ??= DateTime.Now;
+
+        // The Strix's levitation puddle: the player stands in it, and the boss has to come too so the fight
+        // goes on. With the familiar tanking, Heel brings the familiar — and the boss after it — to the player.
+        if (EnemyCasts.LevitationWanted && inCombat && DateTime.Now >= nextHeel &&
+            Services.Targets.Target is IBattleChara { IsDead: false } strix &&
+            Vector3.Distance(strix.Position, player.Position) - strix.HitboxRadius > MeleeReach + 1f &&
+            Familiars(player).Any(familiar => familiar.GameObjectId == strix.TargetObjectId))
+        {
+            nextHeel = DateTime.Now + HeelEvery;
+            var heelManager = ActionManager.Instance();
+            if (heelManager != null && heelManager->GetActionStatus(ActionType.PetAction, HeelCommand) == 0 &&
+                heelManager->UseAction(ActionType.PetAction, HeelCommand))
+                Services.Log.Information("Heel: bringing the familiar, and the boss it holds, to the levitation puddle.");
+        }
+
+        var addsWaited = DateTime.Now - addsSince >= TimeSpan.FromSeconds(configuration.AreaItemWaitSeconds);
+        if (adds != null && itemsFree && (ItemUser.Busy || addsWaited) && ItemUser.TickAttack(adds))
         {
             Status = "Throwing an area item at the adds.";
             return;
+        }
+
+        // The final fight: every item worth using — the Beast Potion Kit first — once the horns are out, so
+        // nothing pulls before them (the user). Each buff once; the antidote whenever Borgny has poisoned.
+        if (BossFight && configuration.UseBossItems && itemsFree && hornsThisFight >= 2 && !hornPending)
+        {
+            var statuses = player.StatusList.Where(status => status.StatusId != 0)
+                                 .Select(status => status.StatusId).ToHashSet();
+            var held = ItemUser.HeldItems().Select(item => item.Row).ToList();
+            if (BossItems.Next(held, bossItemsTried, statuses) is { } row && ItemUser.TickUse(row))
+            {
+                if (row != BossItems.Antidote)
+                    bossItemsTried.Add(row);
+
+                Status = "Using an item for the final fight.";
+                return;
+            }
+
+            // The Fangs and Celestial Sand on the boss itself, once the fight is on.
+            if (inCombat && Services.Targets.Target is IBattleChara { IsDead: false } boss && Hostile(boss) &&
+                ItemUser.TickAttack(boss))
+            {
+                Status = "Throwing an area item at the boss.";
+                return;
+            }
         }
 
         if (pausedBossMod)
@@ -273,7 +392,11 @@ public sealed unsafe class CombatDriver : IDisposable
                 bossMod.Disengage();
 
             if (!MayPull)
+            {
                 hornsThisFight = 0;
+                hornPending = false;
+                bossItemsTried.Clear();
+            }
         }
 
         var target = Target(player, inCombat);
@@ -327,7 +450,9 @@ public sealed unsafe class CombatDriver : IDisposable
         if (ownDodging && DateTime.Now >= nextDodgePlan)
         {
             nextDodgePlan = DateTime.Now + DodgePlanInterval;
-            dodge = PlanDodge(player, target);
+            // Before the pull, with the opener not done, nothing is walked in to: at the Treant the Sludge made a
+            // "closing in" plan the moment the arena loaded, and the Treant was pulled before a single horn.
+            dodge = PlanDodge(player, decision.Engage ? target : null);
         }
         else if (!ownDodging)
         {
@@ -359,8 +484,12 @@ public sealed unsafe class CombatDriver : IDisposable
 
         if (decision.Ogcd != 0 && Use(manager, player, target, decision.Ogcd))
         {
-            if (decision.Ogcd is Bst.Snarl or Bst.Challenge)
-                Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}.");
+            // The familiars' comings and goings are logged too, so an opener gone wrong can be read back
+            // without a recording.
+            if (decision.Ogcd is Bst.Snarl or Bst.Challenge or Bst.Borrow or Bst.PartingBlow ||
+                Array.IndexOf(Bst.Battlehorns, decision.Ogcd) >= 0)
+                Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}" +
+                                         $"{(MayPull && !inCombat ? " (before the pull)" : string.Empty)}.");
 
             return;
         }
@@ -440,7 +569,9 @@ public sealed unsafe class CombatDriver : IDisposable
             UnavoidableHit: configuration.UseDutyActions ? EnemyCasts.Unavoidable(player) : null,
             // Not straight after a dodge either: Toxic Vomit's cast ends 2.3 s before it lands, and Shield
             // Charge in between carried the player back to Borgny.
-            MayDash: dodge == null && zonesAround == 0 && DateTime.Now - lastDodgeAt > DashAfterDodge);
+            MayDash: dodge == null && zonesAround == 0 && DateTime.Now - lastDodgeAt > DashAfterDodge,
+            KeepLastPartingBlow: target is IBattleChara { BaseId: Bosses.Borgny } &&
+                                 hornsThisFight >= Bosses.BorgnyKeepsBlowFromHorn);
     }
 
     private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;

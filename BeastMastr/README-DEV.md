@@ -2420,3 +2420,182 @@ The Debug tab's pages:
 
 The setting is still stored as `ShowDataTab`, so old configs keep it. It takes effect at once: `ITab`
 has a `Visible` property.
+
+### Carries first, and one copy at a time — 2026-09-19
+
+**Carries first.** `TeamPlanner.ForFight` calls the carries (`CarryBeasts`) that are in the team and not
+down, in their order, then the last fight's familiars. It calls up to three: as many as last time, or
+as many carries as can come if that is more. A familiar that is down is still replaced by the
+healthiest one left. The Settings switch is `CallCarriesFirst`, on by default.
+
+**Two copies at once.** At 14:37 the installed v0.2.0.0 and the dev build v0.2.1.0 were both loaded.
+Dalamud only warns ("another plugin with the same assembly name was already loaded"). Both copies called
+Cu Sith, and a pick toggles, so each undid the other's. The log read "The window did not take Cu Sith",
+and nobody was called.
+
+`Plugin` is now a shell and everything else is `PluginCore`. Every copy registers in Dalamud's data share
+(`BeastMastr.Instances`, a `ConcurrentDictionary<string, string>` that every load context can read).
+Exactly one copy builds its core. The order of preference is:
+1. a dev build before an installed one,
+2. then the higher version,
+3. then the copy loaded first.
+
+The others stay idle and say so in chat. When a preferred copy arrives, the active one disposes its core
+first, and the newcomer builds only once no other copy is active. Copies older than 0.2.1.0 do not take
+part.
+
+### Second treasure picks, Devour, walking in during casts — 2026-09-19
+
+**Two picks from a coffer.** An item lets a coffer be picked from twice. The pick goes through, the window
+stays open, and at 15:32 the run handed the coffer to the player. Now the run tries again: when the window
+is still open after a confirmed pick, that offer counts as taken and another is picked. It tries up to
+four times before handing over.
+
+**Corpse Flower, Devour.** The briar stopped the draw-in. Then the flower turned to the player, and the
+walk back to it went straight into Devour, a cone of 8 in front: the trap ended at 21.0, and the player
+was Devoured 5 yalms in front of it at 25.96 (17.09, 19:15). The briar is now held for 6.5 s after the
+trap (`FloralTrap.DevourAfterTrap`).
+
+**Walking in at Borgny.** A clear player stood still whenever anything was being cast, which at Borgny
+is most of the time. Out of reach, a spot by the target is now walked to during casts too, as long as
+it is clear of every cast under way, not only the soonest (Bedrock Uplift's next ring). With no such
+spot, the player stays.
+
+**Opener at Borgny.** No recording yet. Battlehorn, Borrow and Parting Blow are now logged ("Pressed …",
+"before the pull") so the next run shows what happened. In the recording of 17.09, 19:29, Parting Blow
+sent off the first familiar four seconds after the pull.
+
+### Horns at Borgny, a T of tornadoes, Run from Lauda, farming teams — 2026-09-19
+
+`captures/run-20260919-155513.txt`.
+
+**The opener at Borgny.** Horn II was pressed at 16:17:36.32, the moment Borgny's opening cutscene let
+go, and its cast was cut off after 0.09 s. Nobody came (`SummonedBeast` stayed 0). The driver counted
+the horn anyway, went on to Horn I and Borrow, and pulled with one familiar.
+- A horn is now only counted once its familiar is there (the gauge's summon count changes, or a
+  familiar appears). One that summons nobody is forgotten, so it is pressed again.
+- Nothing is pressed during a cutscene or event, nor for a second after.
+
+**Toxic Vomit's tornadoes in a T** (the user: lay them round the boss for uptime). The four drops go on a
+T round Borgny, in melee reach:
+1. bar left,
+2. bar right,
+3. stem,
+4. stem, one step further out.
+
+The side across from the stem stays clear to fight from. The T is laid out as the cast starts, turned
+the way that stays inside the arena and off the patches. The next spot is taken once the previous drop's
+tornado has risen (the new "Magitek Armor" objects are counted).
+
+**Area items at the Treant** wait until the adds have been on the player for 1.5 s (a slider), so one
+throw catches the whole wave.
+
+**Run from the entrance.** In Central Shroud, Run walks to Lauda with vnavmesh (her spot is known before
+she is in the object table), then starts the board last played (`LastBoardRowId`).
+
+**Team per board** (`RunTeam`), set in the board window before Challenge, by the TeamSelector:
+
+| Setting | Team |
+|---|---|
+| Farming (default) | The carries alone. |
+| Leveling | The carries, then the least advanced beasts, anew each board. |
+| Keep | The team as it is. |
+
+### No opener at the Treant, Borgny's last Parting Blow, a loot count — 2026-09-19
+
+**The Treant was pulled before a horn** (three times, `run-20260919-155513.txt`). The Sludge lies under
+the Treant from the start, so the dodger saw a patch and the target out of reach, and walked in with
+"closing in" the moment the arena loaded (15:59:14). The ordinary walk-in waits for the opener; the
+dodger's did not. Dodges are now planned without a target while the opener is not done, so only real
+hits move the player before the pull.
+
+**Borgny's third familiar** (the user): its Parting Blow is not spent on Borgny unless it finishes it.
+`BstState.KeepLastPartingBlow` holds back the "make room for the next familiar" blow when the target is
+Borgny (`Bosses.Borgny`, 19672) and three familiars have been summoned. The finishing blow
+(`PartingBlowFinisherShare`) still goes. On the adds, nothing changes.
+
+**Boards and loot** (`LootTracker`, Run tab):
+- **Loot:** at a board's end the chat puts items on the loot list ("3 bright remnants of resilience have
+  been added to the loot list."), then "You obtain 3 bright remnants of resilience." Only items that
+  were on the list are counted. A room's spoils ("… as loot."), gil and tokens are not. Names are
+  turned into the item's own name through the Item sheet's singular and plural (`LootLog` parses the
+  lines).
+- **Boards:** a board counts as finished when its result window opens.
+- **Totals:** kept in the configuration, and for the session.
+
+### Toxic Breath follows Borgny's back, and boards won — 2026-09-19
+
+**From the second Toxic Breath on the player ran to Borgny's front.** Standing farther than 3 yalms off,
+the facing was taken as "towards the player", snapped to an axis. Sixteen breaths in four recordings say
+otherwise: Borgny turns for up to 0.65 s after the cast starts, and leaps exactly away from the way it
+settles, wherever the player stands. For example, at 16:01:54 it settled at −1.51 and leapt east while
+the player stood south.
+
+Its facing is now followed for every breath, snapped to an axis until it leaps. It is only trusted once
+it has held for 0.3 s or the cast is 1 s old; until then nothing is planned. The leap follows the cast
+by more than a second, and the cleave comes 2.8 s after that, so there is time.
+
+**Boards won.** The result window's value 3 is the board's completion: "100%" when the boss fell, "88%"
+when it did not, in every recording. "Boards finished" now says how many were won
+(`Configuration.BoardsWon`, and for the session).
+
+### Every useful item in the final fight — 2026-09-19
+
+The user asked for every item in the final fight, the Beast Potion Kit above all, but nothing before the
+horns are out, so nothing pulls early. `Rules/BossItems.cs` picks from the `XBMItem` rows (kind 2 are
+the consumables).
+
+In order, each once per fight:
+1. the Beast Potion Kit (140, "Grants Auto-potion to self"),
+2. the reraisers (99, 98),
+3. the antipoison serums (87, 86),
+4. the remedy kit (141),
+5. tannin (102) and stimulant (103),
+6. the tempered potions (104–112),
+7. breathtaking swiftness (114),
+8. vampiric essence (135),
+9. the tomes of reflection (136) and the impervious (137),
+10. the feather (115),
+11. the weakeners (116–127).
+
+The antidote (83) is used again whenever one of Borgny's Toxicosis forms is on the player. The Fangs and
+Celestial Sand go at the boss.
+
+Never used:
+- the feral potions (each also stuns, blinds, petrifies or puts to sleep the user),
+- the smokebomb,
+- the Spellforge and Steelsting tomes,
+- Temporal Sand,
+- the eyes,
+- the needle and the Blessed Horn.
+
+The healing items still go by HP.
+
+The runner marks the boss room's fight (`CombatDriver.BossFight`). Items only go once two horns have
+brought their familiars (`hornsThisFight >= 2`, no horn pending). "In the final fight, use every useful
+item" on the Run tab switches it off.
+
+### The Strix's levitation puddle, and 0.3.0.0 — 2026-09-19
+
+`captures/run-20260919-224253.txt`. After Plummet the Strix (19638) leaves three puddles on three of the
+four spots (110|130, −410|−430). It then casts On the Properties of Quakes (48657, 60 yalms, 7.7 s),
+then Magical Mallet Theory. The user: one puddle floats the player over the quake; the other two
+protect against later mechanics but stop the player attacking. The boss has to be pulled to the
+floating one, which Heel does while the familiar tanks.
+
+- **The puddles:** event objects 2004354, 2015456 and 2015457, shuffled over the spots from fight to
+  fight. None has a name. `EObj` column 11 leads through `ExportedSG` to their effects:
+  - 2004354: `bgcommon/world/btl/shared/for_vfx/sgvf_w_btl_b0483.sgb`, an effect shared across the game;
+  - 2015456 and 2015457: this board's own (`fst_f1/…b4224`, `…b4223`), like the briar patch (`…b4225`).
+
+  No recording has the player standing in one, so which one floats is learned. 2004354 is tried first.
+  Standing in a puddle for 1.5 s, the statuses gained are named in the log. A name with "Levitat",
+  "Float" or "Airborne" marks the puddle as the one (`StrixLevitationPuddle`); anything else marks it
+  as wrong (`StrixNotLevitation`), and the next fight tries another.
+- **The plan:** from the moment the puddles appear until the quake is over, the puddle is a refuge
+  (`StrixPuddles`). While the player is sent there and the familiar holds the Strix out of reach, Heel
+  (`PetAction` 2) goes out every 4 s.
+
+The Beast Potion Kit worked: Auto-potion at 22:50:33 and 22:59:46.
+
+Version 0.3.0.0 has everything since 0.2.0.0.

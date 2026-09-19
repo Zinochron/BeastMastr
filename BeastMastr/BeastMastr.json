@@ -3,7 +3,7 @@
   "Name": "BeastMastr",
   "InternalName": "BeastMastr",
   "Punchline": "Know your beasts and read the board at a glance.",
-  "Description": "Quality of life for Beastmaster.\n\nShows what each beast's actions actually do right on the Master's Bestiary, and dims it to the beasts you are looking for. Fills a levelling team with one press, calls the last fight's familiars when a fight asks for them, picks the most hurt at shops and campsites, remembers your Crucible mode, and briefs the next Crucible of the Unbroken room in a window of its own.\n\nExperimental: /beastmastr run plays a Crucible board on its own: walking, picking rooms, shops, campsites, treasure and the fights, dodging the mechanics it knows. Needs vnavmesh. Moving, jumping, targeting or using an action yourself pauses it.\n\nOpens with /beastmastr.",
+  "Description": "Quality of life for Beastmaster.\n\nShows what each beast's actions actually do right on the Master's Bestiary, and dims it to the beasts you are looking for. Fills a levelling team with one press, calls the last fight's familiars when a fight asks for them, picks the most hurt at shops and campsites, remembers your Crucible mode, and briefs the next Crucible of the Unbroken room in a window of its own.\n\nExperimental: /beastmastr run plays Crucible boards on its own, from a board or from Lauda at the entrance: walking, picking rooms, shops, campsites, treasure and the fights, dodging the mechanics it knows, and board after board with a farming or leveling team. It counts the boards won, their time and the loot. Needs vnavmesh. Moving, jumping, targeting or using an action yourself pauses it.\n\nOpens with /beastmastr.",
   "ApplicableVersion": "any",
   "Tags": [
     "beastmaster",

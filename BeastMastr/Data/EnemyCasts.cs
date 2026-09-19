@@ -108,20 +108,20 @@ public static class EnemyCasts
         {
             if (caster.CastActionId == ToxicBreath.Cast && !Breaths.ContainsKey(caster.GameObjectId))
             {
+                // Borgny's own facing, followed as it turns after the cast starts, until it leaps: across sixteen
+                // breaths in four recordings it leapt exactly away from the way it settled, wherever the player
+                // stood. The "towards the player" rule sent the player the wrong way from the second breath on.
                 var from = new Vector2(caster.Position.X, caster.Position.Z);
-                var here = new Vector2(player.Position.X, player.Position.Z);
-                var follows = Vector2.Distance(from, here) < ToxicBreath.TurnsToPlayerBeyond;
-                var facing = follows ? ToxicBreath.Snap(caster.Rotation) : ToxicBreath.FacingFor(from, here);
+                var facing = ToxicBreath.Snap(caster.Rotation);
                 Breaths[caster.GameObjectId] = new Breath
                 {
                     CastEnd = now + TimeSpan.FromSeconds(caster.TotalCastTime - caster.CurrentCastTime),
                     From = from,
                     Facing = facing,
-                    FollowsBorgny = follows,
+                    FollowsBorgny = true,
                 };
-                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} " +
-                                         (follows ? "(its own way; the player stands on it)" : "towards the player") +
-                                         "; behind it is the wall to go to.");
+                Services.Log.Information($"{ToxicBreath.Name}: Borgny faces {facing:0.00} as it starts; its back is " +
+                                         "followed as it turns, and the wall behind it is where to go.");
             }
 
             if (caster.CastActionId == SweepingEvisceration.Cast)
@@ -201,9 +201,10 @@ public static class EnemyCasts
         AddSweeps(zones, now);
         AddBreaths(zones, now);
         AddHazards(zones, player, now);
-        AddTraps(zones, player);
+        AddTraps(zones, player, now);
         AddVomit(zones, player, now);
         AddPhlegm(zones, player);
+        AddLevitation(zones, player, now);
         return zones;
     }
 
@@ -237,41 +238,155 @@ public static class EnemyCasts
                 continue;
 
             var left = borgny.TotalCastTime - borgny.CurrentCastTime;
+            var at = new Vector2(borgny.Position.X, borgny.Position.Z);
+            if (Vomit is { } running && running.Borgny == at && running.Spots.Count > 0)
+            {
+                running.CastEnd = now + TimeSpan.FromSeconds(left);
+                continue;
+            }
+
+            // The T is laid out once, as the cast starts, and the tornadoes already down are noted so
+            // only this vomit's are counted.
+            var arenaCentre = CrucibleArena.CentreNear(here) ?? at;
             Vomit = new VomitState
             {
                 CastEnd = now + TimeSpan.FromSeconds(left),
-                Borgny = new Vector2(borgny.Position.X, borgny.Position.Z),
+                Borgny = at,
+                Spots = ToxicVomit.TSpots(arenaCentre, at, borgny.HitboxRadius, CrucibleArena.SafeRadius - 2f,
+                                          zones.Where(zone => zone.Lasting).ToList()),
+                Before = Tornadoes().ToHashSet(),
             };
+            Services.Log.Information($"{ToxicVomit.Name}: laying the tornadoes in a T round Borgny: " +
+                                     string.Join(" ", Vomit.Spots.Select(spot => $"{spot.X:0.0}/{spot.Y:0.0}")));
         }
 
-        if (Vomit is not { } vomit || CrucibleArena.CentreNear(here) is not { } centre)
+        if (Vomit is not { } vomit)
             return;
 
+        // How many of this vomit's tornadoes are down: the next one goes on the next spot of the T.
+        var dropped = Tornadoes().Count(tornado => !vomit.Before.Contains(tornado));
         var sinceEnd = (float)(now - vomit.CastEnd).TotalSeconds;
-        if (sinceEnd < ToxicVomit.LandsAfterCast)
-        {
-            zones.Add(ToxicVomit.Zone(centre, vomit.Borgny, here, -sinceEnd, zones.Where(zone => zone.Lasting).ToList()));
-            return;
-        }
-
-        var chasing = sinceEnd - ToxicVomit.LandsAfterCast;
-        if (chasing > ToxicVomit.ChaseFor)
+        if (dropped >= ToxicVomit.Drops || sinceEnd - ToxicVomit.LandsAfterCast > ToxicVomit.ChaseFor)
         {
             Vomit = null;
             return;
         }
 
-        if (vomit.Turn == 0)
+        var left2 = MathF.Max(0f, ToxicVomit.LandsAfterCast - sinceEnd);
+        zones.Add(ToxicVomit.Drop(vomit.Spots[dropped], dropped, left2));
+    }
+
+    /// <summary>Where learned puddles are kept; set once by the fight driver.</summary>
+    public static Configuration? Settings { get; set; }
+
+    /// <summary>The player is being sent into the Strix's levitation puddle: the boss should be brought along.</summary>
+    public static bool LevitationWanted { get; private set; }
+
+    private static bool quakeSeen;
+    private static bool quakeDone;
+
+    /// <summary>The puddle the player stands in, what the player had then, and since when; learned from once.</summary>
+    private static (uint Base, HashSet<uint> Before, DateTime Since, bool Learned)? inPuddle;
+
+    /// <summary>
+    /// The Strix's puddles: into the levitating one from the moment they appear until its quake is over,
+    /// and what each one gives is learned the first time the player stands in it.
+    /// </summary>
+    private static void AddLevitation(List<Zone> zones, IPlayerCharacter player, DateTime now)
+    {
+        LevitationWanted = false;
+        if (Settings is not { } settings)
+            return;
+
+        var puddles = Services.Objects.Where(obj => Array.IndexOf(StrixPuddles.Puddles, obj.BaseId) >= 0).ToList();
+        if (puddles.Count == 0)
         {
-            vomit.Turn = ToxicVomit.ChaseTurn(centre, vomit.Borgny, here);
-            Services.Log.Information($"{ToxicVomit.Name} landed: keeping on the move round the arena " +
-                                     (vomit.Turn > 0 ? "clockwise" : "anticlockwise") + " while the tornadoes follow.");
+            quakeSeen = false;
+            quakeDone = false;
+            inPuddle = null;
+            return;
         }
 
-        var hazards = zones.Where(zone => zone.Lasting).ToList();
-        zones.Add(ToxicVomit.Chase(ToxicVomit.ChasePoint(centre, here, vomit.Turn, hazards),
-                                   ToxicVomit.ChaseFor - chasing));
+        var here = new Vector2(player.Position.X, player.Position.Z);
+        Learn(settings, player, here, puddles, now);
+
+        if (Services.Objects.OfType<IBattleChara>().FirstOrDefault(obj => obj.BaseId == StrixPuddles.Strix && !obj.IsDead)
+            is not { } strix)
+            return;
+
+        var quaking = strix.IsCasting && strix.CastActionId == StrixPuddles.Quakes;
+        if (quaking)
+            quakeSeen = true;
+        else if (quakeSeen)
+            quakeDone = true;
+
+        if (quakeDone ||
+            StrixPuddles.Levitating(settings.StrixLevitationPuddle, settings.StrixNotLevitation) is not { } wanted ||
+            puddles.FirstOrDefault(obj => obj.BaseId == wanted) is not { } puddle)
+            return;
+
+        var left = quaking ? strix.TotalCastTime - strix.CurrentCastTime : 10f;
+        zones.Add(StrixPuddles.Zone(new Vector2(puddle.Position.X, puddle.Position.Z), left));
+        LevitationWanted = true;
     }
+
+    /// <summary>
+    /// What a puddle gives, read off the statuses the player gains standing in it, and kept: which one floats
+    /// is in no sheet.
+    /// </summary>
+    private static void Learn(Configuration settings, IPlayerCharacter player, Vector2 here,
+                              List<Dalamud.Game.ClientState.Objects.Types.IGameObject> puddles, DateTime now)
+    {
+        var statuses = player.StatusList.Where(status => status.StatusId != 0).Select(status => status.StatusId).ToHashSet();
+        var standing = puddles.FirstOrDefault(obj => Vector2.Distance(here, new Vector2(obj.Position.X, obj.Position.Z)) < 1.5f);
+        if (standing == null)
+        {
+            inPuddle = null;
+            return;
+        }
+
+        if (inPuddle is not { } state || state.Base != standing.BaseId)
+        {
+            inPuddle = (standing.BaseId, statuses, now, false);
+            return;
+        }
+
+        if (state.Learned || (now - state.Since).TotalSeconds < 1.5)
+            return;
+
+        inPuddle = state with { Learned = true };
+        var sheet = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.Status>();
+        var gained = statuses.Where(id => !state.Before.Contains(id))
+                             .Select(id => sheet.GetRowOrDefault(id)?.Name.ExtractText() ?? $"status {id}")
+                             .ToList();
+        if (gained.Count == 0)
+        {
+            Services.Log.Information($"{StrixPuddles.Name}: puddle {state.Base} gave nothing yet.");
+            return;
+        }
+
+        if (gained.Any(StrixPuddles.Floats))
+        {
+            settings.StrixLevitationPuddle = state.Base;
+            settings.StrixNotLevitation.Remove(state.Base);
+        }
+        else
+        {
+            if (!settings.StrixNotLevitation.Contains(state.Base))
+                settings.StrixNotLevitation.Add(state.Base);
+
+            if (settings.StrixLevitationPuddle == state.Base)
+                settings.StrixLevitationPuddle = 0;
+        }
+
+        settings.Save();
+        Services.Log.Information($"{StrixPuddles.Name}: puddle {state.Base} gave {string.Join(", ", gained)}; " +
+                                 $"the levitating one is now taken to be {settings.StrixLevitationPuddle}.");
+    }
+
+    /// <summary>The tornadoes Toxic Vomit leaves ("Magitek Armor", 2012932) that are standing now.</summary>
+    private static IEnumerable<ulong> Tornadoes() =>
+        Services.Objects.Where(obj => obj.BaseId == ToxicVomit.Tornado).Select(obj => obj.GameObjectId);
 
     /// <summary>
     /// Wriggling Phlegm: carried to the edge while Borgny casts it, until its circle is placed on the
@@ -300,28 +415,47 @@ public static class EnemyCasts
         public DateTime CastEnd;
         public Vector2 Borgny;
 
-        /// <summary>The way round the ring, chosen as it lands; 0 until then.</summary>
-        public int Turn;
+        /// <summary>Where the four tornadoes go, in order.</summary>
+        public List<Vector2> Spots = [];
+
+        /// <summary>The tornadoes standing as the cast began: an earlier vomit's.</summary>
+        public HashSet<ulong> Before = [];
     }
 
     private static VomitState? Vomit;
 
     /// <summary>Floral Trap: into the nearest briar patch before it resolves.</summary>
-    private static void AddTraps(List<Zone> zones, IPlayerCharacter player)
+    private static void AddTraps(List<Zone> zones, IPlayerCharacter player, DateTime now)
     {
+        var here = new Vector2(player.Position.X, player.Position.Z);
         foreach (var flower in Casting(player))
         {
             if (flower.CastActionId != FloralTrap.Cast)
                 continue;
 
-            var patches = Services.Objects.Where(obj => obj.BaseId == FloralTrap.BriarPatch)
-                                  .Select(obj => new Vector2(obj.Position.X, obj.Position.Z));
-            if (FloralTrap.Zone(new Vector2(flower.Position.X, flower.Position.Z),
-                                new Vector2(player.Position.X, player.Position.Z), patches,
-                                flower.TotalCastTime - flower.CurrentCastTime) is { } zone)
-                zones.Add(zone);
+            var left = flower.TotalCastTime - flower.CurrentCastTime;
+            Trap = (now + TimeSpan.FromSeconds(left), new Vector2(flower.Position.X, flower.Position.Z));
         }
+
+        if (Trap is not { } trap)
+            return;
+
+        // The briar is held until Devour has gone by: walking back to the flower at once was walking into it.
+        var sinceEnd = (float)(now - trap.CastEnd).TotalSeconds;
+        if (sinceEnd > FloralTrap.DevourAfterTrap)
+        {
+            Trap = null;
+            return;
+        }
+
+        var patches = Services.Objects.Where(obj => obj.BaseId == FloralTrap.BriarPatch)
+                              .Select(obj => new Vector2(obj.Position.X, obj.Position.Z));
+        if (FloralTrap.Zone(trap.Flower, here, patches, MathF.Max(0f, -sinceEnd), sinceEnd > 0f) is { } zone)
+            zones.Add(zone);
     }
+
+    /// <summary>The Floral Trap under way or just over: when it ends, and where the flower stands.</summary>
+    private static (DateTime CastEnd, Vector2 Flower)? Trap;
 
     /// <summary>The widest lasting patch centred on a point, or 0: walking in to a target stops outside it.</summary>
     public static float HazardAround(Vector3 point)
@@ -405,8 +539,11 @@ public static class EnemyCasts
         public Vector2 From;
         public float Facing;
 
-        /// <summary>The player stood too close to turn Borgny: its own facing counts, followed until it leaps.</summary>
+        /// <summary>Borgny's own facing counts, followed until it leaps.</summary>
         public bool FollowsBorgny;
+
+        /// <summary>Since when the snapped facing has held.</summary>
+        public DateTime SettledSince = DateTime.Now;
     }
 
     private static readonly Dictionary<ulong, Breath> Breaths = [];
@@ -429,9 +566,25 @@ public static class EnemyCasts
             // Once it leaps, its way is known for certain: straight back. Before that, with the player on
             // top of it, its own facing is followed as it settles.
             if (landed)
+            {
                 breath.Facing = SweepingEvisceration.Facing(breath.From - here);
+            }
             else if (breath.FollowsBorgny)
-                breath.Facing = ToxicBreath.Snap(borgny.Rotation);
+            {
+                // It turns for up to 0.65 s after the cast starts. Its facing only counts once it has held
+                // still a moment, or the cast has gone on long enough; before that nothing is planned.
+                var facing = ToxicBreath.Snap(borgny.Rotation);
+                if (MathF.Abs(TurningHits.Step(breath.Facing, facing)) > 0.01f)
+                {
+                    breath.Facing = facing;
+                    breath.SettledSince = now;
+                }
+
+                var sinceStart = ToxicBreath.CastTime - (float)(breath.CastEnd - now).TotalSeconds;
+                if ((now - breath.SettledSince).TotalSeconds < ToxicBreath.SettleFor && sinceStart < ToxicBreath.TrustAfter)
+                    continue;
+            }
+
             zones.Add(ToxicBreath.Zone(landed ? here : breath.From, breath.Facing, landed, MathF.Max(0f, untilCleave)));
         }
     }

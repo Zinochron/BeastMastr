@@ -94,6 +94,7 @@ public sealed class BoardRunner : IDisposable
     private readonly FightSelector fightSelector;
     private readonly HealthSelector healthSelector;
     private readonly BeastCatalog catalog;
+    private readonly TeamSelector teamSelector;
 
     private readonly List<string> log = [];
 
@@ -111,6 +112,11 @@ public sealed class BoardRunner : IDisposable
 
     private int treasureChoice;
 
+    /// <summary>Picks made from the coffer in hand; a second-pick item leaves it open after the first.</summary>
+    private int treasurePicks;
+
+    private const int MostTreasurePicks = 4;
+
     /// <summary>Whether the fight in hand has been seen in combat, and away from the board.</summary>
     private bool sawCombat;
 
@@ -118,8 +124,9 @@ public sealed class BoardRunner : IDisposable
 
     public BoardRunner(Configuration configuration, BoardModel board, BoardTerrain terrain, RouteKeeper route,
                        BoardWalker walker, CombatDriver combat, FightSelector fightSelector,
-                       HealthSelector healthSelector, BeastCatalog catalog)
+                       HealthSelector healthSelector, BeastCatalog catalog, TeamSelector teamSelector)
     {
+        this.teamSelector = teamSelector;
         this.catalog = catalog;
         this.configuration = configuration;
         this.board = board;
@@ -165,7 +172,9 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        if (RunSafety.CannotStart(board) is { } problem)
+        // At the entrance, the run begins by walking to Lauda and starting the board last played.
+        var atEntrance = Services.ClientState.TerritoryType == XbmColumns.Entrance.Territory;
+        if ((atEntrance ? RunSafety.CannotStartAtEntrance(configuration) : RunSafety.CannotStart(board)) is { } problem)
         {
             Fail(problem);
             return;
@@ -189,6 +198,14 @@ public sealed class BoardRunner : IDisposable
         var collisions = RunSafety.LoadedCollisions();
         if (collisions.Count > 0)
             Say($"Also loaded, and able to get in the way: {string.Join(", ", collisions)}.");
+
+        if (atEntrance)
+        {
+            boardRow = configuration.LastBoardRowId;
+            entrance = new BoardEntrance(boardRow, teamSelector, configuration.RunTeam);
+            Enter(Phase.Reentering, $"Starting board 1 of {RunsWanted} from the entrance.");
+            return;
+        }
 
         Enter(Phase.Preflight, $"Starting {RunsWanted} run(s) on board {board.BoardRowId}.");
     }
@@ -565,6 +582,7 @@ public sealed class BoardRunner : IDisposable
     {
         combat.Start();
         combat.MayPull = true;
+        combat.BossFight = IsBoss(Target) || IsBoss(board.PositionEvent);
     }
 
     private void Fighting()
@@ -757,11 +775,32 @@ public sealed class BoardRunner : IDisposable
                  (held.Count > 0 ? $" Already held: {string.Join(", ", held)}." : string.Empty));
         }
 
-        if (Carry(RoomActions.ChooseTreasure(treasureChoice), "Pick your treasure — the run carries on when the window closes."))
+        // An item lets a coffer be picked from twice: the pick goes through and the window stays open. Then
+        // another offer is picked, until the window is gone.
+        step ??= new ConfirmedStep(RoomActions.ChooseTreasure(treasureChoice));
+        step.Tick();
+
+        if (step.Done)
         {
             RoomDone("Took the treasure.");
             return;
         }
+
+        if (step.Failure != null)
+        {
+            if (AddonReader.IsOpen(XbmColumns.RunWindows.Treasure) && ++treasurePicks < MostTreasurePicks)
+            {
+                Note($"The coffer is still open after offer {treasureChoice + 1}; picking another.");
+                refusedOffers.Add(treasureChoice);
+                step = null;
+                return;
+            }
+
+            Ask($"{step.Failure} Pick your treasure — the run carries on when the window closes.");
+            return;
+        }
+
+        Status = $"Sending \"{step.Label}\".";
 
         if (step is { Refused: true })
         {
@@ -921,7 +960,7 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        entrance = new BoardEntrance(boardRow);
+        entrance = new BoardEntrance(boardRow, teamSelector, configuration.RunTeam);
         Enter(Phase.Reentering, $"Starting board {RunsDone + 1} of {RunsWanted} from the entrance.");
     }
 
@@ -1015,7 +1054,10 @@ public sealed class BoardRunner : IDisposable
         step = null;
 
         if (phase == Phase.Treasure)
+        {
             refusedOffers.Clear();
+            treasurePicks = 0;
+        }
 
         if (phase == Phase.Shop)
             shopBuyer = null;

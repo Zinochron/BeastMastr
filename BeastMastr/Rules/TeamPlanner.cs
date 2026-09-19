@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -83,5 +84,29 @@ public static class TeamPlanner
                        .Distinct()
                        .Take(slots)
                        .ToList();
+    }
+
+    /// <summary>How many familiars a fight takes: one per Battlehorn.</summary>
+    public const int FightSlots = 3;
+
+    /// <summary>
+    /// The familiars to call into a fight: the carries that can fight, in the order they were chosen,
+    /// then the last fight's in their call order. <paramref name="able"/> is the team without the
+    /// familiars that are down.
+    ///
+    /// A fight is filled up to as many as last time, or as many carries as can come if that is more,
+    /// and never past <see cref="FightSlots"/>.
+    /// </summary>
+    public static IReadOnlyList<uint> ForFight(IEnumerable<Candidate> able, IEnumerable<uint> carries,
+                                               IEnumerable<uint> lastTime)
+    {
+        var present = able.Select(candidate => candidate.BeastNumber).ToHashSet();
+        var carried = carries.Where(present.Contains).Distinct().Take(FightSlots).ToList();
+        var last = lastTime.Distinct().ToList();
+        var slots = Math.Min(FightSlots, Math.Max(last.Count, carried.Count));
+
+        return carried.Concat(last.Where(present.Contains).Where(beast => !carried.Contains(beast)))
+                      .Take(slots)
+                      .ToList();
     }
 }

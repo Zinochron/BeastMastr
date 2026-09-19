@@ -28,6 +28,9 @@ public class Configuration : IPluginConfiguration
     /// </summary>
     public bool CallLastFamiliarsOnOpen { get; set; } = true;
 
+    /// <summary>A fight calls the carries first, those that are not down, then the last fight's familiars.</summary>
+    public bool CallCarriesFirst { get; set; } = true;
+
     /// <summary>
     /// Put the Crucible mode back to the one last used as the board window opens — once. The game
     /// forgets the choice between visits, which is the only reason this exists.
@@ -155,6 +158,23 @@ public class Configuration : IPluginConfiguration
 
     public int AreaItemAtAdds { get; set; } = 3;
 
+    /// <summary>In a board's final fight, use every item worth using once the horns are out — the Beast Potion Kit first.</summary>
+    public bool UseBossItems { get; set; } = true;
+
+    /// <summary>
+    /// The Strix's puddle learned to levitate (0 until learned), and the puddles learned not to, by event
+    /// object base id. Learned from the statuses gained standing in them; see <c>StrixPuddles</c>.
+    /// </summary>
+    public uint StrixLevitationPuddle { get; set; }
+
+    public List<uint> StrixNotLevitation { get; set; } = [];
+
+    /// <summary>
+    /// How long the adds have to be on the player before the item is thrown: the Treant's wave comes in
+    /// over a second or two, and one throw should catch all of it.
+    /// </summary>
+    public float AreaItemWaitSeconds { get; set; } = 1.5f;
+
     /// <summary>In a fight, drink the strongest at or below this share of HP.</summary>
     public float PotionInFightBelow { get; set; } = 0.4f;
 
@@ -172,6 +192,23 @@ public class Configuration : IPluginConfiguration
 
     /// <summary>A board lost to a wipe counts as played, and the next one is started.</summary>
     public bool ContinueAfterLostBoard { get; set; } = true;
+
+    /// <summary>What team a board started from the entrance is given.</summary>
+    public RunTeam RunTeam { get; set; } = RunTeam.Farming;
+
+    /// <summary>Boards finished, counted when their result window opens; see <c>LootTracker</c>.</summary>
+    public int BoardsFinished { get; set; }
+
+    /// <summary>Boards finished with the boss beaten (the result reads 100%).</summary>
+    public int BoardsWon { get; set; }
+
+    /// <summary>Boards timed from entering to their result, and the seconds they took in all.</summary>
+    public int TimedBoards { get; set; }
+
+    public double TimedBoardSeconds { get; set; }
+
+    /// <summary>Loot rolled for at the end of boards, by item name, over all sessions.</summary>
+    public Dictionary<string, int> LootTotals { get; set; } = [];
 
     // ---- When you take over ----------------------------------------------
     // Whatever the automation is doing, your own input wins at once. These decide what happens after.
@@ -386,4 +423,17 @@ public enum BossModRole
 
     /// <summary>BossMod moves and presses the combo; BeastMastr spends the resources.</summary>
     DodgeAndRotation,
+}
+
+/// <summary>The team a board started from the entrance is given, set in the board window before Challenge.</summary>
+public enum RunTeam
+{
+    /// <summary>Whatever the team is.</summary>
+    Keep,
+
+    /// <summary>The carries, then the least advanced beasts, anew for every board.</summary>
+    Leveling,
+
+    /// <summary>The three carries alone, for the board's bonus.</summary>
+    Farming,
 }

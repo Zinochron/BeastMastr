@@ -107,6 +107,25 @@ public static unsafe class ItemUser
         return Begin(item.Slot, item.Row);
     }
 
+    /// <summary>
+    /// Uses the item of <paramref name="itemRow"/> if one is held — a buff or cure, on the player. Returns
+    /// true while it is working.
+    /// </summary>
+    public static bool TickUse(uint itemRow)
+    {
+        if (stage != 0)
+        {
+            Continue();
+            return true;
+        }
+
+        if (DateTime.Now < nextTry)
+            return false;
+
+        var item = HeldItems().FirstOrDefault(held => held.Row == itemRow);
+        return item.Row != 0 && Begin(item.Slot, item.Row);
+    }
+
     private static bool Begin(int itemSlot, uint itemRow)
     {
         if (!Send(Hud, [Value.Int(OpenMenuCommand), Value.Int(itemSlot), Value.Undefined()], true))
@@ -212,8 +231,24 @@ public static unsafe class ItemUser
         80 => "G1 Crucible Ash", 81 => "G2 Crucible Ash", 82 => "G3 Crucible Ash",
         128 => "Fang of Fire", 129 => "Fang of Ice", 130 => "Fang of Water", 131 => "Fang of Lightning",
         132 => "Fang of Earth", 133 => "Fang of Wind", 134 => "Vampiric Fang", 139 => "Celestial Sand",
-        _ => $"item {itemRow}",
+        _ => SheetName(itemRow),
     };
+
+    private static string SheetName(uint itemRow)
+    {
+        try
+        {
+            var sheet = Services.Data.Excel.GetSheet<Lumina.Excel.RawRow>(null, XbmColumns.XbmItem.Sheet);
+            if (sheet.TryGetRow(itemRow, out var item))
+                return item.ReadStringColumn(XbmColumns.XbmItem.DisplayName).ExtractText();
+        }
+        catch (Exception)
+        {
+            // Only the log's wording depends on it.
+        }
+
+        return $"item {itemRow}";
+    }
 
     private readonly record struct Value(AtkValueType Type, int Number)
     {

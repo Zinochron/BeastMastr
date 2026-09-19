@@ -163,7 +163,9 @@ public sealed unsafe class FightSelector : IDisposable
             return;
         }
 
-        if (configuration.LastFightBeasts.Count == 0)
+        // The carries come first, as long as they can fight; the rest of the call is last time's.
+        var carries = configuration.CallCarriesFirst ? configuration.CarryBeasts : [];
+        if (configuration.LastFightBeasts.Count == 0 && carries.Count == 0)
         {
             Say("Nothing remembered yet — call familiars by hand once, and the next fight repeats them.");
             return;
@@ -172,15 +174,15 @@ public sealed unsafe class FightSelector : IDisposable
         // An incapacitated familiar cannot be called, and trying stopped the whole call. Its place goes
         // to the healthiest familiar that is not already wanted.
         var able = slots.Where(slot => slot.Beast != null && !slot.IsDown).ToList();
-        var count = configuration.LastFightBeasts.Count;
-        var wanted = TeamPlanner.RepeatLast(
-                                 able.Select(slot => new TeamPlanner.Candidate(slot.Beast!.Number, slot.Name, slot.Rank)),
-                                 configuration.LastFightBeasts,
-                                 count)
-                             .ToList();
+        var candidates = able.Select(slot => new TeamPlanner.Candidate(slot.Beast!.Number, slot.Name, slot.Rank)).ToList();
+        var wanted = TeamPlanner.ForFight(candidates, carries, configuration.LastFightBeasts).ToList();
+        var count = Math.Min(TeamPlanner.FightSlots,
+                             Math.Max(configuration.LastFightBeasts.Count,
+                                      carries.Count(carry => slots.Any(slot => slot.Beast?.Number == carry))));
 
         var down = slots.Where(slot => slot.IsDown && slot.Beast != null &&
-                                       configuration.LastFightBeasts.Contains(slot.Beast.Number))
+                                       (configuration.LastFightBeasts.Contains(slot.Beast.Number) ||
+                                        carries.Contains(slot.Beast.Number)))
                         .Select(slot => slot.Name)
                         .ToList();
 

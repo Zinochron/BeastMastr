@@ -167,6 +167,18 @@ Check("a carry does not have to be least advanced to stay", levelled.Count == 3)
 
 // The tie-break that matters: two beasts at rank 1, one already on the team. Without preferring it,
 // the lower bestiary number wins and the team churns for nothing.
+// A fight: the carries that can fight first, then last time's familiars.
+var fightCall = TeamPlanner.ForFight(ranked, [4, 1], [2, 3, 5]);
+Check("a fight calls the carries first, in their order, then last time's",
+      fightCall.SequenceEqual(new uint[] { 4, 1, 2 }), string.Join(",", fightCall));
+var carryDown = TeamPlanner.ForFight(ranked.Where(c => c.BeastNumber != 4), [4, 1], [2, 3, 5]);
+Check("a carry that is down is left out and last time's fill its place",
+      carryDown.SequenceEqual(new uint[] { 1, 2, 3 }), string.Join(",", carryDown));
+Check("with nothing remembered, the carries alone",
+      TeamPlanner.ForFight(ranked, [1, 4], []).SequenceEqual(new uint[] { 1, 4 }));
+Check("never more than three",
+      TeamPlanner.ForFight(ranked, [1, 2, 3], [4, 5]).Count == TeamPlanner.FightSlots);
+
 var tie = new[]
 {
     new TeamPlanner.Candidate(10, "OffTeam", 1),
@@ -759,6 +771,20 @@ var tornado = new Zone(ZoneKind.Circle, chase1, 0f, 6.5f, 0f, "ground hazard", L
 var chase2 = ToxicVomit.ChasePoint(borgnyArena, new Vector2(905f, -420f), chaseTurn, [tornado]);
 Check("and a covered step is swapped for a clear one", !tornado.Contains(chase2), $"to {chase2}");
 
+// Toxic Vomit's four tornadoes in a T round Borgny, in melee reach, one side left free to fight from.
+foreach (var borgnyAt in new[] { borgnyArena, new Vector2(930f, -412f) })
+{
+    var t = ToxicVomit.TSpots(borgnyArena, borgnyAt, 3.5f, 18f, []);
+    var reachT = 3.5f + ToxicVomit.DropPastHitbox;
+    var inArena = t.TrueForAll(spot => Vector2.Distance(spot, borgnyArena) <= 18f);
+    var barInReach = Vector2.Distance(t[0], borgnyAt) <= reachT + 0.01f && Vector2.Distance(t[1], borgnyAt) <= reachT + 0.01f;
+    // The side across from the stem, in reach of Borgny and clear of all four tornadoes.
+    var free = borgnyAt - (t[2] - borgnyAt);
+    var freeClear = t.TrueForAll(spot => Vector2.Distance(spot, free) > 6.5f + 0.5f);
+    Check($"the tornado T round Borgny at {borgnyAt} stays in the arena and leaves a side to fight from",
+          t.Count == ToxicVomit.Drops && inArena && barInReach && freeClear, string.Join(" ", t));
+}
+
 var cloud = GroundHazards.Drifting(new Vector2(920f, -432f), new Vector2(0f, -2.1f), 6.5f);
 Check("a drifting cloud covers where it will be", cloud.Contains(new Vector2(920f, -441f)) &&
       !cloud.Contains(new Vector2(920f, -424f)) && cloud.Contains(new Vector2(920f, -432f)));
@@ -845,6 +871,59 @@ var elsewhere = CastShapes.Shape(2, 6, 0, "", 0f, new Vector2(140f, -440f), 0f, 
 var toBriar = Dodger.Plan(new Vector2(118f, -424f), flower, 6f, [elsewhere, trap], arena, 18f)!;
 Check("Floral Trap: into the nearest briar, even with another hit sooner", toBriar.Point == briars[2],
       $"to {toBriar.Point}");
+
+var afterTrap = FloralTrap.Zone(flower, new Vector2(112.4f, -428.2f), briars, 0f, waitingOutDevour: true)!;
+var stayInBriar = Dodger.Plan(new Vector2(112.4f, -428.2f), flower, 6f, [afterTrap], arena, 18f)!;
+Check("after Floral Trap, the briar is held until Devour instead of walking back to the flower",
+      stayInBriar.Point == briars[2], $"to {stayInBriar.Point}");
+
+// Casts under way far off do not keep the player out of reach: a spot clear of all of them is walked to.
+var farCast = CastShapes.Shape(2, 6, 0, "", 0f, new Vector2(905f, -405f), 0f, 3f, "far circle")!;
+var walkIn = Dodger.Plan(new Vector2(935f, -420f), farBorgny, 6f, [farCast], borgnyArena, 18f)!;
+Check("clear of a cast far off, the player still closes in on the target",
+      Vector2.Distance(walkIn.Point, farBorgny) <= 6f && !farCast.Covers(walkIn.Point, 0.5f), $"{walkIn.Point} {walkIn.Why}");
+
+// The loot rolled for at a board's end, as the chat has it; a room's spoils are not it.
+Check("loot put on the list is read",
+      LootLog.Added("3 bright remnants of resilience have been added to the loot list.") is { Count: 3, Name: "bright remnants of resilience" } &&
+      LootLog.Added("A bright remnant of resilience has been added to the loot list.") is { Count: 1, Name: "bright remnant of resilience" });
+Check("and obtaining it",
+      LootLog.Obtained("You obtain 3 bright remnants of resilience.") is { Count: 3 } &&
+      LootLog.Obtained("You obtain a bright remnant of resilience.") is { Count: 1 });
+Check("a room's spoils and gil are not loot",
+      LootLog.Obtained("You obtain a fang of fire as loot.") == null &&
+      LootLog.Added("You obtain 4,500 gil.") == null);
+
+// Borgny, third familiar: its Parting Blow is only for finishing Borgny.
+var thirdFamiliar = Fight(distance: 2f, notReady: AllBut(Bst.PartingBlow)) with { OtherHornReadyIn = 2f, TargetHpShare = 0.4f };
+Check("the third familiar's Parting Blow is not spent on Borgny",
+      BstRotation.Next(thirdFamiliar with { KeepLastPartingBlow = true }, plain).Ogcd != Bst.PartingBlow &&
+      BstRotation.Next(thirdFamiliar, plain).Ogcd == Bst.PartingBlow);
+Check("unless it finishes it",
+      BstRotation.Next(thirdFamiliar with { KeepLastPartingBlow = true, TargetHpShare = 0.05f }, plain).Ogcd == Bst.PartingBlow);
+
+// The final fight's items: the Beast Potion Kit first, each buff once, the antidote whenever poisoned.
+var noStatus = new HashSet<uint>();
+Check("the Beast Potion Kit goes first",
+      BossItems.Next([137, BossItems.BeastPotionKit, 104], new HashSet<uint>(), noStatus) == BossItems.BeastPotionKit);
+Check("then the next buff not yet used",
+      BossItems.Next([137, BossItems.BeastPotionKit, 104], new HashSet<uint> { BossItems.BeastPotionKit }, noStatus) == 104);
+Check("feral potions and the smokebomb never",
+      BossItems.Next([105, 97, 142, 138, 100], new HashSet<uint>(), noStatus) == null);
+Check("the antidote when poisoned, again and again",
+      BossItems.Next([BossItems.Antidote], new HashSet<uint> { BossItems.Antidote }, new HashSet<uint> { 5183 }) == BossItems.Antidote &&
+      BossItems.Next([BossItems.Antidote], new HashSet<uint>(), noStatus) == null);
+
+// The Strix's puddles: the learned one, else the first not learned to be wrong.
+Check("the levitation puddle: the shared-effect one first, a learned one always",
+      StrixPuddles.Levitating(0, new List<uint>()) == 2004354 &&
+      StrixPuddles.Levitating(0, new List<uint> { 2004354 }) == 2015456 &&
+      StrixPuddles.Levitating(2015457, new List<uint> { 2004354 }) == 2015457);
+Check("a floating status is told by its name",
+      StrixPuddles.Floats("Levitation") && StrixPuddles.Floats("Magnetic Levitation") && !StrixPuddles.Floats("Haste"));
+var toPuddle = Dodger.Plan(new Vector2(120f, -420f), new Vector2(120f, -428f), 6f,
+                           [StrixPuddles.Zone(new Vector2(110f, -430f), 5f)], arena, 18f)!;
+Check("into the puddle before the quake", toPuddle.Point == new Vector2(110f, -430f), $"to {toPuddle.Point}");
 
 // Campsites: the 90% is shared, and what heals past full is lost.
 Check("a familiar missing a tenth is not worth half the heal", CampsiteRest.HowMany(0.6f, [0.1f], 2) == 0);

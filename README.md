@@ -11,13 +11,24 @@ makes you click for it. BeastMastr puts that where you are already looking.
 - **Crucible board** — the facts that decide a route sit next to the room on the board instead of
   one click deep, and the beasts worth bringing are highlighted when you enter a room.
 
-- **Board automation (experimental, testing builds)** — `/beastmastr run` plays a Crucible board by
-  itself: it walks from room to room, picks the route, buys Beast Gear and potions, rests at
-  campsites, takes treasure and fights, dodging the mechanics it knows. With a board count above one
-  (`/beastmastr run 5`, or "boards" on the Run tab) it leaves the result and starts the same board
-  again from the entrance. `/beastmastr stop` ends it.
-  Needs [vnavmesh](https://github.com/awgil/ffxiv_navmesh). Moving, jumping, targeting or using an
-  action yourself pauses the run; it carries on a few seconds after you let go.
+- **Board automation (experimental)** — `/beastmastr run` plays a Crucible board by itself.
+  Needs [vnavmesh](https://github.com/awgil/ffxiv_navmesh).
+  - **Where to press Run:** on a board's start platform, or anywhere in Central Shroud; there it walks
+    to Lauda and starts the board last played.
+  - **What it does:** walks from room to room and picks the route (forks can be picked on the board
+    window). It buys Beast Gear and potions, rests at campsites, takes treasure — twice from a coffer
+    that allows it — and fights: an opener with the Battlehorns and Borrow, duty actions, potions,
+    Fangs at adds, and every useful item in the final fight.
+  - **Dodging:** it dodges the mechanics it knows, including the First Master's Board's own.
+  - **Several boards:** with a board count above one (`/beastmastr run 5`, or "boards" on the Run tab)
+    it leaves the result and starts the same board again from the entrance. Each board's team can be
+    set to farming (the carries alone) or leveling (the carries and the least advanced beasts).
+  - **Carries:** marked with "Add as carry" in the bestiary's right-click menu. They are also called
+    into every fight first.
+  - **Tracking:** the Run tab counts the boards finished and won, how long they take, and the loot
+    rolled for at their end.
+  - **Stopping:** `/beastmastr stop` ends it. Moving, jumping, targeting or using an action yourself
+    pauses the run; it carries on a few seconds after you let go.
 
 Opens with `/beastmastr`.
 
