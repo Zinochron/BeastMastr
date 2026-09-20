@@ -483,6 +483,32 @@ var partingEarly = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow, Bst.
                                           statuses: [Bst.OneWithNature]), plain);
 Check("not while Tempered Release is still to be used", partingEarly.Ogcd == Bst.TemperedRelease, partingEarly.Why);
 
+// On the way in nothing is spent: on 2026-09-20 at 18:10:39 the Release went out sixteen yalms short.
+var walkingIn = Fight(distance: 16f, statuses: [Bst.OneWithNature],
+                      notReady: AllBut(Bst.TemperedRelease, Bst.PartingBlow, Bst.ShieldCharge));
+var walkingDecision = BstRotation.Next(walkingIn, plain);
+Check("out of reach neither the Release nor the blow is pressed",
+      walkingDecision.Ogcd != Bst.TemperedRelease && walkingDecision.Ogcd != Bst.PartingBlow,
+      walkingDecision.Why);
+Check("in reach the Release goes out",
+      BstRotation.Next(walkingIn with { TargetDistance = 1f }, plain).Ogcd == Bst.TemperedRelease);
+
+// The first horn was ending before its familiar ever released — several hundred potency thrown away.
+// The release only becomes available as the fight starts, so the blow waits out the opening.
+var unreleased = Fight(notReady: AllBut(Bst.PartingBlow)) with { FamiliarReleased = false, FamiliarOutFor = 3f };
+Check("at the pull, a familiar that has not released is not sent off for the next one",
+      BstRotation.Next(unreleased, plain).Ogcd != Bst.PartingBlow, BstRotation.Next(unreleased, plain).Why);
+Check("but it still goes when the blow finishes the target",
+      BstRotation.Next(unreleased with { TargetHpShare = 0.05f }, plain).Ogcd == Bst.PartingBlow);
+Check("the blow waits a moment after the release, so it lands",
+      BstRotation.Next(unreleased with { FamiliarReleased = true, ReleasedFor = 0.3f }, plain).Ogcd != Bst.PartingBlow);
+Check("and goes once it has",
+      BstRotation.Next(unreleased with { FamiliarReleased = true, ReleasedFor = 2f }, plain).Ogcd == Bst.PartingBlow);
+Check("a release that never comes holds the cycle only through the opening",
+      BstRotation.Next(unreleased with { FamiliarOutFor = 9f }, plain).Ogcd == Bst.PartingBlow);
+Check("and while the fight has not been joined at all, the blow waits",
+      BstRotation.Next(unreleased with { FamiliarOutFor = 0f }, plain).Ogcd != Bst.PartingBlow);
+
 var lowParting = BstRotation.Next(Fight(level: 20, notReady: AllBut(Bst.PartingBlow)), plain);
 Check("not below 30, where a new familiar resets nothing", lowParting.Ogcd == 0, lowParting.Why);
 
@@ -529,6 +555,16 @@ var openDone = BstRotation.Next(Fight(prePull: true, horns: 2, statuses: [4602],
                                       notReady: [Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn,
                                                  Bst.Borrow, Bst.TemperedRelease, Bst.Trick, Bst.Rally]), plain);
 Check("and only then goes in", openDone.Engage, openDone.Why);
+
+// On 2026-09-20 at 18:04:39 a second Borrow went out after the opener's own horn and held the pull up.
+var openTwice = BstRotation.Next(Fight(prePull: true, horns: 2, statuses: [4602], distance: 1f,
+                                       notReady: [Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn,
+                                                  Bst.TemperedRelease, Bst.Trick, Bst.Rally, Bst.BeastMode]), plain);
+Check("the opener borrows once, not again after its own horn",
+      openTwice.Ogcd != Bst.Borrow && openTwice.Engage, openTwice.Why);
+
+var borrowInFight = BstRotation.Next(Fight(horns: 2, notReady: AllBut(Bst.Borrow)), plain);
+Check("in the fight Borrow goes out as before", borrowInFight.Ogcd == Bst.Borrow, borrowInFight.Why);
 
 var openLow = BstRotation.Next(Fight(level: 15, prePull: true, horns: 1, notReady: [Bst.FirstBattlehorn]), plain);
 Check("below Borrow's level the second horn follows at once", openLow.Ogcd == Bst.SecondBattlehorn, openLow.Why);

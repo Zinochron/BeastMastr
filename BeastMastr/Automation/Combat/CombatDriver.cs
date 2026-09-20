@@ -134,6 +134,12 @@ public sealed unsafe class CombatDriver : IDisposable
         {
             lastPartingBlow = use.At;
         }
+        else if (IsRelease(use.ActionId))
+        {
+            // Each beast has its own Tempered Release, so the id pressed is the adjusted one.
+            releasedAt = use.At;
+            Services.Log.Information("The familiar has had its Tempered Release; Parting Blow follows shortly.");
+        }
         else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0 && use.At - lastBattlehorn > TimeSpan.FromSeconds(1))
         {
             // The game reports a cast twice — pressed, then queued — so a second report within the cast is the
@@ -149,6 +155,29 @@ public sealed unsafe class CombatDriver : IDisposable
 
     /// <summary>How many familiars stood out as the pending horn was pressed.</summary>
     private int familiarsAtHorn;
+
+    /// <summary>When the familiar out now used its Tempered Release, or null while it has not.</summary>
+    private DateTime? releasedAt;
+
+    /// <summary>When the familiar out now arrived, or null while none has.</summary>
+    private DateTime? familiarSince;
+
+    /// <summary>
+    /// The first weaponskill of this fight. The release becomes available as the fight is joined, and
+    /// the walk in to the enemy — nine seconds on 2026-09-20 at 18:04:40 — is not time the familiar had
+    /// to release in.
+    /// </summary>
+    private DateTime? firstGcdAt;
+
+    /// <summary>Whether an action used is the Tempered Release of whichever beast is out.</summary>
+    private static bool IsRelease(uint used)
+    {
+        if (used == Bst.TemperedRelease)
+            return true;
+
+        var manager = ActionManager.Instance();
+        return manager != null && manager->GetAdjustedActionId(Bst.TemperedRelease) == used;
+    }
 
     /// <summary>The pet command "Heel" (<c>PetAction</c> 2): the familiar comes back to the player.</summary>
     private const uint HeelCommand = 2;
@@ -180,6 +209,10 @@ public sealed unsafe class CombatDriver : IDisposable
         {
             hornPending = false;
             hornsThisFight++;
+
+            // A new familiar: its own release is still to come.
+            releasedAt = null;
+            familiarSince = DateTime.Now;
             return;
         }
 
@@ -228,6 +261,9 @@ public sealed unsafe class CombatDriver : IDisposable
 
         hornPending = false;
         bossItemsTried.Clear();
+        releasedAt = null;
+        familiarSince = null;
+        firstGcdAt = null;
 
         Enabled = true;
         input.Reset();
@@ -281,7 +317,9 @@ public sealed unsafe class CombatDriver : IDisposable
 
         var inCombat = Services.Condition[ConditionFlag.InCombat];
         if (inCombat)
+        {
             lastInCombat = DateTime.Now;
+        }
 
         if (Vector3.DistanceSquared(player.Position, lastPosition) > 0.0001f)
         {
@@ -396,6 +434,9 @@ public sealed unsafe class CombatDriver : IDisposable
                 hornsThisFight = 0;
                 hornPending = false;
                 bossItemsTried.Clear();
+                releasedAt = null;
+                familiarSince = null;
+                firstGcdAt = null;
             }
         }
 
@@ -486,7 +527,7 @@ public sealed unsafe class CombatDriver : IDisposable
         {
             // The familiars' comings and goings are logged too, so an opener gone wrong can be read back
             // without a recording.
-            if (decision.Ogcd is Bst.Snarl or Bst.Challenge or Bst.Borrow or Bst.PartingBlow ||
+            if (decision.Ogcd is Bst.Snarl or Bst.Challenge or Bst.Borrow or Bst.PartingBlow or Bst.TemperedRelease ||
                 Array.IndexOf(Bst.Battlehorns, decision.Ogcd) >= 0)
                 Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}" +
                                          $"{(MayPull && !inCombat ? " (before the pull)" : string.Empty)}.");
@@ -494,8 +535,8 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
-        if (decision.Gcd != 0)
-            Use(manager, player, target, decision.Gcd);
+        if (decision.Gcd != 0 && Use(manager, player, target, decision.Gcd) && inCombat)
+            firstGcdAt ??= DateTime.Now;
     }
 
     /// <summary>You have taken over: nothing is pressed and nothing is moved until you let go.</summary>
@@ -571,7 +612,33 @@ public sealed unsafe class CombatDriver : IDisposable
             // Charge in between carried the player back to Borgny.
             MayDash: dodge == null && zonesAround == 0 && DateTime.Now - lastDodgeAt > DashAfterDodge,
             KeepLastPartingBlow: target is IBattleChara { BaseId: Bosses.Borgny } &&
-                                 hornsThisFight >= Bosses.BorgnyKeepsBlowFromHorn);
+                                 hornsThisFight >= Bosses.BorgnyKeepsBlowFromHorn,
+            // A familiar summoned before the driver took over counts as released: nothing is known about
+            // it, and holding its blow forever would end the cycle.
+            FamiliarReleased: releasedAt != null || familiarSince == null,
+            ReleasedFor: releasedAt is { } released ? (float)(DateTime.Now - released).TotalSeconds : 0f,
+            FamiliarOutFor: WaitedForRelease());
+    }
+
+    /// <summary>
+    /// How long the familiar out now has had to release: since it arrived, or since the fight's first
+    /// weaponskill when it was summoned before that. 0 while no weaponskill has gone out, infinity when
+    /// no familiar of this driver's is out.
+    /// </summary>
+    private float WaitedForRelease()
+    {
+        if (familiarSince is not { } since)
+            return float.PositiveInfinity;
+
+        // Before the first weaponskill lands, the fight has not really started: the familiar has had no
+        // chance to release, so the blow waits however long the walk in takes.
+        if (firstGcdAt is not { } joined)
+            return 0f;
+
+        if (joined > since)
+            since = joined;
+
+        return (float)(DateTime.Now - since).TotalSeconds;
     }
 
     private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;

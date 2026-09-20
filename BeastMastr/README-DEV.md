@@ -2620,10 +2620,18 @@ changes.
 
 **Auto-repair between boards.** A switch beside "go on after a lost board". At the entrance, before
 Lauda is talked to, the worst piece worn is read (`Data/GearDurability.cs`, `Condition / 30000`). Below
-full, the game's own Repair action (`GeneralAction` 6) opens the repair window and the repair itself is
-handed to the player — that window's buttons have never been recorded, and nothing is guessed. The run
-carries on the moment everything is whole again; if no window appears within six seconds (no dark matter,
-most likely), the board is played anyway.
+full, the game's own Repair action (`GeneralAction` 6) opens the repair window, "Repair All" is pressed,
+the question it asks is answered yes, and the window is closed once everything is whole.
+
+The press is not a guessed callback: `AddonRepair` is a typed addon in ClientStructs with a
+`RepairAllButton`, and ECommons' `AddonMaster.Repair.RepairAll()` works that button the way a click
+works it. What the button then sends is the game's own business. The question afterwards is an ordinary
+`SelectYesno`, answered with the recorded `[0]`.
+
+Nothing here can run away with the run: the press is repeated at most four times, three seconds apart;
+after thirty seconds the step is handed to the player with the likely reason (no dark matter, or a
+crafter level too low for these items); and if no window appears within six seconds the board is played
+as it is.
 
 **The board and the difficulty beside the Run button.** Two selectors:
 - **board** — the rows of `XBMContent`, named through their `ContentFinderCondition` (1088–1092), so the
@@ -2651,3 +2659,89 @@ Three changes:
 
 The Beasts table has a **Rank** column (the game's own name for it, "Beast Rank"), an em dash where
 nothing has been seen, and what it knows on hover.
+
+### The first familiar keeps its Release — 0.3.0.1, 2026-09-20
+
+The user: the first horn is often ended by Parting Blow before its familiar ever uses its Tempered
+Release, and that is several hundred potency thrown away. Parting Blow ends the summon, so whatever the
+familiar still had to give goes with it.
+
+The old gate only asked whether Tempered Release was usable **right now** (`!Usable(state,
+TemperedRelease)`). A release that is two Beast Modes away is not usable now, so the familiar went.
+
+`BstState` now carries `FamiliarReleased` and `FamiliarOutFor`, and Parting Blow "to summon the next
+familiar" waits for the release. Unchanged: the blow that **finishes** the target, and
+`KeepLastPartingBlow` at Borgny. A valve keeps the cycle from stalling — past
+`BstOptions.ReleaseWaitSeconds` (45) the release is not coming (no Kinship, no Beast Mode) and the next
+familiar is worth more than the wait.
+
+`CombatDriver` tracks it: every familiar that arrives starts unreleased, and a use of Tempered Release —
+matched through `GetAdjustedActionId`, since each beast has its own — marks it released. A familiar that
+was already out when the driver took over counts as released, because nothing is known about it.
+
+**Corrected the same day (0.3.0.2), from the user:** the release only becomes available as the fight
+starts, so the whole point is that Parting Blow must not go off at the pull. After the first GCD the
+release goes out, and one to two seconds later the blow may follow. So:
+
+- the wait for a release that never comes is 8 seconds, not 45 (`ReleaseWaitSeconds`), and it is counted
+  **from the pull**, not from the summon — the opener's familiars are called before the fight is on, and
+  a wait counted from their arrival would already be spent when it matters;
+- Parting Blow keeps `PartingBlowAfterRelease` (1.5 s) between the release and the blow, so the release
+  lands before the familiar goes.
+
+**Versions from here on:** every prompt that changes code raises the last number of `<Version>`, because
+Dalamud only reloads a plugin whose version differs.
+
+### What the opener actually did — 0.3.0.3, 2026-09-20
+
+The user was right that the last two rounds fixed the wrong thing. `dalamud.log` at 18:04 says what the
+opener really did, on an Elite room of the master board:
+
+```
+36.797  Pressed Second Battlehorn: summon a familiar (before the pull)
+37.908  Pressed Borrow (before the pull)
+38.602  Pressed First Battlehorn: second familiar of the opener (before the pull)
+39.727  Pressed Borrow (before the pull)          ← not in the opener
+39.740  vnavmesh: walking in …                     ← nine seconds, nothing pressed
+49.412  Pressed Parting Blow, to summon the next familiar
+50.240  Pressed Second Battlehorn
+51.360  The familiar has had its Tempered Release   ← after the blow, not before it
+```
+
+The opener the player plays is: horn II or III → Borrow → horn I → pull → Tempered Release → Parting
+Blow → next horn. Two things broke it.
+
+**A second Borrow after the opener's own horn.** Borrow comes back before the pull, and the rotation
+took it again, costing another GCD before the walk in. Pre-pull, Borrow is now only taken while
+`HornsThisFight < 2` — one Borrow, from the familiar called first. In the fight nothing changes.
+
+**The wait for the release was spent walking.** 0.3.0.2 counted it from the pull, but between the pull
+and the first swing lie nine seconds of walking, in which the familiar cannot release anything. The
+clock now starts at the **fight's first weaponskill** (`CombatDriver.firstGcdAt`), and before that
+weaponskill Parting Blow does not go at all. So the order falls out as the player plays it: first GCD,
+then the release as soon as it is available, then a second and a half, then the blow.
+
+Tempered Release is written to the log with the other summon actions now, so the next recording shows
+the whole opener without a capture.
+
+### The opener was spent on the way in — 0.3.0.4, 2026-09-20
+
+0.3.0.3 fixed the second Borrow, and the log at 18:10 shows what was left:
+
+```
+34.765  Second Battlehorn (before the pull)
+35.868  Borrow (before the pull)
+36.515  First Battlehorn (before the pull)   ← the opener itself is right now
+37.5    vnavmesh: walking in, the player at z −404, the enemy at −428
+39.426  Pressed Tempered Release             ← sixteen yalms short of the enemy
+42.135  Pressed Parting Blow                 ← still on the way
+```
+
+Once the opener is done the pull is allowed, and from that moment the resource abilities were pressed
+every tick — with the enemy still twenty yalms off. The game accepted them, so the first familiar was
+released and dismissed before the fight had begun.
+
+The combo has always been gated on `TargetDistance <= MeleeRange`; the abilities were not. Now
+Tempered Release, Parting Blow, Trick and Beast Mode are gated the same way. What still goes out on the
+way in: the Battlehorns and Borrow (the opener happens at range by design), the duty actions, Rally and
+Rallying Cheer, and Shield Charge, which is what closes the gap.
