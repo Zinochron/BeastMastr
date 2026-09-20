@@ -6,8 +6,9 @@ The game already knows what every beast's actions do and what every Crucible roo
 makes you click for it. BeastMastr puts that where you are already looking.
 
 - **Bestiary** — see at a glance what a beast brings: which status it lands, what damage type it
-  deals, what it resists. Filter and search by that, so "which of mine can interrupt?" is one
-  question instead of forty entries.
+  deals, what it resists, and the rank it has reached. Filter and search by that, so "which of mine
+  can interrupt?" is one question instead of forty entries. Ranks are learned by browsing and only
+  ever go up: a board that syncs your beasts down does not write them down.
 - **Crucible board** — the facts that decide a route sit next to the room on the board instead of
   one click deep, and the beasts worth bringing are highlighted when you enter a room.
 
@@ -21,8 +22,11 @@ makes you click for it. BeastMastr puts that where you are already looking.
     Fangs at adds, and every useful item in the final fight.
   - **Dodging:** it dodges the mechanics it knows, including the First Master's Board's own.
   - **Several boards:** with a board count above one (`/beastmastr run 5`, or "boards" on the Run tab)
-    it leaves the result and starts the same board again from the entrance. Each board's team can be
-    set to farming (the carries alone) or leveling (the carries and the least advanced beasts).
+    it leaves the result and starts the next board from the entrance. Which board and which Crucible
+    mode are picked beside the Run button, and each board's team can be set to farming (the carries
+    alone) or leveling (the carries and the least advanced beasts).
+  - **Auto-repair:** switched on, gear below full durability sends the run to the repair window between
+    boards; pressing the repair is yours, and the run carries on once everything is whole.
   - **Carries:** marked with "Add as carry" in the bestiary's right-click menu. They are also called
     into every fight first.
   - **Tracking:** the Run tab counts the boards finished and won, how long they take, and the loot

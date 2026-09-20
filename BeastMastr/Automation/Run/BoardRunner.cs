@@ -201,9 +201,9 @@ public sealed class BoardRunner : IDisposable
 
         if (atEntrance)
         {
-            boardRow = configuration.LastBoardRowId;
-            entrance = new BoardEntrance(boardRow, teamSelector, configuration.RunTeam);
-            Enter(Phase.Reentering, $"Starting board 1 of {RunsWanted} from the entrance.");
+            boardRow = WantedBoard();
+            entrance = NextEntrance();
+            Enter(Phase.Reentering, $"Starting board 1 of {RunsWanted} from the entrance: {BoardSheets.Name(boardRow)}.");
             return;
         }
 
@@ -650,6 +650,14 @@ public sealed class BoardRunner : IDisposable
 
         if (AddonReader.IsOpen(XbmColumns.RunWindows.Booty))
         {
+            // Refused: the loot would take the run past what it may hold. Nothing more can be taken, so the
+            // run goes on rather than waiting for a window that will not close on its own.
+            if (step is { Refused: true })
+            {
+                RoomDone("The spoils were refused — the items or the Beast Gear are at their limit.");
+                return;
+            }
+
             if (Carry(RoomActions.TakeSpoils, "Take the spoils — the run carries on when the window closes."))
                 RoomDone("Took the spoils.");
 
@@ -952,6 +960,10 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
+        // A board picked on the Run tab governs every board after the first, whichever one was played.
+        if (configuration.RunBoardRow != 0)
+            boardRow = configuration.RunBoardRow;
+
         if (boardRow == 0)
         {
             Enter(Phase.Done, $"Board {RunsDone} of {RunsWanted} is done, but which board it was is not known. " +
@@ -960,8 +972,28 @@ public sealed class BoardRunner : IDisposable
             return;
         }
 
-        entrance = new BoardEntrance(boardRow, teamSelector, configuration.RunTeam);
+        entrance = NextEntrance();
         Enter(Phase.Reentering, $"Starting board {RunsDone + 1} of {RunsWanted} from the entrance.");
+    }
+
+    /// <summary>The board to play: the one picked on the Run tab, else the one last played.</summary>
+    private uint WantedBoard() =>
+        configuration.RunBoardRow != 0 ? configuration.RunBoardRow : configuration.LastBoardRowId;
+
+    /// <summary>
+    /// The step that starts the next board. The Crucible mode picked on the Run tab is handed to the
+    /// <see cref="DifficultySelector"/> the way the player's own choice is, by remembering it: the board
+    /// window then has it set before the board is challenged.
+    /// </summary>
+    private BoardEntrance NextEntrance()
+    {
+        if (configuration.RunDifficulty >= 0 && configuration.LastCrucibleMode != configuration.RunDifficulty)
+        {
+            configuration.LastCrucibleMode = configuration.RunDifficulty;
+            configuration.Save();
+        }
+
+        return new BoardEntrance(boardRow, teamSelector, configuration.RunTeam, configuration.RepairBetweenBoards);
     }
 
     /// <summary>Back in from the entrance, then the next board is played from its start.</summary>
@@ -974,6 +1006,12 @@ public sealed class BoardRunner : IDisposable
         }
 
         entrance.Tick();
+
+        if (entrance.HandOff.Length > 0)
+            Ask(entrance.HandOff);
+        else if (HandOff.Length > 0)
+            HandOff = string.Empty;
+
         Status = entrance.Status;
 
         if (entrance.Failure is { } failure)
@@ -1088,6 +1126,16 @@ public sealed class BoardRunner : IDisposable
         HandOff = what;
         Note($"Asked: {what}");
         Services.Chat.Print($"[BeastMastr] {what}");
+
+        // What the game is showing, for reading back afterwards: a step handed over is a step not understood.
+        foreach (var window in AddonReader.OpenAddonNames())
+            Services.Log.Information($"Asked with {window} open: {AddonReader.ToText(window, AddonReader.Values(window))}");
+
+        foreach (var window in new[] { RoomActions.YesnoAddon, XbmColumns.RunWindows.SelectOk })
+        {
+            if (AddonReader.IsOpen(window))
+                Services.Log.Information($"Asked with {window} open: {AddonReader.ToText(window, AddonReader.Values(window))}");
+        }
     }
 
     private void Fail(string reason)

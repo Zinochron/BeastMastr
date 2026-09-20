@@ -5,6 +5,7 @@ using BeastMastr.Data;
 using BeastMastr.Ipc;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
+using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using GameObjectStruct = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
 
@@ -52,6 +53,7 @@ public sealed unsafe class BoardEntrance
 
     private readonly TeamSelector teamSelector;
     private readonly RunTeam team;
+    private readonly bool repair;
 
     /// <summary>0: the team not asked for yet; 1: being set; 2: set, or left as it is.</summary>
     private int teamStage;
@@ -60,11 +62,13 @@ public sealed unsafe class BoardEntrance
 
     /// <param name="boardRow">The board to play again, as <c>XBMStageList</c> numbers it.</param>
     /// <param name="team">The team to set in the board window before challenging.</param>
-    public BoardEntrance(uint boardRow, TeamSelector teamSelector, RunTeam team)
+    /// <param name="repair">Whether worn gear is repaired before the next board is started.</param>
+    public BoardEntrance(uint boardRow, TeamSelector teamSelector, RunTeam team, bool repair)
     {
         this.boardRow = boardRow;
         this.teamSelector = teamSelector;
         this.team = team;
+        this.repair = repair;
         teamStage = team == RunTeam.Keep ? 2 : 0;
     }
 
@@ -98,6 +102,9 @@ public sealed unsafe class BoardEntrance
 
                 calmSince ??= now;
                 if (now - calmSince.Value < SettleTime)
+                    return;
+
+                if (!Repaired(now))
                     return;
 
                 Next(1, "Talking to Lauda.");
@@ -294,6 +301,68 @@ public sealed unsafe class BoardEntrance
     private static bool Calm() =>
         Services.Objects.LocalPlayer != null && !RunSafety.Waiting() &&
         !Services.Condition[ConditionFlag.OccupiedInQuestEvent];
+
+    /// <summary>What the player has to do before the run can carry on, or empty.</summary>
+    public string HandOff { get; private set; } = string.Empty;
+
+    /// <summary>The window the game's own Repair action opens.</summary>
+    private const string RepairWindow = "Repair";
+
+    /// <summary>The Repair general action, which opens that window.</summary>
+    private const uint RepairAction = 6;
+
+    private static readonly TimeSpan RepairWait = TimeSpan.FromSeconds(6);
+    private DateTime? repairAskedAt;
+    private bool repairDone;
+
+    /// <summary>
+    /// Between boards, gear below full is repaired. The window is opened by the game's own Repair action;
+    /// pressing "Repair All" in it is handed to the player, since that button has never been recorded.
+    /// True once there is nothing to wait for.
+    /// </summary>
+    private bool Repaired(DateTime now)
+    {
+        if (repairDone || !repair)
+            return true;
+
+        if (GearDurability.Lowest() >= 1f)
+        {
+            if (AddonReader.IsOpen(RepairWindow))
+                return false;
+
+            repairDone = true;
+            HandOff = string.Empty;
+            return true;
+        }
+
+        if (repairAskedAt is not { } asked)
+        {
+            repairAskedAt = now;
+            var manager = ActionManager.Instance();
+            if (manager == null || !manager->UseAction(ActionType.GeneralAction, RepairAction))
+                Services.Log.Information("Repair: the Repair action could not be used here.");
+
+            Status = $"Gear at {GearDurability.Lowest():P0}: repairing.";
+            Services.Log.Information($"Entrance: {Status}");
+            return false;
+        }
+
+        if (AddonReader.IsOpen(RepairWindow))
+        {
+            Status = $"Gear at {GearDurability.Lowest():P0}: waiting for the repair.";
+            HandOff = "Repair your gear — the repair window is open, and the run carries on once everything is whole.";
+            return false;
+        }
+
+        if (now - asked < RepairWait)
+            return false;
+
+        // No window and nothing repaired: nothing to repair with, most likely. The board is played anyway.
+        repairDone = true;
+        HandOff = string.Empty;
+        Services.Log.Information($"Repair: the gear is still at {GearDurability.Lowest():P0}; carrying on regardless.");
+        return true;
+    }
 
     /// <summary>
     /// Walks to Lauda with vnavmesh when she is out of reach: a run started anywhere in Central Shroud

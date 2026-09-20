@@ -2599,3 +2599,55 @@ floating one, which Heel does while the familiar tanks.
 The Beast Potion Kit worked: Auto-potion at 22:50:33 and 22:59:46.
 
 Version 0.3.0.0 has everything since 0.2.0.0.
+
+### Refused spoils, the phlegm across the puddles, auto-repair and two selectors — 2026-09-20
+
+Four things from one round of testing.
+
+**A full bag stopped the run.** The spoils are taken with a `ConfirmedStep`: press, answer the question,
+done. When the loot would take the player past what can be carried — items or Beast Gear at their limit —
+the game answers the answered question with a `SelectOk` of its own, and the step waited for a window
+that was never coming. Stage 2 of `ConfirmedStep` now closes that `SelectOk` and reports `Refused`, and
+the room is finished with "The spoils were refused — the items or the Beast Gear are at their limit."
+Whenever a step is handed over, every open window's values are written to the log, so the next unknown
+one is one recording rather than one guess.
+
+**Wriggling Phlegm goes across from the toxic puddles.** The add rises where the phlegm was dropped and
+walks to the puddles before it bursts, so the further it walks, the better. `EdgeBait.Spot` takes the
+spots to drop across from (`across`), and `AddPhlegm` hands it the tornadoes standing at that moment;
+the direction is then the centre away from their middle, not away from Borgny. Without tornadoes nothing
+changes.
+
+**Auto-repair between boards.** A switch beside "go on after a lost board". At the entrance, before
+Lauda is talked to, the worst piece worn is read (`Data/GearDurability.cs`, `Condition / 30000`). Below
+full, the game's own Repair action (`GeneralAction` 6) opens the repair window and the repair itself is
+handed to the player — that window's buttons have never been recorded, and nothing is guessed. The run
+carries on the moment everything is whole again; if no window appears within six seconds (no dark matter,
+most likely), the board is played anyway.
+
+**The board and the difficulty beside the Run button.** Two selectors:
+- **board** — the rows of `XBMContent`, named through their `ContentFinderCondition` (1088–1092), so the
+  names are the game's own and localised (`BoardSheets.Boards`). "The one last played" (0) keeps the old
+  behaviour. A board picked here governs every board started from the entrance, the first one included.
+- **difficulty** — the four Crucible modes, named from the `Addon` sheet at 17870–17873. The pick is
+  remembered the way the player's own is (`LastCrucibleMode`), so the `DifficultySelector` sets it in the
+  board window before the board is challenged. "Leave as it is" (−1) does nothing.
+
+### A rank only ever goes up — 2026-09-20
+
+The user: farming a low board pushed the beasts' ranks *down* in the plugin's own store. The board says
+so itself — `captures/board-20260913-145159.txt` carries "Level: 40 (Sync to 40)Recommended Beast Rank:
+6 (Sync from 10)". Inside a board every window shows the **synced** rank, and `RankWatcher` believed it.
+
+Three changes:
+
+- **Nothing is learned inside a board** (`BoardModel.IsRunTerritory`), by the watcher or by "Read all
+  ranks". Outside, the numbers are the beasts' own.
+- **`Store` never lowers a rank.** A beast does not lose rank, so a lower reading is dropped and the log
+  says so once per beast. That also heals a store already written down by an earlier farm: the next
+  browse outside raises it again.
+- **"Forget ranks" is the reset**, back to nothing known rather than back to 1 — a missing rank says so,
+  a wrong one picks a team quietly. Nothing is thrown away on load; the raise-only rule repairs it.
+
+The Beasts table has a **Rank** column (the game's own name for it, "Beast Rank"), an em dash where
+nothing has been seen, and what it knows on hover.

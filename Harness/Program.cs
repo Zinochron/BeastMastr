@@ -812,6 +812,16 @@ var phlegmSpot = EdgeBait.Spot(borgnyArena, farBorgny, new Vector2(926.7f, -426.
 Check("Wriggling Phlegm is carried to the edge, away from Borgny and clear of patches",
       MathF.Abs(Vector2.Distance(phlegmSpot, borgnyArena) - EdgeBait.Radius) < 0.01f && !still.Covers(phlegmSpot, 0.5f) &&
       Vector2.Dot(phlegmSpot - farBorgny, new Vector2(926.7f, -426.7f) - farBorgny) > 0f, $"{phlegmSpot}");
+// With the toxic puddles laid, the phlegm goes across from them: the add rises at the phlegm and walks
+// the whole arena to the puddles before it bursts.
+List<Vector2> laid = [new(920f, -408f), new(924f, -408f), new(920f, -404f), new(916f, -408f)];
+var acrossSpot = EdgeBait.Spot(borgnyArena, farBorgny, new Vector2(920f, -410f), [], laid);
+Check("Wriggling Phlegm is dropped across from the toxic puddles",
+      MathF.Abs(Vector2.Distance(acrossSpot, borgnyArena) - EdgeBait.Radius) < 0.01f && acrossSpot.Y < borgnyArena.Y - 14f,
+      $"{acrossSpot}");
+Check("and without puddles it still goes away from Borgny",
+      EdgeBait.Spot(borgnyArena, farBorgny, new Vector2(920f, -410f), [], []).Y > borgnyArena.Y + 14f);
+
 var cloudRoute = Dodger.Route(new Vector2(920.8f, -419f), new Vector2(920f, -445.6f), sitting, borgnyArena, 18f);
 Check("the walk to the wall goes round fresh clouds",
       cloudRoute.Count > 1 && cloudRoute[^1] == new Vector2(920f, -445.6f) &&

@@ -404,8 +404,12 @@ public static class EnemyCasts
             if (borgny.CastActionId != EdgeBait.PhlegmCast || CrucibleArena.CentreNear(here) is not { } centre)
                 continue;
 
+            // Across from the tornadoes: the add that rises from the phlegm runs to them and bursts.
+            var tornadoes = Services.Objects.Where(obj => obj.BaseId == ToxicVomit.Tornado)
+                                    .Select(obj => new Vector2(obj.Position.X, obj.Position.Z))
+                                    .ToList();
             var spot = EdgeBait.Spot(centre, new Vector2(borgny.Position.X, borgny.Position.Z), here,
-                                     zones.Where(zone => zone.Lasting).ToList());
+                                     zones.Where(zone => zone.Lasting).ToList(), tornadoes);
             zones.Add(EdgeBait.Zone(spot, borgny.TotalCastTime - borgny.CurrentCastTime, EdgeBait.PhlegmName));
         }
     }

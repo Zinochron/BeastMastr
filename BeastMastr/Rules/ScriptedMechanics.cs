@@ -437,9 +437,25 @@ public static class EdgeBait
     /// <summary>How far either way round the ring a covered spot is swapped for, in radians.</summary>
     private static readonly float[] Turns = [0f, 0.4f, -0.4f, 0.8f, -0.8f, 1.2f, -1.2f, 1.6f, -1.6f];
 
-    public static Vector2 Spot(Vector2 centre, Vector2 source, Vector2 player, IReadOnlyList<Zone> hazards)
+    /// <param name="across">
+    /// Something to drop across from, such as the tornadoes already laid: the add that rises from Wriggling
+    /// Phlegm walks to them and bursts, so the further it has to walk, the better (the user).
+    /// </param>
+    public static Vector2 Spot(Vector2 centre, Vector2 source, Vector2 player, IReadOnlyList<Zone> hazards,
+                               IReadOnlyList<Vector2>? across = null)
     {
         var away = player - source;
+        if (across is { Count: > 0 })
+        {
+            var middle = Vector2.Zero;
+            foreach (var spot in across)
+                middle += spot;
+
+            away = centre - (middle / across.Count);
+        }
+
+        if (away.LengthSquared() < 0.01f)
+            away = player - source;
         if (away.LengthSquared() < 0.01f)
             away = player - centre;
         if (away.LengthSquared() < 0.01f)

@@ -196,6 +196,24 @@ public class Configuration : IPluginConfiguration
     /// <summary>What team a board started from the entrance is given.</summary>
     public RunTeam RunTeam { get; set; } = RunTeam.Farming;
 
+    /// <summary>
+    /// Between boards, repair the gear worn when any piece is below full. The repair itself is yours to
+    /// press: the window's buttons have not been recorded.
+    /// </summary>
+    public bool RepairBetweenBoards { get; set; }
+
+    /// <summary>
+    /// The board to play, as <c>XBMStageList</c> numbers it (1–5), or 0 for the one last played. Used when a
+    /// board is started from the entrance.
+    /// </summary>
+    public uint RunBoardRow { get; set; }
+
+    /// <summary>
+    /// The Crucible mode a board is started on, as a position in the window's list (0 Standard … 3 Third
+    /// Degree), or -1 to leave the mode alone. Setting it here is what <c>DifficultySelector</c> restores.
+    /// </summary>
+    public int RunDifficulty { get; set; } = -1;
+
     /// <summary>Boards finished, counted when their result window opens; see <c>LootTracker</c>.</summary>
     public int BoardsFinished { get; set; }
 

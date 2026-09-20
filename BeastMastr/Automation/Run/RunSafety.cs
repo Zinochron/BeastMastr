@@ -55,8 +55,9 @@ public static class RunSafety
         if (!NavmeshIpc.IsLoaded)
             return "vnavmesh is not loaded.";
 
-        if (configuration.LastBoardRowId == 0)
-            return "No board is known yet. Open a board's window once (talk to Lauda), then press Run again.";
+        if (configuration.RunBoardRow == 0 && configuration.LastBoardRowId == 0)
+            return "No board is known yet. Pick one next to the Run button, or open a board's window once " +
+                   "(talk to Lauda), then press Run again.";
 
         return null;
     }
