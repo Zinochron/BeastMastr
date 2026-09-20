@@ -2885,3 +2885,26 @@ why: `TargetSystem.InteractWithObject` returns a `ulong`, and the run was throwi
   table happens to hold.
 - **Nothing is sent mid-step**: jumping, or vnavmesh still carrying the character, waits — and does not
   cost a try, which the old order did.
+
+### It was a different window all along — 0.3.0.13, 2026-09-21
+
+The numbers finally said it:
+
+> The game answered 0 to the interaction. What it did: talked to Lauda (the game said 53613371) >
+> talked to Lauda without the line-of-sight check (the game said 0) > opened her interaction directly
+
+The first interaction **worked** — a non-zero answer — and still "her menu never opened". It did open.
+It was `SelectIconString`, the game's menu *with icons*, which is a different window from
+`SelectString` entirely. The run polled for `SelectString`, the watcher listened for `SelectString`,
+and the "what is in the way" list only names windows beginning with XBM, so nothing saw the one window
+that was actually on the screen.
+
+That is the menu the user described: while Lauda still has a quest to give, it comes first and the
+Crucible second, and picking the Crucible opens the recorded `SelectString`.
+
+- `Entrance.IconMenu` is that window, and stage 1 and 2 both know it.
+- Its entries are read and pressed through ECommons' `AddonMaster.SelectIconString`, the game's own
+  click on the list item — nothing about its callback is guessed.
+- **Only** the entry that is the Crucible by name is ever pressed. If none matches, the run hands the
+  menu to the player and says what it offered — a quest line is not something to guess at.
+- `MenuWatch` listens to both menus and says which one it saw.

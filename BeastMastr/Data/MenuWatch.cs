@@ -15,7 +15,7 @@ namespace BeastMastr.Data;
 ///
 /// Watching only: it answers nothing and changes nothing.
 /// </summary>
-public sealed class MenuWatch : IDisposable
+public sealed unsafe class MenuWatch : IDisposable
 {
     /// <summary>The one watcher, so any step can ask what the game did without being handed it.</summary>
     public static MenuWatch? Instance { get; private set; }
@@ -27,6 +27,7 @@ public sealed class MenuWatch : IDisposable
     {
         Instance = this;
         Services.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, XbmColumns.Entrance.Menu, OnSetup);
+        Services.AddonLifecycle.RegisterListener(AddonEvent.PostSetup, XbmColumns.Entrance.IconMenu, OnSetup);
     }
 
     /// <summary>When a menu was last put up, or <see cref="DateTime.MinValue"/> before the first.</summary>
@@ -38,11 +39,36 @@ public sealed class MenuWatch : IDisposable
     /// <summary>What the last one offered.</summary>
     public IReadOnlyList<string> LastEntries { get; private set; } = [];
 
+    /// <summary>Which of the two menus was last put up.</summary>
+    public string LastMenu { get; private set; } = string.Empty;
+
     private void OnSetup(AddonEvent type, AddonArgs args)
     {
         LastSetupAt = DateTime.Now;
         Setups++;
-        LastEntries = Entries();
+        LastMenu = args.AddonName;
+        LastEntries = args.AddonName == XbmColumns.Entrance.IconMenu ? IconEntries() : Entries();
+    }
+
+    /// <summary>The icon menu's choices, read the way ECommons reads that window.</summary>
+    private static List<string> IconEntries()
+    {
+        var entries = new List<string>();
+        if (!AddonReader.TryGet(XbmColumns.Entrance.IconMenu, out var addon))
+            return entries;
+
+        try
+        {
+            foreach (var entry in new ECommons.UIHelpers.AddonMasterImplementations.AddonMaster.SelectIconString(
+                         (nint)addon).Entries)
+                entries.Add(entry.Text);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning(ex, "The icon menu could not be read.");
+        }
+
+        return entries;
     }
 
     private static List<string> Entries()

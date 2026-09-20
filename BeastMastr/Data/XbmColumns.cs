@@ -728,6 +728,14 @@ public static class XbmColumns
         public const int MenuChoice = 0;
 
         /// <summary>
+        /// The menu she opens while she still has a quest to give: the game's menu *with icons*, a
+        /// different window from <see cref="Menu"/> entirely. The quest comes first and the Crucible
+        /// second, and picking the Crucible opens <see cref="Menu"/>. A player whose questline was
+        /// unfinished sat in front of this one while the run swore no menu had opened (2026-09-21).
+        /// </summary>
+        public const string IconMenu = "SelectIconString";
+
+        /// <summary>
         /// Where her menu's entries start among its values: "Challenge the Crucible of the Unbroken." is
         /// value 7 and choice 0 in both recordings.
         /// </summary>

@@ -125,6 +125,13 @@ public sealed unsafe class BoardEntrance
                     return;
                 }
 
+                // The menu she opens while she still has a quest to give is a different window.
+                if (AddonReader.IsOpen(XbmColumns.Entrance.IconMenu))
+                {
+                    Next(2, "Reading her menu.");
+                    return;
+                }
+
                 // Her menu can be gone before it is seen — TextAdvance and the like answer it — and the
                 // board list is what it leads to, so that counts as talked to just as well.
                 if (AddonReader.IsOpen(XbmColumns.Entrance.BoardList))
@@ -192,6 +199,36 @@ public sealed unsafe class BoardEntrance
 
             // Her menu: the first choice, as recorded both times.
             case 2:
+                // The quest menu first, when there is one: nothing there was ever recorded, so the only
+                // choice taken is the one that is the Crucible by name. Anything else is the player's.
+                if (AddonReader.IsOpen(XbmColumns.Entrance.IconMenu))
+                {
+                    menuSeen = true;
+                    var quest = IconEntries();
+                    if (quest.Count == 0)
+                    {
+                        if (since > WindowTimeout)
+                            Fail("Her quest menu opened but never filled in.");
+
+                        return;
+                    }
+
+                    offers = quest;
+                    if (Pick(quest) is { } pick && menuHops < MostMenuHops)
+                    {
+                        menuHops++;
+                        menuSeen = false;
+                        stageSince = now;
+                        Status = "Opening her Crucible menu.";
+                        Note($"picked \"{quest[pick]}\" from her quest menu");
+                        return;
+                    }
+
+                    Ask($"Pick the Crucible in Lauda's menu yourself — the run only takes the entry that is " +
+                        $"the Crucible by name, and hers offers: {string.Join(" | ", quest)}.");
+                    return;
+                }
+
                 if (AddonReader.IsOpen(XbmColumns.Entrance.Menu))
                 {
                     menuSeen = true;
@@ -599,6 +636,53 @@ public sealed unsafe class BoardEntrance
     /// <summary>What her menu last offered, for the message when the run gets no further.</summary>
     private List<string> offers = [];
 
+    /// <summary>The quest menu's choices, read and pressed the way ECommons works that window.</summary>
+    private static List<string> IconEntries()
+    {
+        var entries = new List<string>();
+        if (!AddonReader.TryGet(XbmColumns.Entrance.IconMenu, out var addon))
+            return entries;
+
+        try
+        {
+            foreach (var entry in new AddonMaster.SelectIconString((nint)addon).Entries)
+                entries.Add(entry.Text);
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning(ex, "Entrance: her quest menu could not be read.");
+        }
+
+        return entries;
+    }
+
+    /// <summary>Presses the entry that is the Crucible by name, and says which it was, or null.</summary>
+    private static int? Pick(List<string> entries)
+    {
+        var name = CrucibleName();
+        if (name.Length == 0 || !AddonReader.TryGet(XbmColumns.Entrance.IconMenu, out var addon))
+            return null;
+
+        try
+        {
+            var menu = new AddonMaster.SelectIconString((nint)addon);
+            for (var choice = 0; choice < entries.Count && choice < menu.Entries.Length; choice++)
+            {
+                if (!Plain(entries[choice]).Equals(Plain(name), StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                menu.Entries[choice].Select();
+                return choice;
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning(ex, "Entrance: her quest menu could not be answered.");
+        }
+
+        return null;
+    }
+
     /// <summary>Her menu's choices, in order: choice 0 is value 7 in both recordings.</summary>
     private static List<string> MenuEntries()
     {
@@ -735,14 +819,19 @@ public sealed unsafe class BoardEntrance
 
         // The lifecycle knows what a frame-by-frame look cannot: whether her menu was up at all. One
         // that came and went without this run answering it was answered by something else.
+        if (AddonReader.IsOpen(XbmColumns.Entrance.IconMenu))
+            return "Her menu with the quest in it is open, and the run found no entry in it that is the " +
+                   "Crucible by name.";
+
         if (MenuWatch.Instance is { } watch && watch.LastSetupAt > talkedAt)
         {
             var offered = watch.LastEntries.Count > 0
                               ? $" It offered: {string.Join(" | ", watch.LastEntries)}."
                               : string.Empty;
 
-            return "Her menu opened and was answered before the run could read it. Another plugin — " +
-                   "YesAlready, TextAdvance or Pandora's Box — is doing that. Switch it off for her." + offered;
+            return $"Her menu ({watch.LastMenu}) opened and was answered before the run could read it. " +
+                   "Another plugin — YesAlready, TextAdvance or Pandora's Box — is doing that. " +
+                   "Switch it off for her." + offered;
         }
 
         var windows = AddonReader.OpenAddonNames(visibleOnly: true).ToList();
