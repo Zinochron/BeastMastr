@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using BeastMastr.Data;
@@ -172,7 +173,8 @@ public sealed unsafe class BoardEntrance
                 // Pressed enough times with nothing to show: the player takes over, and the run carries
                 // on the moment her window is up. Only after long enough does it give up for good.
                 if (attempts == Attempts + 1)
-                    Report($"Talking to Lauda opened nothing. {WhyNothingOpened()}");
+                    Report($"Talking to Lauda opened nothing. {WhyNothingOpened()}" +
+                           (offers.Count > 0 ? $" Her menu last offered: {string.Join(" | ", offers)}." : string.Empty));
 
                 Ask("Talk to Lauda yourself — the run carries on the moment her window is open.");
                 if (now - stageSince > HandOffPatience)
@@ -182,48 +184,73 @@ public sealed unsafe class BoardEntrance
 
             // Her menu: the first choice, as recorded both times.
             case 2:
-                if (since < WindowDelay)
-                    return;
-
-                if (!AddonReader.IsOpen(XbmColumns.Entrance.Menu))
+                if (AddonReader.IsOpen(XbmColumns.Entrance.Menu))
                 {
-                    if (AddonReader.IsOpen(XbmColumns.Entrance.BoardList))
+                    menuSeen = true;
+
+                    // Answered as soon as it has its entries rather than after a fixed wait: a window
+                    // left sitting is a window something else can answer first.
+                    var entries = MenuEntries();
+                    if (entries.Count == 0)
                     {
-                        Next(3, "Her list of boards is open.");
+                        if (since > WindowTimeout)
+                            Fail("Lauda's menu opened but never filled in.");
+
                         return;
                     }
 
-                    if (since > WindowTimeout)
-                        Fail("Lauda's menu closed before it was answered.");
+                    offers = entries;
+                    Note($"her menu offered {string.Join(" | ", entries)}");
 
-                    return;
-                }
-
-                Services.Log.Information("Entrance: Lauda offers " +
-                                         string.Join(" | ", AddonReader.Values(XbmColumns.Entrance.Menu)
-                                                                       .Where(value => value.Type.Contains("String") &&
-                                                                                       value.Text.Length > 0)
-                                                                       .Select(value => value.Text)));
-
-                // With the questline unfinished she opens with a menu of her own: the quest first, the
-                // Crucible second. Picking the Crucible there opens the menu that was recorded, so this
-                // stage runs twice (the user, 2026-09-20).
-                if (CrucibleEntry() is { } entry && menuHops < MostMenuHops)
-                {
-                    if (RoomActions.Send(new RoomActions.Command(
-                            $"open {CrucibleName()}", XbmColumns.Entrance.Menu,
-                            [RoomActions.Value.Int(entry)], true, false)))
+                    // With the questline unfinished she opens with a menu of her own: the quest first,
+                    // the Crucible second. Picking the Crucible opens the menu that was recorded, so
+                    // this stage runs twice (the user, 2026-09-20).
+                    if (CrucibleEntry() is { } entry && menuHops < MostMenuHops)
                     {
-                        menuHops++;
-                        stageSince = now;
-                        Status = "Opening her Crucible menu.";
+                        if (RoomActions.Send(new RoomActions.Command(
+                                $"open {CrucibleName()}", XbmColumns.Entrance.Menu,
+                                [RoomActions.Value.Int(entry)], true, false)))
+                        {
+                            menuHops++;
+                            menuSeen = false;
+                            stageSince = now;
+                            Status = "Opening her Crucible menu.";
+                            Note($"picked choice {entry}, the Crucible itself");
+                        }
+
+                        return;
+                    }
+
+                    if (RoomActions.Send(PickMenu))
+                    {
+                        Note($"picked choice {XbmColumns.Entrance.MenuChoice}, to challenge a board");
+                        Next(3, "Picking the board.");
                     }
 
                     return;
                 }
 
-                if (RoomActions.Send(PickMenu))
-                    Next(3, "Picking the board.");
+                if (AddonReader.IsOpen(XbmColumns.Entrance.BoardList))
+                {
+                    Next(3, "Her list of boards is open.");
+                    return;
+                }
+
+                // It was there and went again with nothing sent to it. Something else answered it:
+                // there are plugins that answer menus for a living.
+                if (menuSeen)
+                {
+                    menuSeen = false;
+                    Note("her menu closed on its own");
+                    Report("Lauda's menu closed again before it could be answered. Another plugin - " +
+                           "YesAlready, TextAdvance or Pandora's Box - is most likely answering it. " +
+                           "Switch that off for her.");
+                    Next(1, "Talking to Lauda again.");
+                    return;
+                }
+
+                if (since > WindowTimeout)
+                    Fail("Lauda's menu closed before it was answered.");
 
                 return;
 
@@ -532,13 +559,51 @@ public sealed unsafe class BoardEntrance
             addon->Close(true);
             closed = true;
             closes++;
-            Services.Log.Information($"Entrance: closed {window}, which was left over from the board.");
+            Note($"closed {window}, left over from the board");
         }
 
         if (closed)
             Status = "Closing what the board left open.";
 
         return closed;
+    }
+
+    /// <summary>The last few things this step did, so a message can say how it got there.</summary>
+    private readonly List<string> trail = [];
+
+    private const int TrailLength = 8;
+
+    /// <summary>Notes a step for the trail and the log alike.</summary>
+    private void Note(string what)
+    {
+        trail.Add(what);
+        if (trail.Count > TrailLength)
+            trail.RemoveAt(0);
+
+        Services.Log.Information($"Entrance: {what}");
+    }
+
+    /// <summary>Her menu was open in this stage, so its going again says something.</summary>
+    private bool menuSeen;
+
+    /// <summary>What her menu last offered, for the message when the run gets no further.</summary>
+    private List<string> offers = [];
+
+    /// <summary>Her menu's choices, in order: choice 0 is value 7 in both recordings.</summary>
+    private static List<string> MenuEntries()
+    {
+        var entries = new List<string>();
+        var values = AddonReader.Values(XbmColumns.Entrance.Menu);
+        for (var choice = 0; XbmColumns.Entrance.MenuFirstEntry + choice < values.Count; choice++)
+        {
+            var value = values[XbmColumns.Entrance.MenuFirstEntry + choice];
+            if (!value.Type.Contains("String"))
+                break;
+
+            entries.Add(value.Text);
+        }
+
+        return entries;
     }
 
     /// <summary>How many menus of hers are stepped through before the recorded one is expected.</summary>
@@ -562,11 +627,10 @@ public sealed unsafe class BoardEntrance
         if (name.Length == 0)
             return null;
 
-        var values = AddonReader.Values(XbmColumns.Entrance.Menu);
-        for (var choice = 0; XbmColumns.Entrance.MenuFirstEntry + choice < values.Count; choice++)
+        var entries = MenuEntries();
+        for (var choice = 0; choice < entries.Count; choice++)
         {
-            if (Plain(values[XbmColumns.Entrance.MenuFirstEntry + choice].Text).Equals(Plain(name),
-                                                                                      StringComparison.OrdinalIgnoreCase))
+            if (Plain(entries[choice]).Equals(Plain(name), StringComparison.OrdinalIgnoreCase))
                 return choice;
         }
 
@@ -667,15 +731,19 @@ public sealed unsafe class BoardEntrance
         return "Nothing the run can name is in the way; another plugin may be answering her menu first.";
     }
 
-    /// <summary>Says something once, to the chat and the log alike.</summary>
+    /// <summary>
+    /// Says something once, to the chat and the log alike, with the trail of what the step did to get
+    /// there — that trail is what a player can pass on without opening a log.
+    /// </summary>
     private void Report(string message)
     {
         if (reported == message)
             return;
 
         reported = message;
-        Services.Chat.PrintError($"[BeastMastr] {message}");
-        Services.Log.Warning($"Entrance: {message}");
+        var full = trail.Count > 0 ? $"{message} What it did: {string.Join(" > ", trail)}." : message;
+        Services.Chat.PrintError($"[BeastMastr] {full}");
+        Services.Log.Warning($"Entrance: {full}");
     }
 
     private string reported = string.Empty;
@@ -750,7 +818,7 @@ public sealed unsafe class BoardEntrance
 
         Services.Targets.Target = lauda;
         targets->InteractWithObject((GameObjectStruct*)lauda.Address);
-        Services.Log.Information("Entrance: talked to Lauda.");
+        Note("talked to Lauda");
         return true;
     }
 
@@ -794,6 +862,9 @@ public sealed unsafe class BoardEntrance
         Failure = windows.Count > 0
                       ? $"{reason} Open at the time: {string.Join(", ", windows)}."
                       : $"{reason} No window was open at the time.";
+
+        if (trail.Count > 0)
+            Failure += $" What it did: {string.Join(" > ", trail)}.";
 
         Status = Failure;
         Services.Log.Warning($"Entrance: {Failure}");

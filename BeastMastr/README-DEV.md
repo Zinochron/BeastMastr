@@ -2824,3 +2824,21 @@ spend one of the four tries. Ten closes is the limit, after which the panel is n
 instead — "A window is in the way and would not close: … Close it, and the run carries on."
 
 The message paid for itself on the first try: one line from a player, no recording and no log.
+
+### Answer her menu at once, and say how it got there — 0.3.0.10, 2026-09-21
+
+What the player described: the run interacts with Lauda, a window opens and closes, it interacts again,
+the window opens and closes, then the message. On 0.3.0.8 — which is what they were running — that is
+what the two detail panels do: they hold the focus, her menu comes up behind them and goes again
+straight away. 0.3.0.9 closes those panels, so this round is about seeing the next one coming.
+
+- **Her menu is answered the moment it has entries**, instead of after a fixed 500 ms. A window left
+  sitting is a window something else can answer first.
+- **A menu that opens and closes with nothing sent to it** is now its own message: "Lauda's menu closed
+  again before it could be answered. Another plugin — YesAlready, TextAdvance or Pandora's Box — is most
+  likely answering it." The step goes back to talking to her rather than failing.
+- **Every message carries a trail** of the last eight things the step did: `talked to Lauda > closed
+  XBMItemDetail, left over from the board > her menu offered … > picked choice 1, the Crucible itself`.
+  That is the flow the player described, in their own chat, without a log.
+- The hand-off also names what her menu last offered, which is the one thing a recording would have
+  given us.
