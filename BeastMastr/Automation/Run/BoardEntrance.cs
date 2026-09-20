@@ -159,6 +159,14 @@ public sealed unsafe class BoardEntrance
                     return;
                 }
 
+                // Still being carried along: an interaction sent mid-step is swallowed, and it would
+                // cost a try.
+                if (Services.Condition[ConditionFlag.Jumping] || NavmeshIpc.IsRunning())
+                {
+                    Status = "Waiting to come to a stop.";
+                    return;
+                }
+
                 if (since < TalkRetry && attempts > 0)
                     return;
 
@@ -742,7 +750,8 @@ public sealed unsafe class BoardEntrance
             return $"A window is in the way and would not close: {string.Join(", ", windows)}. " +
                    "Close it, and the run carries on.";
 
-        return "Her menu never opened, and nothing on screen is in the way.";
+        return "Her menu never opened, and nothing on screen is in the way. " +
+               $"The game answered {lastAnswer} to the interaction.";
     }
 
     /// <summary>
@@ -762,13 +771,38 @@ public sealed unsafe class BoardEntrance
 
     private string reported = string.Empty;
 
+    /// <summary>
+    /// Lauda, the nearest one of her if the object table holds more than one: the run has to walk to,
+    /// and then talk to, the same one.
+    /// </summary>
+    private static Dalamud.Game.ClientState.Objects.Types.IGameObject? Lauda()
+    {
+        var player = Services.Objects.LocalPlayer;
+        Dalamud.Game.ClientState.Objects.Types.IGameObject? nearest = null;
+        var best = float.MaxValue;
+
+        foreach (var obj in Services.Objects)
+        {
+            if (obj.ObjectKind != ObjectKind.EventNpc || obj.BaseId != XbmColumns.Entrance.Npc)
+                continue;
+
+            var distance = player == null ? 0f : Vector3.Distance(player.Position, obj.Position);
+            if (distance >= best)
+                continue;
+
+            best = distance;
+            nearest = obj;
+        }
+
+        return nearest;
+    }
+
     private bool NearLauda()
     {
         if (Services.Objects.LocalPlayer is not { } player)
             return false;
 
-        var lauda = Services.Objects.FirstOrDefault(obj => obj.ObjectKind == ObjectKind.EventNpc &&
-                                                            obj.BaseId == XbmColumns.Entrance.Npc);
+        var lauda = Lauda();
         var at = lauda?.Position ?? XbmColumns.Entrance.NpcPosition;
         var distance = Vector3.Distance(player.Position, at);
         if (distance <= XbmColumns.Entrance.TalkRange && lauda != null)
@@ -818,11 +852,16 @@ public sealed unsafe class BoardEntrance
     private static readonly TimeSpan WalkTimeout = TimeSpan.FromSeconds(120);
     private static readonly TimeSpan WalkReorder = TimeSpan.FromSeconds(3);
 
+    /// <summary>
+    /// Reaches for her with the game's own ways of reaching for an object, a different one each try:
+    /// the plain interaction, then the same without the line-of-sight check, then the object
+    /// interaction the game opens for a target. One player's four tries all opened nothing and said
+    /// nothing about why (2026-09-21), so what the game answers is written down as well.
+    /// </summary>
     private bool TalkToLauda()
     {
         var player = Services.Objects.LocalPlayer;
-        var lauda = Services.Objects.FirstOrDefault(obj => obj.ObjectKind == ObjectKind.EventNpc &&
-                                                            obj.BaseId == XbmColumns.Entrance.Npc);
+        var lauda = Lauda();
         if (player == null || lauda == null)
         {
             Fail("Lauda is not here.");
@@ -834,11 +873,32 @@ public sealed unsafe class BoardEntrance
             return false;
 
         Services.Targets.Target = lauda;
-        targets->InteractWithObject((GameObjectStruct*)lauda.Address);
         talkedAt = DateTime.Now;
-        Note("talked to Lauda");
+
+        var obj = (GameObjectStruct*)lauda.Address;
+        switch (attempts)
+        {
+            case 1:
+                lastAnswer = targets->InteractWithObject(obj);
+                Note($"talked to Lauda (the game said {lastAnswer})");
+                break;
+
+            case 2:
+                lastAnswer = targets->InteractWithObject(obj, false);
+                Note($"talked to Lauda without the line-of-sight check (the game said {lastAnswer})");
+                break;
+
+            default:
+                targets->OpenObjectInteraction(obj);
+                Note("opened her interaction directly");
+                break;
+        }
+
         return true;
     }
+
+    /// <summary>What the game answered to the last interaction. 0 is the answer a working one gives.</summary>
+    private ulong lastAnswer;
 
     /// <summary>The board's name when the list holds it, else null.</summary>
     private string? FindBoard()

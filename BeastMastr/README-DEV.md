@@ -2864,3 +2864,24 @@ its closes on windows that had long since gone, and the message accused them.
 - The message now tells the two apart: "Her menu opened and was answered before the run could read it.
   Another plugin — YesAlready, TextAdvance or Pandora's Box — is doing that. Switch it off for her. It
   offered: …" versus "Her menu never opened, and nothing on screen is in the way."
+
+### Four ways of reaching for her — 0.3.0.12, 2026-09-21
+
+The next line from the player settled the question the lifecycle watcher was built for:
+
+> Her menu never opened, and nothing on screen is in the way. What it did: talked to Lauda > talked to
+> Lauda > talked to Lauda > talked to Lauda.
+
+So no plugin is answering her menu: no menu is being made at all. She is there, in range, targetable,
+the player is not mounted, not in combat, not occupied, and no window is on screen — and four
+interactions produced nothing. Which leaves the interaction itself, and it had never said a word about
+why: `TargetSystem.InteractWithObject` returns a `ulong`, and the run was throwing it away.
+
+- **The answer is written down** and carried into the message: "The game answered N to the interaction."
+- **Each try reaches differently**, all of them the game's own ways in: the plain interaction, then the
+  same without the line-of-sight check, then `OpenObjectInteraction`, the one the game opens for a
+  target. If one of them works, the run simply carries on.
+- **Lauda is the nearest Lauda** now, for the walk and the talk alike, rather than the first the object
+  table happens to hold.
+- **Nothing is sent mid-step**: jumping, or vnavmesh still carrying the character, waits — and does not
+  cost a try, which the old order did.
