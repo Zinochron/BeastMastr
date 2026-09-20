@@ -31,7 +31,12 @@ public sealed unsafe class BoardEntrance
 
     private static readonly TimeSpan QueueTimeout = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan LoadTimeout = TimeSpan.FromSeconds(90);
-    private const int Attempts = 2;
+    /// <summary>
+    /// How often Lauda is talked to before the step goes to the player. Two was not enough: one user's
+    /// run gave up on 2026-09-20 with "Talking to Lauda opened nothing", and an interaction is lost
+    /// whenever the game is still busy with the load out of the last board.
+    /// </summary>
+    private const int Attempts = 4;
 
     private static readonly RoomActions.Command PickMenu =
         new("start a board", XbmColumns.Entrance.Menu, [RoomActions.Value.Int(XbmColumns.Entrance.MenuChoice)], true, false);
@@ -119,25 +124,56 @@ public sealed unsafe class BoardEntrance
                     return;
                 }
 
+                // Her menu can be gone before it is seen — TextAdvance and the like answer it — and the
+                // board list is what it leads to, so that counts as talked to just as well.
+                if (AddonReader.IsOpen(XbmColumns.Entrance.BoardList))
+                {
+                    Next(3, "Her list of boards is open.");
+                    return;
+                }
+
+                // A greeting to click through, or the game busy with an event: waiting is right, pressing
+                // again is not.
+                if (AddonReader.IsOpen(TalkWindow) || Busy())
+                {
+                    Status = "Lauda is talking.";
+                    stageSince = now;
+                    return;
+                }
+
                 if (!NearLauda())
                 {
                     stageSince = now;
                     return;
                 }
 
-                if (since < TalkRetry && attempts > 0)
-                    return;
-
-                if (++attempts > Attempts)
+                // Mounted, the interaction opens nothing at all, and nothing says why.
+                if (Services.Condition[ConditionFlag.Mounted] || Services.Condition[ConditionFlag.RidingPillion])
                 {
-                    Fail("Talking to Lauda opened nothing.");
+                    Dismount(now);
                     return;
                 }
 
-                if (!TalkToLauda())
+                if (since < TalkRetry && attempts > 0)
                     return;
 
-                stageSince = now;
+                if (attempts++ < Attempts)
+                {
+                    if (TalkToLauda())
+                        stageSince = now;
+
+                    return;
+                }
+
+                // Pressed enough times with nothing to show: the player takes over, and the run carries
+                // on the moment her window is up. Only after long enough does it give up for good.
+                if (attempts == Attempts + 1)
+                    Explain();
+
+                Ask("Talk to Lauda yourself — the run carries on the moment her window is open.");
+                if (now - stageSince > HandOffPatience)
+                    Fail("Talking to Lauda opened nothing.");
+
                 return;
 
             // Her menu: the first choice, as recorded both times.
@@ -147,6 +183,12 @@ public sealed unsafe class BoardEntrance
 
                 if (!AddonReader.IsOpen(XbmColumns.Entrance.Menu))
                 {
+                    if (AddonReader.IsOpen(XbmColumns.Entrance.BoardList))
+                    {
+                        Next(3, "Her list of boards is open.");
+                        return;
+                    }
+
                     if (since > WindowTimeout)
                         Fail("Lauda's menu closed before it was answered.");
 
@@ -158,6 +200,24 @@ public sealed unsafe class BoardEntrance
                                                                        .Where(value => value.Type.Contains("String") &&
                                                                                        value.Text.Length > 0)
                                                                        .Select(value => value.Text)));
+
+                // With the questline unfinished she opens with a menu of her own: the quest first, the
+                // Crucible second. Picking the Crucible there opens the menu that was recorded, so this
+                // stage runs twice (the user, 2026-09-20).
+                if (CrucibleEntry() is { } entry && menuHops < MostMenuHops)
+                {
+                    if (RoomActions.Send(new RoomActions.Command(
+                            $"open {CrucibleName()}", XbmColumns.Entrance.Menu,
+                            [RoomActions.Value.Int(entry)], true, false)))
+                    {
+                        menuHops++;
+                        stageSince = now;
+                        Status = "Opening her Crucible menu.";
+                    }
+
+                    return;
+                }
+
                 if (RoomActions.Send(PickMenu))
                     Next(3, "Picking the board.");
 
@@ -438,6 +498,103 @@ public sealed unsafe class BoardEntrance
     /// Walks to Lauda with vnavmesh when she is out of reach: a run started anywhere in Central Shroud
     /// begins there. True once she is close enough to talk to.
     /// </summary>
+    /// <summary>Her greeting, when she has one to click through.</summary>
+    private const string TalkWindow = "Talk";
+
+    /// <summary>How many menus of hers are stepped through before the recorded one is expected.</summary>
+    private const int MostMenuHops = 2;
+
+    private int menuHops;
+
+    /// <summary>What the game calls the Crucible, in the client's own language.</summary>
+    private static string CrucibleName() =>
+        Services.Data.GetExcelSheet<Lumina.Excel.Sheets.PlaceName>()
+                .GetRowOrDefault(XbmColumns.Entrance.CruciblePlaceName)?.Name.ExtractText() ?? string.Empty;
+
+    /// <summary>
+    /// The choice in Lauda's open menu that is the Crucible itself, or null when the menu is the
+    /// recorded one. Her first menu names it plainly — the recorded menu's entries all say more than
+    /// that ("Challenge the Crucible of the Unbroken."), so only the plain name is taken for it.
+    /// </summary>
+    private static int? CrucibleEntry()
+    {
+        var name = CrucibleName();
+        if (name.Length == 0)
+            return null;
+
+        var values = AddonReader.Values(XbmColumns.Entrance.Menu);
+        for (var choice = 0; XbmColumns.Entrance.MenuFirstEntry + choice < values.Count; choice++)
+        {
+            var text = values[XbmColumns.Entrance.MenuFirstEntry + choice].Text.Trim();
+            if (text.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return choice;
+        }
+
+        return null;
+    }
+
+    /// <summary>The Dismount general action, as the <c>GeneralAction</c> sheet numbers it.</summary>
+    private const uint DismountAction = 23;
+
+    private static readonly TimeSpan DismountRetry = TimeSpan.FromSeconds(2);
+
+    /// <summary>How long the player is given to open Lauda's window before the run gives up.</summary>
+    private static readonly TimeSpan HandOffPatience = TimeSpan.FromMinutes(3);
+
+    private DateTime lastDismount = DateTime.MinValue;
+
+    /// <summary>The game is in the middle of something of its own, and an interaction would be lost.</summary>
+    private static bool Busy() =>
+        Services.Condition[ConditionFlag.OccupiedInQuestEvent] || Services.Condition[ConditionFlag.OccupiedInEvent] ||
+        Services.Condition[ConditionFlag.Occupied33] || Services.Condition[ConditionFlag.Occupied38] ||
+        Services.Condition[ConditionFlag.WatchingCutscene] || Services.Condition[ConditionFlag.WatchingCutscene78] ||
+        Services.Condition[ConditionFlag.BetweenAreas] || Services.Condition[ConditionFlag.Casting] ||
+        Services.Condition[ConditionFlag.Jumping];
+
+    /// <summary>Gets off the mount, which is the usual reason talking to her opens nothing.</summary>
+    private void Dismount(DateTime now)
+    {
+        Status = "Getting off the mount.";
+        if (now - lastDismount < DismountRetry)
+            return;
+
+        lastDismount = now;
+        var manager = ActionManager.Instance();
+        if (manager != null)
+            manager->UseAction(ActionType.GeneralAction, DismountAction);
+
+        Services.Log.Information("Entrance: mounted, so dismounting before talking to Lauda.");
+    }
+
+    /// <summary>Hands a step to the player: said once in chat, and shown for as long as it stands.</summary>
+    private void Ask(string what)
+    {
+        Status = "Waiting for you.";
+        if (HandOff == what)
+            return;
+
+        HandOff = what;
+        Services.Chat.Print($"[BeastMastr] {what}");
+    }
+
+    /// <summary>Everything worth knowing about a talk that opened nothing, for reading back afterwards.</summary>
+    private void Explain()
+    {
+        var player = Services.Objects.LocalPlayer;
+        var lauda = Services.Objects.FirstOrDefault(obj => obj.ObjectKind == ObjectKind.EventNpc &&
+                                                           obj.BaseId == XbmColumns.Entrance.Npc);
+        var distance = player == null || lauda == null
+                           ? -1f
+                           : Vector3.Distance(player.Position, lauda.Position);
+
+        Services.Log.Warning(
+            $"Entrance: talking to Lauda opened nothing after {Attempts} tries. " +
+            $"Lauda {(lauda == null ? "is not in the object table" : $"is {distance:0.0} yalms away, targetable {lauda.IsTargetable}")}; " +
+            $"territory {Services.ClientState.TerritoryType}; " +
+            $"mounted {Services.Condition[ConditionFlag.Mounted]}; in combat {Services.Condition[ConditionFlag.InCombat]}; " +
+            $"busy {Busy()}; windows open: {string.Join(", ", AddonReader.OpenAddonNames())}.");
+    }
+
     private bool NearLauda()
     {
         if (Services.Objects.LocalPlayer is not { } player)

@@ -2745,3 +2745,42 @@ The combo has always been gated on `TargetDistance <= MeleeRange`; the abilities
 Tempered Release, Parting Blow, Trick and Beast Mode are gated the same way. What still goes out on the
 way in: the Battlehorns and Borrow (the opener happens at range by design), the duty actions, Rally and
 Rallying Cheer, and Shield Charge, which is what closes the gap.
+
+### "Talking to Lauda opened nothing" — 0.3.0.5, 2026-09-20
+
+A player from the repository reported the run stopping with that message. The step pressed
+`InteractWithObject` twice, four seconds apart, waited for `SelectString` and gave up. Everything it did
+not think of ended the run:
+
+- **Mounted.** The likeliest one, and nothing says so. The run now dismounts first (`GeneralAction` 23,
+  from the sheet) and then talks.
+- **Still busy.** Coming out of a board the client is occupied — cutscene, event, loading — and an
+  interaction sent then is lost. Those conditions are waited out rather than counted as a try, and the
+  number of tries is 4 rather than 2.
+- **A greeting to click through.** While the `Talk` window is up, waiting is right and pressing again is
+  not.
+- **The window already answered.** With TextAdvance or a fast hand, `SelectString` can be gone before it
+  is seen, so the board list being open now counts as talked to — in stage 1 and in stage 2.
+
+And when it still opens nothing, the run no longer stops: the step goes to the player ("Talk to Lauda
+yourself — the run carries on the moment her window is open") and picks itself up from whichever window
+appears. Only after three minutes does it give up for good. The give-up writes a line naming Lauda's
+distance and targetability, the territory, whether the player was mounted, in combat or busy, and every
+window that was open.
+
+### Lauda's other menu — 0.3.0.6, 2026-09-20
+
+The user: with the questline unfinished, Lauda opens a menu of her own first — the quest as the first
+entry, "Crucible of the Unbroken" as the second — and only that second entry opens the recorded "What
+will you do?" menu. The run sent `[0]` into whatever `SelectString` was up, which for such a player is
+the quest.
+
+The two menus are told apart by what the entries say. Her first menu names the place plainly, and the
+recorded menu's entries all say more than that ("Challenge the Crucible of the Unbroken.", "Ask about
+the Crucible of the Unbroken."), so an entry that is **exactly** the place name is the way through and
+anything else is the recorded menu. The name comes from `PlaceName` 5596, so it matches whatever
+language the client runs in — no English is compared against.
+
+Entries start at value 7 (`Entrance.MenuFirstEntry`), choice 0 being value 7, as both recordings show.
+Stage 2 therefore runs twice for such a player, and at most twice: `MostMenuHops` keeps a menu that does
+not change from being answered forever.
