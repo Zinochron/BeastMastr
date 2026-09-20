@@ -391,6 +391,17 @@ public sealed class ConfirmedStep
                 return;
 
             case 2:
+                // The game can still refuse after the question is answered — "you cannot carry any more" when
+                // the loot would take you past what the run holds. That notice is closed and the step counts
+                // as refused rather than waiting for the window to close, which is where a run got stuck.
+                if (AddonReader.IsOpen(XbmColumns.RunWindows.SelectOk))
+                {
+                    if (RoomActions.Send(RoomActions.Ok))
+                        Refused = true;
+
+                    return;
+                }
+
                 if (!AddonReader.IsOpen(command.Addon))
                 {
                     Done = true;

@@ -27,6 +27,35 @@ public static unsafe class CrucibleModeReader
         public int SelectedItemIndex { get; init; } = -1;
     }
 
+    /// <summary>
+    /// The four mode names live in the <c>Addon</c> sheet from 17870 on — Standard, First, Second and
+    /// Third Degree — so they can be named without the board window being open, and in the client's own
+    /// language.
+    /// </summary>
+    private const uint FirstModeAddonRow = 17870;
+
+    public const int ModeCount = 4;
+
+    private static string[]? names;
+
+    /// <summary>The modes in their order, named as the game names them.</summary>
+    public static IReadOnlyList<string> Names()
+    {
+        if (names != null)
+            return names;
+
+        var found = new string[ModeCount];
+        var sheet = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.Addon>();
+        for (var i = 0; i < ModeCount; i++)
+        {
+            var text = sheet.GetRowOrDefault(FirstModeAddonRow + (uint)i)?.Text.ExtractText() ?? string.Empty;
+            found[i] = text.Length > 0 ? text : $"Mode {i + 1}";
+        }
+
+        names = found;
+        return names;
+    }
+
     /// <summary>Text node of the drop-down's closed face, which shows the mode it is set to.</summary>
     private const uint FaceTextNodeId = 3;
 

@@ -119,6 +119,14 @@ public sealed class RunTab : ITab
                value => configuration.ContinueAfterLostBoard = value);
         Widgets.HelpMarker("When on, a board lost to a wipe counts as played and the next one is started.");
 
+        ImGui.SameLine();
+        Toggle("auto-repair", configuration.RepairBetweenBoards,
+               value => configuration.RepairBetweenBoards = value);
+        Widgets.HelpMarker("When on, gear below full durability is repaired between boards: the run opens the " +
+                           "repair window at the entrance and hands the repair itself to you, then carries on.");
+
+        DrawBoardChoice();
+
         ImGui.SetNextItemWidth(160f * ImGuiHelpers.GlobalScale);
         using (var combo = ImRaii.Combo("team for each board", TeamName(configuration.RunTeam)))
         {
@@ -160,6 +168,78 @@ public sealed class RunTab : ITab
 
         foreach (var line in runner.Log)
             ImGui.TextDisabled(line);
+    }
+
+    /// <summary>
+    /// Which board is played and on what Crucible mode. Both are used when a board is started from the
+    /// entrance: the board is picked in Lauda's list, the mode is set in the board window before it is
+    /// challenged.
+    /// </summary>
+    private void DrawBoardChoice()
+    {
+        var boards = BoardSheets.Boards();
+        var chosen = configuration.RunBoardRow;
+        var label = chosen == 0
+                        ? configuration.LastBoardRowId == 0
+                              ? "the one last played"
+                              : $"the one last played ({BoardSheets.Name(configuration.LastBoardRowId)})"
+                        : BoardSheets.Name(chosen);
+
+        ImGui.SetNextItemWidth(220f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("board", label))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.Selectable("the one last played", chosen == 0))
+                {
+                    configuration.RunBoardRow = 0;
+                    configuration.Save();
+                }
+
+                foreach (var (row, name) in boards)
+                {
+                    if (ImGui.Selectable(name, row == chosen))
+                    {
+                        configuration.RunBoardRow = row;
+                        configuration.Save();
+                    }
+                }
+            }
+        }
+
+        Widgets.HelpMarker("The board Lauda is asked for. \"The one last played\" uses whichever board's window " +
+                           "was open last, which is what a run started on a board keeps playing.");
+
+        ImGui.SameLine();
+
+        var modes = CrucibleModeReader.Names();
+        var mode = configuration.RunDifficulty;
+        ImGui.SetNextItemWidth(160f * ImGuiHelpers.GlobalScale);
+        using (var combo = ImRaii.Combo("difficulty", mode >= 0 && mode < modes.Count ? modes[mode] : "leave as it is"))
+        {
+            if (combo.Success)
+            {
+                if (ImGui.Selectable("leave as it is", mode < 0))
+                {
+                    configuration.RunDifficulty = -1;
+                    configuration.Save();
+                }
+
+                for (var i = 0; i < modes.Count; i++)
+                {
+                    if (ImGui.Selectable(modes[i], i == mode))
+                    {
+                        configuration.RunDifficulty = i;
+                        configuration.LastCrucibleMode = i;
+                        configuration.Save();
+                    }
+                }
+            }
+        }
+
+        Widgets.HelpMarker("The Crucible mode every board is started on. The game forgets it at every visit, so " +
+                           "BeastMastr sets it in the board window before challenging. The choice only appears " +
+                           "in game once every board has been cleared.");
     }
 
     /// <summary>Boards finished and the loot rolled for at their end, this session and in all.</summary>

@@ -74,5 +74,52 @@ public static class BoardSheets
         return graph;
     }
 
+    /// <summary>
+    /// The boards there are, in the order the entrance lists them: their row and their name. Read from
+    /// <c>XBMContent</c>, whose first column is the duty the board is, so the names are the game's own.
+    /// </summary>
+    public static IReadOnlyList<(uint Row, string Name)> Boards()
+    {
+        if (boards != null)
+            return boards;
+
+        var found = new List<(uint Row, string Name)>();
+        try
+        {
+            var sheet = Services.Data.Excel.GetSheet<RawRow>(null, XbmColumns.XbmContent.Sheet);
+            var duties = Services.Data.GetExcelSheet<Lumina.Excel.Sheets.ContentFinderCondition>();
+            foreach (var row in sheet)
+            {
+                var duty = Convert.ToUInt32(row.ReadColumn(XbmColumns.XbmContent.ContentFinderCondition));
+                if (duty == 0)
+                    continue;
+
+                var name = duties.GetRowOrDefault(duty)?.Name.ExtractText() ?? string.Empty;
+                found.Add((row.RowId, name.Length > 0 ? name : $"Board {row.RowId}"));
+            }
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Error(ex, "Could not read the boards from XBMContent.");
+        }
+
+        boards = found;
+        return boards;
+    }
+
+    /// <summary>What a board is called, or its row when the sheet does not say.</summary>
+    public static string Name(uint board)
+    {
+        foreach (var (row, name) in Boards())
+        {
+            if (row == board)
+                return name;
+        }
+
+        return $"Board {board}";
+    }
+
+    private static List<(uint Row, string Name)>? boards;
+
     private static int Int(RawSubrow row, int column) => Convert.ToInt32(row.ReadColumn(column));
 }
