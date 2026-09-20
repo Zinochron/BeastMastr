@@ -168,11 +168,11 @@ public sealed unsafe class BoardEntrance
                 // Pressed enough times with nothing to show: the player takes over, and the run carries
                 // on the moment her window is up. Only after long enough does it give up for good.
                 if (attempts == Attempts + 1)
-                    Explain();
+                    Report($"Talking to Lauda opened nothing. {WhyNothingOpened()}");
 
                 Ask("Talk to Lauda yourself — the run carries on the moment her window is open.");
                 if (now - stageSince > HandOffPatience)
-                    Fail("Talking to Lauda opened nothing.");
+                    Fail($"Talking to Lauda opened nothing. {WhyNothingOpened()}");
 
                 return;
 
@@ -525,13 +525,27 @@ public sealed unsafe class BoardEntrance
         var values = AddonReader.Values(XbmColumns.Entrance.Menu);
         for (var choice = 0; XbmColumns.Entrance.MenuFirstEntry + choice < values.Count; choice++)
         {
-            var text = values[XbmColumns.Entrance.MenuFirstEntry + choice].Text.Trim();
-            if (text.Equals(name, StringComparison.OrdinalIgnoreCase))
+            if (Plain(values[XbmColumns.Entrance.MenuFirstEntry + choice].Text).Equals(Plain(name),
+                                                                                      StringComparison.OrdinalIgnoreCase))
                 return choice;
         }
 
         return null;
     }
+
+    /// <summary>Start of Unicode's private use area, where the game keeps its own glyphs.</summary>
+    private const char FirstPrivateGlyph = (char)0xE000;
+    private const char LastPrivateGlyph = (char)0xF8FF;
+
+    /// <summary>
+    /// An entry as it reads without the game's own icons. A menu entry can carry a quest or content
+    /// glyph in front of its text — private use characters, which render as nothing outside the game's
+    /// font and survive every string operation until something drops them on purpose — and a comparison
+    /// against the plain name would miss because of one.
+    /// </summary>
+    private static string Plain(string text) =>
+        new string(text.Where(c => (c < FirstPrivateGlyph || c > LastPrivateGlyph) && !char.IsWhiteSpace(c))
+                       .ToArray());
 
     /// <summary>The Dismount general action, as the <c>GeneralAction</c> sheet numbers it.</summary>
     private const uint DismountAction = 23;
@@ -577,23 +591,53 @@ public sealed unsafe class BoardEntrance
         Services.Chat.Print($"[BeastMastr] {what}");
     }
 
-    /// <summary>Everything worth knowing about a talk that opened nothing, for reading back afterwards.</summary>
-    private void Explain()
+    /// <summary>
+    /// Why talking to her opened nothing, in a sentence a player can act on or pass on. It goes to the
+    /// chat, not only to the log: a player who hits this is not reading `dalamud.log`.
+    /// </summary>
+    private static string WhyNothingOpened()
     {
         var player = Services.Objects.LocalPlayer;
         var lauda = Services.Objects.FirstOrDefault(obj => obj.ObjectKind == ObjectKind.EventNpc &&
                                                            obj.BaseId == XbmColumns.Entrance.Npc);
-        var distance = player == null || lauda == null
-                           ? -1f
-                           : Vector3.Distance(player.Position, lauda.Position);
 
-        Services.Log.Warning(
-            $"Entrance: talking to Lauda opened nothing after {Attempts} tries. " +
-            $"Lauda {(lauda == null ? "is not in the object table" : $"is {distance:0.0} yalms away, targetable {lauda.IsTargetable}")}; " +
-            $"territory {Services.ClientState.TerritoryType}; " +
-            $"mounted {Services.Condition[ConditionFlag.Mounted]}; in combat {Services.Condition[ConditionFlag.InCombat]}; " +
-            $"busy {Busy()}; windows open: {string.Join(", ", AddonReader.OpenAddonNames())}.");
+        if (lauda == null)
+            return "Lauda is not where the run looked for her, by the Crucible entrance in Central Shroud.";
+
+        if (player != null && Vector3.Distance(player.Position, lauda.Position) is var distance and > XbmColumns.Entrance.TalkRange)
+            return $"She is {distance:0.0} yalms away, which is too far to talk to her.";
+
+        if (!lauda.IsTargetable)
+            return "She cannot be targeted at the moment.";
+
+        if (Services.Condition[ConditionFlag.Mounted] || Services.Condition[ConditionFlag.RidingPillion])
+            return "You are still mounted, and the run could not get you off.";
+
+        if (Services.Condition[ConditionFlag.InCombat])
+            return "You are in combat, and she will not talk during one.";
+
+        if (Busy())
+            return "The game is in the middle of something else — an event, a cutscene or a load.";
+
+        var windows = AddonReader.OpenAddonNames().ToList();
+        if (windows.Count > 0)
+            return $"Something else is open and in the way: {string.Join(", ", windows)}.";
+
+        return "Nothing the run can name is in the way; another plugin may be answering her menu first.";
     }
+
+    /// <summary>Says something once, to the chat and the log alike.</summary>
+    private void Report(string message)
+    {
+        if (reported == message)
+            return;
+
+        reported = message;
+        Services.Chat.PrintError($"[BeastMastr] {message}");
+        Services.Log.Warning($"Entrance: {message}");
+    }
+
+    private string reported = string.Empty;
 
     private bool NearLauda()
     {
@@ -699,9 +743,18 @@ public sealed unsafe class BoardEntrance
         Services.Log.Information($"Entrance: {status}");
     }
 
+    /// <summary>
+    /// Ends the step, with what the game was showing at the time. The run prints the reason to the chat,
+    /// so the windows that were open belong in it rather than in the log alone.
+    /// </summary>
     private void Fail(string reason)
     {
-        Failure = reason;
-        Status = reason;
+        var windows = AddonReader.OpenAddonNames().ToList();
+        Failure = windows.Count > 0
+                      ? $"{reason} Open at the time: {string.Join(", ", windows)}."
+                      : $"{reason} No window was open at the time.";
+
+        Status = Failure;
+        Services.Log.Warning($"Entrance: {Failure}");
     }
 }
