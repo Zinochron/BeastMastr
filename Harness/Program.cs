@@ -496,6 +496,8 @@ Check("and goes once it has",
       BstRotation.Next(unreleased with { FamiliarReleased = true, ReleasedFor = 2f }, plain).Ogcd == Bst.PartingBlow);
 Check("a release that never comes holds the cycle only through the opening",
       BstRotation.Next(unreleased with { FamiliarOutFor = 9f }, plain).Ogcd == Bst.PartingBlow);
+Check("and while the fight has not been joined at all, the blow waits",
+      BstRotation.Next(unreleased with { FamiliarOutFor = 0f }, plain).Ogcd != Bst.PartingBlow);
 
 var lowParting = BstRotation.Next(Fight(level: 20, notReady: AllBut(Bst.PartingBlow)), plain);
 Check("not below 30, where a new familiar resets nothing", lowParting.Ogcd == 0, lowParting.Why);
@@ -543,6 +545,16 @@ var openDone = BstRotation.Next(Fight(prePull: true, horns: 2, statuses: [4602],
                                       notReady: [Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn,
                                                  Bst.Borrow, Bst.TemperedRelease, Bst.Trick, Bst.Rally]), plain);
 Check("and only then goes in", openDone.Engage, openDone.Why);
+
+// On 2026-09-20 at 18:04:39 a second Borrow went out after the opener's own horn and held the pull up.
+var openTwice = BstRotation.Next(Fight(prePull: true, horns: 2, statuses: [4602], distance: 1f,
+                                       notReady: [Bst.FirstBattlehorn, Bst.SecondBattlehorn, Bst.ThirdBattlehorn,
+                                                  Bst.TemperedRelease, Bst.Trick, Bst.Rally, Bst.BeastMode]), plain);
+Check("the opener borrows once, not again after its own horn",
+      openTwice.Ogcd != Bst.Borrow && openTwice.Engage, openTwice.Why);
+
+var borrowInFight = BstRotation.Next(Fight(horns: 2, notReady: AllBut(Bst.Borrow)), plain);
+Check("in the fight Borrow goes out as before", borrowInFight.Ogcd == Bst.Borrow, borrowInFight.Why);
 
 var openLow = BstRotation.Next(Fight(level: 15, prePull: true, horns: 1, notReady: [Bst.FirstBattlehorn]), plain);
 Check("below Borrow's level the second horn follows at once", openLow.Ogcd == Bst.SecondBattlehorn, openLow.Why);

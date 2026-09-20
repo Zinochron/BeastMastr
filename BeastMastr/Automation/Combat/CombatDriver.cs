@@ -162,8 +162,12 @@ public sealed unsafe class CombatDriver : IDisposable
     /// <summary>When the familiar out now arrived, or null while none has.</summary>
     private DateTime? familiarSince;
 
-    /// <summary>When the fight began. The release is only available once it is on.</summary>
-    private DateTime? combatSince;
+    /// <summary>
+    /// The first weaponskill of this fight. The release becomes available as the fight is joined, and
+    /// the walk in to the enemy — nine seconds on 2026-09-20 at 18:04:40 — is not time the familiar had
+    /// to release in.
+    /// </summary>
+    private DateTime? firstGcdAt;
 
     /// <summary>Whether an action used is the Tempered Release of whichever beast is out.</summary>
     private static bool IsRelease(uint used)
@@ -259,7 +263,7 @@ public sealed unsafe class CombatDriver : IDisposable
         bossItemsTried.Clear();
         releasedAt = null;
         familiarSince = null;
-        combatSince = null;
+        firstGcdAt = null;
 
         Enabled = true;
         input.Reset();
@@ -314,11 +318,6 @@ public sealed unsafe class CombatDriver : IDisposable
         var inCombat = Services.Condition[ConditionFlag.InCombat];
         if (inCombat)
         {
-            // A familiar summoned before the pull cannot release until the fight is on, so the wait for
-            // its release is counted from here, not from when it arrived.
-            if (DateTime.Now - lastInCombat > CombatEndGrace)
-                combatSince = DateTime.Now;
-
             lastInCombat = DateTime.Now;
         }
 
@@ -437,7 +436,7 @@ public sealed unsafe class CombatDriver : IDisposable
                 bossItemsTried.Clear();
                 releasedAt = null;
                 familiarSince = null;
-                combatSince = null;
+                firstGcdAt = null;
             }
         }
 
@@ -528,7 +527,7 @@ public sealed unsafe class CombatDriver : IDisposable
         {
             // The familiars' comings and goings are logged too, so an opener gone wrong can be read back
             // without a recording.
-            if (decision.Ogcd is Bst.Snarl or Bst.Challenge or Bst.Borrow or Bst.PartingBlow ||
+            if (decision.Ogcd is Bst.Snarl or Bst.Challenge or Bst.Borrow or Bst.PartingBlow or Bst.TemperedRelease ||
                 Array.IndexOf(Bst.Battlehorns, decision.Ogcd) >= 0)
                 Services.Log.Information($"Pressed {Name(decision.Ogcd)}: {decision.Why}" +
                                          $"{(MayPull && !inCombat ? " (before the pull)" : string.Empty)}.");
@@ -536,8 +535,8 @@ public sealed unsafe class CombatDriver : IDisposable
             return;
         }
 
-        if (decision.Gcd != 0)
-            Use(manager, player, target, decision.Gcd);
+        if (decision.Gcd != 0 && Use(manager, player, target, decision.Gcd) && inCombat)
+            firstGcdAt ??= DateTime.Now;
     }
 
     /// <summary>You have taken over: nothing is pressed and nothing is moved until you let go.</summary>
@@ -622,16 +621,22 @@ public sealed unsafe class CombatDriver : IDisposable
     }
 
     /// <summary>
-    /// How long the familiar out now has had to release: from when it arrived, or from the pull when it
-    /// was summoned before it. Infinity when no familiar of this driver's is out.
+    /// How long the familiar out now has had to release: since it arrived, or since the fight's first
+    /// weaponskill when it was summoned before that. 0 while no weaponskill has gone out, infinity when
+    /// no familiar of this driver's is out.
     /// </summary>
     private float WaitedForRelease()
     {
         if (familiarSince is not { } since)
             return float.PositiveInfinity;
 
-        if (combatSince is { } fight && fight > since)
-            since = fight;
+        // Before the first weaponskill lands, the fight has not really started: the familiar has had no
+        // chance to release, so the blow waits however long the walk in takes.
+        if (firstGcdAt is not { } joined)
+            return 0f;
+
+        if (joined > since)
+            since = joined;
 
         return (float)(DateTime.Now - since).TotalSeconds;
     }

@@ -104,9 +104,9 @@ public static class Bst
 /// <param name="FamiliarLowShare">At or below this share of the familiar's HP, you take over with Challenge.</param>
 /// <param name="ReleaseWaitSeconds">
 /// How long a familiar that has not used its Tempered Release is kept before Parting Blow may send it
-/// off anyway, counted from the pull. The release only becomes available as the fight starts and goes
-/// out right after the first GCD, so this only has to cover the opening — past it the release is not
-/// coming at all.
+/// off anyway, counted from the first GCD of the fight. The release becomes available as the fight
+/// starts and goes out right after that GCD, so this only has to cover the opening — past it the
+/// release is not coming at all.
 /// </param>
 /// <param name="PartingBlowAfterRelease">
 /// Seconds between the Tempered Release and the Parting Blow that ends the summon, so the release has
@@ -171,8 +171,9 @@ public enum DutyTank
 /// </param>
 /// <param name="ReleasedFor">Seconds since that release, 0 when it has not happened.</param>
 /// <param name="FamiliarOutFor">
-/// Seconds the familiar out now has had to release: since it arrived, or since the pull when it was
-/// summoned before it. Infinity when not known.
+/// Seconds the familiar out now has had to release: since it arrived, or since the fight's first GCD
+/// when it was summoned before that — the walk in to the enemy is not time it had. 0 while the fight
+/// has not been joined, infinity when there is nothing to know.
 /// </param>
 public sealed record BstState(
     int Level,
@@ -324,7 +325,10 @@ public static class BstRotation
             return Bst.TemperedRelease;
         }
 
-        if (familiar && Usable(state, Bst.Borrow))
+        // One Borrow in the opener, from the familiar called first, and then the pull. On 2026-09-20 at
+        // 18:04:39 a second Borrow went out after the opener's own horn and held the pull up for another
+        // GCD; in the fight Borrow goes on cooldown as before.
+        if (familiar && Usable(state, Bst.Borrow) && !(state.PrePull && state.HornsThisFight >= 2))
         {
             why.Add("Borrow");
             return Bst.Borrow;

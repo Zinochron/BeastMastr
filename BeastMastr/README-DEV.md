@@ -2691,3 +2691,35 @@ release goes out, and one to two seconds later the blow may follow. So:
 
 **Versions from here on:** every prompt that changes code raises the last number of `<Version>`, because
 Dalamud only reloads a plugin whose version differs.
+
+### What the opener actually did — 0.3.0.3, 2026-09-20
+
+The user was right that the last two rounds fixed the wrong thing. `dalamud.log` at 18:04 says what the
+opener really did, on an Elite room of the master board:
+
+```
+36.797  Pressed Second Battlehorn: summon a familiar (before the pull)
+37.908  Pressed Borrow (before the pull)
+38.602  Pressed First Battlehorn: second familiar of the opener (before the pull)
+39.727  Pressed Borrow (before the pull)          ← not in the opener
+39.740  vnavmesh: walking in …                     ← nine seconds, nothing pressed
+49.412  Pressed Parting Blow, to summon the next familiar
+50.240  Pressed Second Battlehorn
+51.360  The familiar has had its Tempered Release   ← after the blow, not before it
+```
+
+The opener the player plays is: horn II or III → Borrow → horn I → pull → Tempered Release → Parting
+Blow → next horn. Two things broke it.
+
+**A second Borrow after the opener's own horn.** Borrow comes back before the pull, and the rotation
+took it again, costing another GCD before the walk in. Pre-pull, Borrow is now only taken while
+`HornsThisFight < 2` — one Borrow, from the familiar called first. In the fight nothing changes.
+
+**The wait for the release was spent walking.** 0.3.0.2 counted it from the pull, but between the pull
+and the first swing lie nine seconds of walking, in which the familiar cannot release anything. The
+clock now starts at the **fight's first weaponskill** (`CombatDriver.firstGcdAt`), and before that
+weaponskill Parting Blow does not go at all. So the order falls out as the player plays it: first GCD,
+then the release as soon as it is available, then a second and a half, then the blow.
+
+Tempered Release is written to the log with the other summon actions now, so the next recording shows
+the whole opener without a capture.
