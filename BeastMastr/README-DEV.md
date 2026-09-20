@@ -2632,3 +2632,22 @@ most likely), the board is played anyway.
 - **difficulty** — the four Crucible modes, named from the `Addon` sheet at 17870–17873. The pick is
   remembered the way the player's own is (`LastCrucibleMode`), so the `DifficultySelector` sets it in the
   board window before the board is challenged. "Leave as it is" (−1) does nothing.
+
+### A rank only ever goes up — 2026-09-20
+
+The user: farming a low board pushed the beasts' ranks *down* in the plugin's own store. The board says
+so itself — `captures/board-20260913-145159.txt` carries "Level: 40 (Sync to 40)Recommended Beast Rank:
+6 (Sync from 10)". Inside a board every window shows the **synced** rank, and `RankWatcher` believed it.
+
+Three changes:
+
+- **Nothing is learned inside a board** (`BoardModel.IsRunTerritory`), by the watcher or by "Read all
+  ranks". Outside, the numbers are the beasts' own.
+- **`Store` never lowers a rank.** A beast does not lose rank, so a lower reading is dropped and the log
+  says so once per beast. That also heals a store already written down by an earlier farm: the next
+  browse outside raises it again.
+- **"Forget ranks" is the reset**, back to nothing known rather than back to 1 — a missing rank says so,
+  a wrong one picks a team quietly. Nothing is thrown away on load; the raise-only rule repairs it.
+
+The Beasts table has a **Rank** column (the game's own name for it, "Beast Rank"), an em dash where
+nothing has been seen, and what it knows on hover.

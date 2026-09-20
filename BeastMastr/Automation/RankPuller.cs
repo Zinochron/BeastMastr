@@ -49,6 +49,14 @@ public sealed unsafe class RankPuller : IDisposable
             return;
         }
 
+        // Every rank a board shows is synced to that board's own, so reading them there would write
+        // the whole roster down. Outside, the numbers are the beasts' own.
+        if (Data.BoardModel.IsRunTerritory(Services.ClientState.TerritoryType))
+        {
+            Status = "Not on a board: the ranks shown here are synced to it. Read them outside.";
+            return;
+        }
+
         startingPage = Math.Max(0, CurrentPage());
         page = 0;
         slot = 0;

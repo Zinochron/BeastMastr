@@ -6,8 +6,9 @@ The game already knows what every beast's actions do and what every Crucible roo
 makes you click for it. BeastMastr puts that where you are already looking.
 
 - **Bestiary** — see at a glance what a beast brings: which status it lands, what damage type it
-  deals, what it resists. Filter and search by that, so "which of mine can interrupt?" is one
-  question instead of forty entries.
+  deals, what it resists, and the rank it has reached. Filter and search by that, so "which of mine
+  can interrupt?" is one question instead of forty entries. Ranks are learned by browsing and only
+  ever go up: a board that syncs your beasts down does not write them down.
 - **Crucible board** — the facts that decide a route sit next to the room on the board instead of
   one click deep, and the beasts worth bringing are highlighted when you enter a room.
 

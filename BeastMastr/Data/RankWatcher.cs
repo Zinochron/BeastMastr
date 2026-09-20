@@ -52,7 +52,11 @@ public sealed class RankWatcher : IDisposable
     {
         configuration.KnownRanks.Clear();
         configuration.Save();
+        synced.Clear();
     }
+
+    /// <summary>Beasts whose synced-down rank has already been reported, so the log says it once.</summary>
+    private readonly System.Collections.Generic.HashSet<uint> synced = [];
 
     public int KnownCount => configuration.KnownRanks.Count;
 
@@ -66,6 +70,13 @@ public sealed class RankWatcher : IDisposable
             return;
 
         ticks = Interval;
+
+        // Inside a board every rank shown is the synced one, never the beast's own: the board sets a
+        // recommended rank and syncs everything above it down. Nothing is learned there, so farming a
+        // low board cannot write the team down — the "only ever up" rule below would still take a
+        // synced rank for a beast never seen otherwise.
+        if (BoardModel.IsRunTerritory(Services.ClientState.TerritoryType))
+            return;
 
         SampleDetailPage();
         SampleRoster();
@@ -133,13 +144,9 @@ public sealed class RankWatcher : IDisposable
     /// </summary>
     public bool Learn(uint beastNumber, int rank)
     {
-        if (rank <= 0)
+        if (!Store(beastNumber, rank))
             return false;
 
-        if (configuration.KnownRanks.TryGetValue(beastNumber, out var known) && known == rank)
-            return false;
-
-        configuration.KnownRanks[beastNumber] = rank;
         configuration.Save();
         return true;
     }
@@ -150,11 +157,29 @@ public sealed class RankWatcher : IDisposable
             configuration.Save();
     }
 
-    /// <summary>Records a rank without saving, for callers that learn several at once and save once.</summary>
+    /// <summary>
+    /// Records a rank without saving, for callers that learn several at once and save once.
+    ///
+    /// **A rank only ever goes up.** On a board below the beasts' own rank the game syncs them down —
+    /// "Recommended Beast Rank: 6 (Sync from 10)" — and every window then shows the synced number, so
+    /// farming a low board used to write a whole team down to the board's rank and the leveling plan
+    /// then picked by a rank nobody has. A beast never loses rank in truth, so a lower reading is
+    /// dropped. "Forget ranks" is the way back to nothing known.
+    /// </summary>
     private bool Store(uint beastNumber, int rank)
     {
-        if (rank <= 0 || configuration.KnownRanks.TryGetValue(beastNumber, out var known) && known == rank)
+        if (rank <= 0)
             return false;
+
+        var seen = configuration.KnownRanks.TryGetValue(beastNumber, out var known);
+        if (seen && known >= rank)
+        {
+            if (known > rank && synced.Add(beastNumber))
+                Services.Log.Information($"Beast {beastNumber} read as rank {rank} over the {known} known; " +
+                                         "kept the higher one, since the board syncs ranks down.");
+
+            return false;
+        }
 
         configuration.KnownRanks[beastNumber] = rank;
         return true;
