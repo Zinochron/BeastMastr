@@ -200,6 +200,24 @@ public sealed unsafe class BoardEntrance
                                                                        .Where(value => value.Type.Contains("String") &&
                                                                                        value.Text.Length > 0)
                                                                        .Select(value => value.Text)));
+
+                // With the questline unfinished she opens with a menu of her own: the quest first, the
+                // Crucible second. Picking the Crucible there opens the menu that was recorded, so this
+                // stage runs twice (the user, 2026-09-20).
+                if (CrucibleEntry() is { } entry && menuHops < MostMenuHops)
+                {
+                    if (RoomActions.Send(new RoomActions.Command(
+                            $"open {CrucibleName()}", XbmColumns.Entrance.Menu,
+                            [RoomActions.Value.Int(entry)], true, false)))
+                    {
+                        menuHops++;
+                        stageSince = now;
+                        Status = "Opening her Crucible menu.";
+                    }
+
+                    return;
+                }
+
                 if (RoomActions.Send(PickMenu))
                     Next(3, "Picking the board.");
 
@@ -482,6 +500,38 @@ public sealed unsafe class BoardEntrance
     /// </summary>
     /// <summary>Her greeting, when she has one to click through.</summary>
     private const string TalkWindow = "Talk";
+
+    /// <summary>How many menus of hers are stepped through before the recorded one is expected.</summary>
+    private const int MostMenuHops = 2;
+
+    private int menuHops;
+
+    /// <summary>What the game calls the Crucible, in the client's own language.</summary>
+    private static string CrucibleName() =>
+        Services.Data.GetExcelSheet<Lumina.Excel.Sheets.PlaceName>()
+                .GetRowOrDefault(XbmColumns.Entrance.CruciblePlaceName)?.Name.ExtractText() ?? string.Empty;
+
+    /// <summary>
+    /// The choice in Lauda's open menu that is the Crucible itself, or null when the menu is the
+    /// recorded one. Her first menu names it plainly — the recorded menu's entries all say more than
+    /// that ("Challenge the Crucible of the Unbroken."), so only the plain name is taken for it.
+    /// </summary>
+    private static int? CrucibleEntry()
+    {
+        var name = CrucibleName();
+        if (name.Length == 0)
+            return null;
+
+        var values = AddonReader.Values(XbmColumns.Entrance.Menu);
+        for (var choice = 0; XbmColumns.Entrance.MenuFirstEntry + choice < values.Count; choice++)
+        {
+            var text = values[XbmColumns.Entrance.MenuFirstEntry + choice].Text.Trim();
+            if (text.Equals(name, StringComparison.OrdinalIgnoreCase))
+                return choice;
+        }
+
+        return null;
+    }
 
     /// <summary>The Dismount general action, as the <c>GeneralAction</c> sheet numbers it.</summary>
     private const uint DismountAction = 23;

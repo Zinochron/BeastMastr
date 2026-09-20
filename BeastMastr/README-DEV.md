@@ -2767,3 +2767,20 @@ yourself — the run carries on the moment her window is open") and picks itself
 appears. Only after three minutes does it give up for good. The give-up writes a line naming Lauda's
 distance and targetability, the territory, whether the player was mounted, in combat or busy, and every
 window that was open.
+
+### Lauda's other menu — 0.3.0.6, 2026-09-20
+
+The user: with the questline unfinished, Lauda opens a menu of her own first — the quest as the first
+entry, "Crucible of the Unbroken" as the second — and only that second entry opens the recorded "What
+will you do?" menu. The run sent `[0]` into whatever `SelectString` was up, which for such a player is
+the quest.
+
+The two menus are told apart by what the entries say. Her first menu names the place plainly, and the
+recorded menu's entries all say more than that ("Challenge the Crucible of the Unbroken.", "Ask about
+the Crucible of the Unbroken."), so an entry that is **exactly** the place name is the way through and
+anything else is the recorded menu. The name comes from `PlaceName` 5596, so it matches whatever
+language the client runs in — no English is compared against.
+
+Entries start at value 7 (`Entrance.MenuFirstEntry`), choice 0 being value 7, as both recordings show.
+Stage 2 therefore runs twice for such a player, and at most twice: `MostMenuHops` keeps a menu that does
+not change from being answered forever.

@@ -727,6 +727,20 @@ public static class XbmColumns
         public const string Menu = "SelectString";
         public const int MenuChoice = 0;
 
+        /// <summary>
+        /// Where her menu's entries start among its values: "Challenge the Crucible of the Unbroken." is
+        /// value 7 and choice 0 in both recordings.
+        /// </summary>
+        public const int MenuFirstEntry = 7;
+
+        /// <summary>
+        /// "Crucible of the Unbroken" as a place, which is what her *first* menu calls the whole thing
+        /// while the questline is unfinished: the quest comes first and this second, and picking it opens
+        /// the "What will you do?" menu that was recorded. Read from the sheet so it matches whatever
+        /// language the client runs in.
+        /// </summary>
+        public const uint CruciblePlaceName = 5596;
+
         public const string BoardList = "XBMStageList";
         public const int BoardCount = 1;
         public const int FirstBoard = 2;
