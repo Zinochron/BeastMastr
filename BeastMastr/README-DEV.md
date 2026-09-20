@@ -2809,3 +2809,18 @@ It goes out once, as an error line, when the tries are spent — the step still 
 it is repeated in the failure if three minutes go by. `Fail` also carries the windows that were open at
 the time, and the run prints the failure to the chat as it always did, so the whole reason is in front
 of the player.
+
+### What the board leaves open — 0.3.0.9, 2026-09-21
+
+The chat line the new message produced, from a player at 00:06:
+
+> Talking to Lauda opened nothing. Something else is open and in the way: XBMBattleMonsterDetail,
+> XBMItemDetail.
+
+Which is the answer: the item and enemy detail panels from inside the board outlive it, and out at the
+entrance they sit in front of everything, so the interaction goes nowhere. The step now closes them
+(`AtkUnitBase.Close`, the game's own close, so no payload is guessed) and talks again; closing does not
+spend one of the four tries. Ten closes is the limit, after which the panel is named in the chat
+instead — "A window is in the way and would not close: … Close it, and the run carries on."
+
+The message paid for itself on the first try: one line from a player, no recording and no log.

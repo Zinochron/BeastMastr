@@ -141,6 +141,10 @@ public sealed unsafe class BoardEntrance
                     return;
                 }
 
+                // A detail panel from the board outlives it and sits in front of everything out here.
+                if (CloseLeftovers())
+                    return;
+
                 if (!NearLauda())
                 {
                     stageSince = now;
@@ -501,6 +505,42 @@ public sealed unsafe class BoardEntrance
     /// <summary>Her greeting, when she has one to click through.</summary>
     private const string TalkWindow = "Talk";
 
+    /// <summary>
+    /// Windows from inside a board that can outlive it: the item and the enemy detail panels. A player's
+    /// run stopped at 2026-09-21 00:06 with both of them open and Lauda unreachable behind them.
+    /// </summary>
+    private static readonly string[] Leftovers =
+        [XbmColumns.RunWindows.ItemDetail, XbmColumns.BattleMonsterDetail.Addon];
+
+    /// <summary>How often a leftover panel is closed before it is left alone and named instead.</summary>
+    private const int MostCloses = 10;
+
+    private int closes;
+
+    /// <summary>Closes those panels. True when one was in the way, so the talk is tried again after.</summary>
+    private bool CloseLeftovers()
+    {
+        if (closes >= MostCloses)
+            return false;
+
+        var closed = false;
+        foreach (var window in Leftovers)
+        {
+            if (!AddonReader.TryGet(window, out var addon))
+                continue;
+
+            addon->Close(true);
+            closed = true;
+            closes++;
+            Services.Log.Information($"Entrance: closed {window}, which was left over from the board.");
+        }
+
+        if (closed)
+            Status = "Closing what the board left open.";
+
+        return closed;
+    }
+
     /// <summary>How many menus of hers are stepped through before the recorded one is expected.</summary>
     private const int MostMenuHops = 2;
 
@@ -621,7 +661,8 @@ public sealed unsafe class BoardEntrance
 
         var windows = AddonReader.OpenAddonNames().ToList();
         if (windows.Count > 0)
-            return $"Something else is open and in the way: {string.Join(", ", windows)}.";
+            return $"A window is in the way and would not close: {string.Join(", ", windows)}. " +
+                   "Close it, and the run carries on.";
 
         return "Nothing the run can name is in the way; another plugin may be answering her menu first.";
     }

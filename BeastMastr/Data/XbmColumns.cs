@@ -758,6 +758,13 @@ public static class XbmColumns
     public static class RunWindows
     {
         public const string ItemShop = "XBMContentsItemShop";
+
+        /// <summary>
+        /// One item's detail panel, opened by the board's own item list. Together with
+        /// <c>XBMBattleMonsterDetail</c> it can outlive the board and then sits in front of everything at
+        /// the entrance, where it stops Lauda being talked to (a player's chat line, 2026-09-21 00:06).
+        /// </summary>
+        public const string ItemDetail = "XBMItemDetail";
         public const string Treasure = "XBMContentsTreasure";
 
         /// <summary>Appears about ninety seconds after a fight starts, so taken to be the spoils.</summary>
