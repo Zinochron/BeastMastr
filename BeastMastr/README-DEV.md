@@ -2784,3 +2784,9 @@ language the client runs in — no English is compared against.
 Entries start at value 7 (`Entrance.MenuFirstEntry`), choice 0 being value 7, as both recordings show.
 Stage 2 therefore runs twice for such a player, and at most twice: `MostMenuHops` keeps a menu that does
 not change from being answered forever.
+
+No ids are needed for any of this, and none exist to be had: a `SelectString` carries its choices as
+plain strings, and the callback takes the position in the list. The comparison drops the game's own
+icon glyphs (the private use area) and all whitespace first, so a quest or content icon in front of an
+entry cannot make it miss. The "Lauda offers …" line in the log is a diagnostic, not an input: it says
+what her menu held when a run went wrong, for a player whose menu reads differently again.

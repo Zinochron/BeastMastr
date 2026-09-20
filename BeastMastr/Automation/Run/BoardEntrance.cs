@@ -525,13 +525,27 @@ public sealed unsafe class BoardEntrance
         var values = AddonReader.Values(XbmColumns.Entrance.Menu);
         for (var choice = 0; XbmColumns.Entrance.MenuFirstEntry + choice < values.Count; choice++)
         {
-            var text = values[XbmColumns.Entrance.MenuFirstEntry + choice].Text.Trim();
-            if (text.Equals(name, StringComparison.OrdinalIgnoreCase))
+            if (Plain(values[XbmColumns.Entrance.MenuFirstEntry + choice].Text).Equals(Plain(name),
+                                                                                      StringComparison.OrdinalIgnoreCase))
                 return choice;
         }
 
         return null;
     }
+
+    /// <summary>Start of Unicode's private use area, where the game keeps its own glyphs.</summary>
+    private const char FirstPrivateGlyph = (char)0xE000;
+    private const char LastPrivateGlyph = (char)0xF8FF;
+
+    /// <summary>
+    /// An entry as it reads without the game's own icons. A menu entry can carry a quest or content
+    /// glyph in front of its text — private use characters, which render as nothing outside the game's
+    /// font and survive every string operation until something drops them on purpose — and a comparison
+    /// against the plain name would miss because of one.
+    /// </summary>
+    private static string Plain(string text) =>
+        new string(text.Where(c => (c < FirstPrivateGlyph || c > LastPrivateGlyph) && !char.IsWhiteSpace(c))
+                       .ToArray());
 
     /// <summary>The Dismount general action, as the <c>GeneralAction</c> sheet numbers it.</summary>
     private const uint DismountAction = 23;
