@@ -2679,5 +2679,15 @@ familiar is worth more than the wait.
 matched through `GetAdjustedActionId`, since each beast has its own — marks it released. A familiar that
 was already out when the driver took over counts as released, because nothing is known about it.
 
+**Corrected the same day (0.3.0.2), from the user:** the release only becomes available as the fight
+starts, so the whole point is that Parting Blow must not go off at the pull. After the first GCD the
+release goes out, and one to two seconds later the blow may follow. So:
+
+- the wait for a release that never comes is 8 seconds, not 45 (`ReleaseWaitSeconds`), and it is counted
+  **from the pull**, not from the summon — the opener's familiars are called before the fight is on, and
+  a wait counted from their arrival would already be spent when it matters;
+- Parting Blow keeps `PartingBlowAfterRelease` (1.5 s) between the release and the blow, so the release
+  lands before the familiar goes.
+
 **Versions from here on:** every prompt that changes code raises the last number of `<Version>`, because
 Dalamud only reloads a plugin whose version differs.

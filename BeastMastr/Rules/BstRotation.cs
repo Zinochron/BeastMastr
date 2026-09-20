@@ -104,14 +104,20 @@ public static class Bst
 /// <param name="FamiliarLowShare">At or below this share of the familiar's HP, you take over with Challenge.</param>
 /// <param name="ReleaseWaitSeconds">
 /// How long a familiar that has not used its Tempered Release is kept before Parting Blow may send it
-/// off anyway. Past this the release is not coming — no Kinship, no Beast Mode — and the next familiar
-/// is worth more than the wait.
+/// off anyway, counted from the pull. The release only becomes available as the fight starts and goes
+/// out right after the first GCD, so this only has to cover the opening — past it the release is not
+/// coming at all.
+/// </param>
+/// <param name="PartingBlowAfterRelease">
+/// Seconds between the Tempered Release and the Parting Blow that ends the summon, so the release has
+/// landed before the familiar goes (the user).
 /// </param>
 public sealed record BstOptions(bool Combo, bool Resources, int SpendTpAt, bool UseBattlehorns, bool UsePartingBlow,
                                 bool UseShieldCharge, float PartingBlowHornWithin = 10f,
                                 float PartingBlowFinisherShare = 0.1f, bool DutyActions = true,
                                 DutyTank Tank = DutyTank.Auto, float PlayerLowShare = 0.5f,
-                                float FamiliarLowShare = 0.35f, float ReleaseWaitSeconds = 45f)
+                                float FamiliarLowShare = 0.35f, float ReleaseWaitSeconds = 8f,
+                                float PartingBlowAfterRelease = 1.5f)
 {
     public static BstOptions Default => new(true, true, 200, true, true, true);
 }
@@ -163,7 +169,11 @@ public enum DutyTank
 /// The familiar out now has had its Tempered Release. Until it has, Parting Blow does not end its summon
 /// to make room for the next one: the release is worth several hundred potency.
 /// </param>
-/// <param name="FamiliarOutFor">Seconds since the familiar out now arrived; infinity when not known.</param>
+/// <param name="ReleasedFor">Seconds since that release, 0 when it has not happened.</param>
+/// <param name="FamiliarOutFor">
+/// Seconds the familiar out now has had to release: since it arrived, or since the pull when it was
+/// summoned before it. Infinity when not known.
+/// </param>
 public sealed record BstState(
     int Level,
     uint ComboAction,
@@ -189,6 +199,7 @@ public sealed record BstState(
     bool MayDash = true,
     bool KeepLastPartingBlow = false,
     bool FamiliarReleased = true,
+    float ReleasedFor = float.PositiveInfinity,
     float FamiliarOutFor = float.PositiveInfinity);
 
 /// <param name="Gcd">The weaponskill to press, or 0.</param>
@@ -371,10 +382,12 @@ public static class BstRotation
             // Only with a familiar to follow: another Battlehorn ready soon. The last familiar of a
             // cycle goes only when the blow finishes the target. And never before the familiar has had
             // its Tempered Release — several hundred potency, and Parting Blow ends the summon (the
-            // user). After ReleaseWaitSeconds the release is not coming, and holding the familiar costs
-            // more than it saves.
+            // user). The release becomes available as the fight starts and goes out right after the
+            // first GCD, so the blow waits a moment for it and then a moment more for it to land;
+            // past ReleaseWaitSeconds from the pull it is not coming at all.
+            var released = state.FamiliarReleased && state.ReleasedFor >= options.PartingBlowAfterRelease;
             if (state.OtherHornReadyIn <= options.PartingBlowHornWithin && !state.KeepLastPartingBlow &&
-                (state.FamiliarReleased || state.FamiliarOutFor >= options.ReleaseWaitSeconds))
+                (released || state.FamiliarOutFor >= options.ReleaseWaitSeconds))
             {
                 why.Add("Parting Blow, to summon the next familiar");
                 return Bst.PartingBlow;

@@ -137,8 +137,8 @@ public sealed unsafe class CombatDriver : IDisposable
         else if (IsRelease(use.ActionId))
         {
             // Each beast has its own Tempered Release, so the id pressed is the adjusted one.
-            familiarReleased = true;
-            Services.Log.Information("The familiar has had its Tempered Release; Parting Blow is free again.");
+            releasedAt = use.At;
+            Services.Log.Information("The familiar has had its Tempered Release; Parting Blow follows shortly.");
         }
         else if (Array.IndexOf(Bst.Battlehorns, use.ActionId) >= 0 && use.At - lastBattlehorn > TimeSpan.FromSeconds(1))
         {
@@ -156,11 +156,14 @@ public sealed unsafe class CombatDriver : IDisposable
     /// <summary>How many familiars stood out as the pending horn was pressed.</summary>
     private int familiarsAtHorn;
 
-    /// <summary>The familiar out now has used its Tempered Release. Reset with every familiar that arrives.</summary>
-    private bool familiarReleased;
+    /// <summary>When the familiar out now used its Tempered Release, or null while it has not.</summary>
+    private DateTime? releasedAt;
 
     /// <summary>When the familiar out now arrived, or null while none has.</summary>
     private DateTime? familiarSince;
+
+    /// <summary>When the fight began. The release is only available once it is on.</summary>
+    private DateTime? combatSince;
 
     /// <summary>Whether an action used is the Tempered Release of whichever beast is out.</summary>
     private static bool IsRelease(uint used)
@@ -204,7 +207,7 @@ public sealed unsafe class CombatDriver : IDisposable
             hornsThisFight++;
 
             // A new familiar: its own release is still to come.
-            familiarReleased = false;
+            releasedAt = null;
             familiarSince = DateTime.Now;
             return;
         }
@@ -254,8 +257,9 @@ public sealed unsafe class CombatDriver : IDisposable
 
         hornPending = false;
         bossItemsTried.Clear();
-        familiarReleased = false;
+        releasedAt = null;
         familiarSince = null;
+        combatSince = null;
 
         Enabled = true;
         input.Reset();
@@ -309,7 +313,14 @@ public sealed unsafe class CombatDriver : IDisposable
 
         var inCombat = Services.Condition[ConditionFlag.InCombat];
         if (inCombat)
+        {
+            // A familiar summoned before the pull cannot release until the fight is on, so the wait for
+            // its release is counted from here, not from when it arrived.
+            if (DateTime.Now - lastInCombat > CombatEndGrace)
+                combatSince = DateTime.Now;
+
             lastInCombat = DateTime.Now;
+        }
 
         if (Vector3.DistanceSquared(player.Position, lastPosition) > 0.0001f)
         {
@@ -424,8 +435,9 @@ public sealed unsafe class CombatDriver : IDisposable
                 hornsThisFight = 0;
                 hornPending = false;
                 bossItemsTried.Clear();
-                familiarReleased = false;
+                releasedAt = null;
                 familiarSince = null;
+                combatSince = null;
             }
         }
 
@@ -604,10 +616,24 @@ public sealed unsafe class CombatDriver : IDisposable
                                  hornsThisFight >= Bosses.BorgnyKeepsBlowFromHorn,
             // A familiar summoned before the driver took over counts as released: nothing is known about
             // it, and holding its blow forever would end the cycle.
-            FamiliarReleased: familiarReleased || familiarSince == null,
-            FamiliarOutFor: familiarSince is { } since
-                                ? (float)(DateTime.Now - since).TotalSeconds
-                                : float.PositiveInfinity);
+            FamiliarReleased: releasedAt != null || familiarSince == null,
+            ReleasedFor: releasedAt is { } released ? (float)(DateTime.Now - released).TotalSeconds : 0f,
+            FamiliarOutFor: WaitedForRelease());
+    }
+
+    /// <summary>
+    /// How long the familiar out now has had to release: from when it arrived, or from the pull when it
+    /// was summoned before it. Infinity when no familiar of this driver's is out.
+    /// </summary>
+    private float WaitedForRelease()
+    {
+        if (familiarSince is not { } since)
+            return float.PositiveInfinity;
+
+        if (combatSince is { } fight && fight > since)
+            since = fight;
+
+        return (float)(DateTime.Now - since).TotalSeconds;
     }
 
     private static float Share(IBattleChara chara) => chara.MaxHp > 0 ? (float)chara.CurrentHp / chara.MaxHp : 1f;

@@ -484,13 +484,18 @@ var partingEarly = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow, Bst.
 Check("not while Tempered Release is still to be used", partingEarly.Ogcd == Bst.TemperedRelease, partingEarly.Why);
 
 // The first horn was ending before its familiar ever released — several hundred potency thrown away.
-var unreleased = Fight(notReady: AllBut(Bst.PartingBlow)) with { FamiliarReleased = false, FamiliarOutFor = 10f };
-Check("a familiar that has not released is not sent off for the next one",
+// The release only becomes available as the fight starts, so the blow waits out the opening.
+var unreleased = Fight(notReady: AllBut(Bst.PartingBlow)) with { FamiliarReleased = false, FamiliarOutFor = 3f };
+Check("at the pull, a familiar that has not released is not sent off for the next one",
       BstRotation.Next(unreleased, plain).Ogcd != Bst.PartingBlow, BstRotation.Next(unreleased, plain).Why);
 Check("but it still goes when the blow finishes the target",
       BstRotation.Next(unreleased with { TargetHpShare = 0.05f }, plain).Ogcd == Bst.PartingBlow);
-Check("and once the release is clearly not coming, it goes anyway",
-      BstRotation.Next(unreleased with { FamiliarOutFor = 60f }, plain).Ogcd == Bst.PartingBlow);
+Check("the blow waits a moment after the release, so it lands",
+      BstRotation.Next(unreleased with { FamiliarReleased = true, ReleasedFor = 0.3f }, plain).Ogcd != Bst.PartingBlow);
+Check("and goes once it has",
+      BstRotation.Next(unreleased with { FamiliarReleased = true, ReleasedFor = 2f }, plain).Ogcd == Bst.PartingBlow);
+Check("a release that never comes holds the cycle only through the opening",
+      BstRotation.Next(unreleased with { FamiliarOutFor = 9f }, plain).Ogcd == Bst.PartingBlow);
 
 var lowParting = BstRotation.Next(Fight(level: 20, notReady: AllBut(Bst.PartingBlow)), plain);
 Check("not below 30, where a new familiar resets nothing", lowParting.Ogcd == 0, lowParting.Why);
