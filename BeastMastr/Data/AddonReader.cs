@@ -40,7 +40,12 @@ public static unsafe class AddonReader
     /// that only exists while the cursor rests on something, were never in the hand written list.
     /// Asking the game what is loaded finds them without having to guess.
     /// </summary>
-    public static List<string> OpenAddonNames(string prefix = "XBM")
+    /// <param name="visibleOnly">
+    /// Only the windows actually on screen. A window stays loaded long after it is gone — the board's
+    /// item and enemy detail panels do, and naming those as "in the way" sent a run chasing them
+    /// (a player's chat line, 2026-09-21 00:20).
+    /// </param>
+    public static List<string> OpenAddonNames(string prefix = "XBM", bool visibleOnly = false)
     {
         var names = new List<string>();
         var stage = AtkStage.Instance();
@@ -53,7 +58,7 @@ public static unsafe class AddonReader
         for (var i = 0; i < units.Count; i++)
         {
             var unit = units.Entries[i].Value;
-            if (unit == null)
+            if (unit == null || (visibleOnly && !unit->IsVisible))
                 continue;
 
             var name = unit->NameString;

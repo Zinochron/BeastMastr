@@ -553,7 +553,9 @@ public sealed unsafe class BoardEntrance
         var closed = false;
         foreach (var window in Leftovers)
         {
-            if (!AddonReader.TryGet(window, out var addon))
+            // Visible, not merely loaded: these two stay loaded for the rest of the session, and
+            // closing what is already gone did nothing but fill the trail.
+            if (!AddonReader.IsOpen(window) || !AddonReader.TryGet(window, out var addon))
                 continue;
 
             addon->Close(true);
@@ -699,7 +701,7 @@ public sealed unsafe class BoardEntrance
     /// Why talking to her opened nothing, in a sentence a player can act on or pass on. It goes to the
     /// chat, not only to the log: a player who hits this is not reading `dalamud.log`.
     /// </summary>
-    private static string WhyNothingOpened()
+    private string WhyNothingOpened()
     {
         var player = Services.Objects.LocalPlayer;
         var lauda = Services.Objects.FirstOrDefault(obj => obj.ObjectKind == ObjectKind.EventNpc &&
@@ -723,12 +725,24 @@ public sealed unsafe class BoardEntrance
         if (Busy())
             return "The game is in the middle of something else — an event, a cutscene or a load.";
 
-        var windows = AddonReader.OpenAddonNames().ToList();
+        // The lifecycle knows what a frame-by-frame look cannot: whether her menu was up at all. One
+        // that came and went without this run answering it was answered by something else.
+        if (MenuWatch.Instance is { } watch && watch.LastSetupAt > talkedAt)
+        {
+            var offered = watch.LastEntries.Count > 0
+                              ? $" It offered: {string.Join(" | ", watch.LastEntries)}."
+                              : string.Empty;
+
+            return "Her menu opened and was answered before the run could read it. Another plugin — " +
+                   "YesAlready, TextAdvance or Pandora's Box — is doing that. Switch it off for her." + offered;
+        }
+
+        var windows = AddonReader.OpenAddonNames(visibleOnly: true).ToList();
         if (windows.Count > 0)
             return $"A window is in the way and would not close: {string.Join(", ", windows)}. " +
                    "Close it, and the run carries on.";
 
-        return "Nothing the run can name is in the way; another plugin may be answering her menu first.";
+        return "Her menu never opened, and nothing on screen is in the way.";
     }
 
     /// <summary>
@@ -796,6 +810,9 @@ public sealed unsafe class BoardEntrance
         return false;
     }
 
+    /// <summary>When the run last reached for her, so a menu seen after that is the one it asked for.</summary>
+    private DateTime talkedAt = DateTime.MinValue;
+
     private DateTime? walkingSince;
     private DateTime lastWalkOrder;
     private static readonly TimeSpan WalkTimeout = TimeSpan.FromSeconds(120);
@@ -818,6 +835,7 @@ public sealed unsafe class BoardEntrance
 
         Services.Targets.Target = lauda;
         targets->InteractWithObject((GameObjectStruct*)lauda.Address);
+        talkedAt = DateTime.Now;
         Note("talked to Lauda");
         return true;
     }
@@ -858,7 +876,7 @@ public sealed unsafe class BoardEntrance
     /// </summary>
     private void Fail(string reason)
     {
-        var windows = AddonReader.OpenAddonNames().ToList();
+        var windows = AddonReader.OpenAddonNames(visibleOnly: true).ToList();
         Failure = windows.Count > 0
                       ? $"{reason} Open at the time: {string.Join(", ", windows)}."
                       : $"{reason} No window was open at the time.";

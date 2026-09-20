@@ -30,6 +30,7 @@ public sealed class PluginCore : IDisposable
     private readonly MainWindow mainWindow;
     /// <summary>Built in the constructor body: it subscribes on construction. See the note above.</summary>
     private readonly EventRecorder recorder;
+    private readonly MenuWatch menuWatch;
     private readonly ActionWatcher actionWatcher;
     private readonly RunRecorder runRecorder;
     private readonly FightSelector fightSelector;
@@ -89,6 +90,7 @@ public sealed class PluginCore : IDisposable
         Catalog = new BeastCatalog();
 
         recorder = new EventRecorder();
+        menuWatch = new MenuWatch();
         actionWatcher = new ActionWatcher();
         runRecorder = new RunRecorder(recorder, actionWatcher);
         fightSelector = new FightSelector(Configuration, Catalog);
@@ -272,6 +274,7 @@ public sealed class PluginCore : IDisposable
         runRecorder.Dispose();
         actionWatcher.Dispose();
         recorder.Dispose();
+        menuWatch.Dispose();
         fightSelector.Dispose();
         rankWatcher.Dispose();
         enemies.Dispose();

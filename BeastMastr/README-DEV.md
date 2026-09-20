@@ -2842,3 +2842,25 @@ straight away. 0.3.0.9 closes those panels, so this round is about seeing the ne
   That is the flow the player described, in their own chat, without a log.
 - The hand-off also names what her menu last offered, which is the one thing a recording would have
   given us.
+
+### The panels were never in the way — 0.3.0.11, 2026-09-21
+
+The trail the player sent back said it plainly:
+
+> closed XBMItemDetail > closed XBMBattleMonsterDetail > closed XBMItemDetail > closed
+> XBMBattleMonsterDetail > talked to Lauda > talked to Lauda > talked to Lauda > talked to Lauda
+
+Closed twice each and still named as open, four talks and no menu. So they were never on screen:
+`OpenAddonNames` walked **every loaded unit**, and `TryGet` asks for a loaded window, not a visible one.
+Those two panels stay loaded for the rest of the session once a board has shown them, so 0.3.0.9 spent
+its closes on windows that had long since gone, and the message accused them.
+
+- `OpenAddonNames(visibleOnly: true)` is what the messages use now, and leftovers are only closed while
+  they are actually on screen.
+- Which leaves the real question: did her menu ever open? A window opened and answered by something else
+  comes and goes between two framework ticks, and a run polling per frame swears it never existed.
+  `Data/MenuWatch.cs` listens to the addon lifecycle for `SelectString` and notes when one was set up
+  and what it offered. Watching only — it answers nothing.
+- The message now tells the two apart: "Her menu opened and was answered before the run could read it.
+  Another plugin — YesAlready, TextAdvance or Pandora's Box — is doing that. Switch it off for her. It
+  offered: …" versus "Her menu never opened, and nothing on screen is in the way."
