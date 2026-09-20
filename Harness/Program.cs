@@ -483,6 +483,16 @@ var partingEarly = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow, Bst.
                                           statuses: [Bst.OneWithNature]), plain);
 Check("not while Tempered Release is still to be used", partingEarly.Ogcd == Bst.TemperedRelease, partingEarly.Why);
 
+// On the way in nothing is spent: on 2026-09-20 at 18:10:39 the Release went out sixteen yalms short.
+var walkingIn = Fight(distance: 16f, statuses: [Bst.OneWithNature],
+                      notReady: AllBut(Bst.TemperedRelease, Bst.PartingBlow, Bst.ShieldCharge));
+var walkingDecision = BstRotation.Next(walkingIn, plain);
+Check("out of reach neither the Release nor the blow is pressed",
+      walkingDecision.Ogcd != Bst.TemperedRelease && walkingDecision.Ogcd != Bst.PartingBlow,
+      walkingDecision.Why);
+Check("in reach the Release goes out",
+      BstRotation.Next(walkingIn with { TargetDistance = 1f }, plain).Ogcd == Bst.TemperedRelease);
+
 // The first horn was ending before its familiar ever released — several hundred potency thrown away.
 // The release only becomes available as the fight starts, so the blow waits out the opening.
 var unreleased = Fight(notReady: AllBut(Bst.PartingBlow)) with { FamiliarReleased = false, FamiliarOutFor = 3f };

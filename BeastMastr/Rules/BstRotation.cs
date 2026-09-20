@@ -319,7 +319,13 @@ public static class BstRotation
         if (duty != 0)
             return duty;
 
-        if (state.Statuses.Contains(Bst.OneWithNature) && Usable(state, Bst.TemperedRelease))
+        // Nothing the familiar does to the target is spent on the way in. On 2026-09-20 at 18:10:39 the
+        // Tempered Release went out sixteen yalms short of the enemy and the Parting Blow followed
+        // before the first swing, so the opener's familiar was gone before the fight began. Out here
+        // only the summons, Borrow, the duty actions and the gap closer belong.
+        var inReach = state.TargetDistance <= MeleeRange;
+
+        if (inReach && state.Statuses.Contains(Bst.OneWithNature) && Usable(state, Bst.TemperedRelease))
         {
             why.Add("One with Nature: Tempered Release");
             return Bst.TemperedRelease;
@@ -354,7 +360,7 @@ public static class BstRotation
             return axe;
 
         var heart = Heart(state);
-        if (heart == 0 && !state.Statuses.Contains(Bst.WaveringHeart) && familiar &&
+        if (heart == 0 && !state.Statuses.Contains(Bst.WaveringHeart) && familiar && inReach &&
             state.FamiliarTp >= Bst.FamiliarActionTp && Usable(state, Bst.Trick))
         {
             why.Add("Trick for a Heart");
@@ -373,14 +379,14 @@ public static class BstRotation
             return Bst.RallyingCheer;
         }
 
-        if (HasKinship(state) && Usable(state, Bst.BeastMode) &&
+        if (HasKinship(state) && inReach && Usable(state, Bst.BeastMode) &&
             (!Bst.SoulKinship.Overlaps(state.Statuses) || state.TargetCasting))
         {
             why.Add("Beast Mode");
             return Bst.BeastMode;
         }
 
-        if (options.UsePartingBlow && familiar && state.Level >= 30 &&
+        if (options.UsePartingBlow && familiar && inReach && state.Level >= 30 &&
             !Usable(state, Bst.TemperedRelease) && !Usable(state, Bst.Borrow) && Usable(state, Bst.PartingBlow))
         {
             // Only with a familiar to follow: another Battlehorn ready soon. The last familiar of a

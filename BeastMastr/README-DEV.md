@@ -2723,3 +2723,25 @@ then the release as soon as it is available, then a second and a half, then the 
 
 Tempered Release is written to the log with the other summon actions now, so the next recording shows
 the whole opener without a capture.
+
+### The opener was spent on the way in — 0.3.0.4, 2026-09-20
+
+0.3.0.3 fixed the second Borrow, and the log at 18:10 shows what was left:
+
+```
+34.765  Second Battlehorn (before the pull)
+35.868  Borrow (before the pull)
+36.515  First Battlehorn (before the pull)   ← the opener itself is right now
+37.5    vnavmesh: walking in, the player at z −404, the enemy at −428
+39.426  Pressed Tempered Release             ← sixteen yalms short of the enemy
+42.135  Pressed Parting Blow                 ← still on the way
+```
+
+Once the opener is done the pull is allowed, and from that moment the resource abilities were pressed
+every tick — with the enemy still twenty yalms off. The game accepted them, so the first familiar was
+released and dismissed before the fight had begun.
+
+The combo has always been gated on `TargetDistance <= MeleeRange`; the abilities were not. Now
+Tempered Release, Parting Blow, Trick and Beast Mode are gated the same way. What still goes out on the
+way in: the Battlehorns and Borrow (the opener happens at range by design), the duty actions, Rally and
+Rallying Cheer, and Shield Charge, which is what closes the gap.
