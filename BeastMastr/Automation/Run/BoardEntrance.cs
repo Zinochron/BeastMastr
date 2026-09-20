@@ -5,6 +5,7 @@ using BeastMastr.Data;
 using BeastMastr.Ipc;
 using Dalamud.Game.ClientState.Conditions;
 using Dalamud.Game.ClientState.Objects.Enums;
+using ECommons.UIHelpers.AddonMasterImplementations;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.Game.Control;
 using GameObjectStruct = FFXIVClientStructs.FFXIV.Client.Game.Object.GameObject;
@@ -311,27 +312,56 @@ public sealed unsafe class BoardEntrance
     /// <summary>The Repair general action, which opens that window.</summary>
     private const uint RepairAction = 6;
 
+    /// <summary>How long the window gets to open before the board is played unrepaired.</summary>
     private static readonly TimeSpan RepairWait = TimeSpan.FromSeconds(6);
+
+    /// <summary>How long the repair itself gets before it is handed to the player.</summary>
+    private static readonly TimeSpan RepairPatience = TimeSpan.FromSeconds(30);
+
+    /// <summary>Between presses of "Repair All", so one press is given time to work.</summary>
+    private static readonly TimeSpan PressAgain = TimeSpan.FromSeconds(3);
+
+    private const int MostPresses = 4;
+
     private DateTime? repairAskedAt;
+    private DateTime? repairPressedAt;
+    private int repairPresses;
     private bool repairDone;
 
     /// <summary>
-    /// Between boards, gear below full is repaired. The window is opened by the game's own Repair action;
-    /// pressing "Repair All" in it is handed to the player, since that button has never been recorded.
-    /// True once there is nothing to wait for.
+    /// Between boards, gear below full is repaired, start to finish: the game's own Repair action
+    /// (<c>GeneralAction</c> 6) opens the window, "Repair All" is pressed the way a click presses it
+    /// (ECommons' <c>AddonMaster.Repair</c>, which works the button itself rather than guessing what it
+    /// sends), the question it asks is answered yes, and the window is closed once everything is whole.
+    ///
+    /// Nothing here can run away with the run: after <see cref="RepairPatience"/> — no dark matter, or a
+    /// crafter level too low to mend these items — the step is handed to the player, and if the window
+    /// never opens at all the board is played as it is. True once there is nothing to wait for.
     /// </summary>
     private bool Repaired(DateTime now)
     {
         if (repairDone || !repair)
             return true;
 
-        if (GearDurability.Lowest() >= 1f)
+        var lowest = GearDurability.Lowest();
+        var open = AddonReader.IsOpen(RepairWindow);
+
+        if (lowest >= 1f)
         {
-            if (AddonReader.IsOpen(RepairWindow))
+            // Whole again: close the window the run opened, then carry on next tick.
+            if (open)
+            {
+                if (AddonReader.TryGet(RepairWindow, out var window))
+                    window->Close(true);
+
                 return false;
+            }
 
             repairDone = true;
             HandOff = string.Empty;
+            if (repairAskedAt != null)
+                Services.Log.Information("Repair: the gear is whole again.");
+
             return true;
         }
 
@@ -342,15 +372,38 @@ public sealed unsafe class BoardEntrance
             if (manager == null || !manager->UseAction(ActionType.GeneralAction, RepairAction))
                 Services.Log.Information("Repair: the Repair action could not be used here.");
 
-            Status = $"Gear at {GearDurability.Lowest():P0}: repairing.";
+            Status = $"Gear at {lowest:P0}: repairing.";
             Services.Log.Information($"Entrance: {Status}");
             return false;
         }
 
-        if (AddonReader.IsOpen(RepairWindow))
+        if (open)
         {
-            Status = $"Gear at {GearDurability.Lowest():P0}: waiting for the repair.";
-            HandOff = "Repair your gear — the repair window is open, and the run carries on once everything is whole.";
+            Status = $"Gear at {lowest:P0}: repairing.";
+
+            // "Repair all items?" — the same question a click raises, answered the recorded way.
+            if (AddonReader.IsOpen(RoomActions.YesnoAddon))
+            {
+                if (RoomActions.Send(RoomActions.Yes))
+                    repairPressedAt = now;
+
+                return false;
+            }
+
+            if (now - asked > RepairPatience)
+            {
+                HandOff = "Repair your gear — BeastMastr could not. Dark matter, most likely, or a crafter " +
+                          "level too low for these items. The run carries on once everything is whole.";
+                return false;
+            }
+
+            if (repairPresses < MostPresses && (repairPressedAt is not { } pressed || now - pressed > PressAgain))
+            {
+                repairPresses++;
+                repairPressedAt = now;
+                RepairAll();
+            }
+
             return false;
         }
 
@@ -360,8 +413,25 @@ public sealed unsafe class BoardEntrance
         // No window and nothing repaired: nothing to repair with, most likely. The board is played anyway.
         repairDone = true;
         HandOff = string.Empty;
-        Services.Log.Information($"Repair: the gear is still at {GearDurability.Lowest():P0}; carrying on regardless.");
+        Services.Log.Information($"Repair: the gear is still at {lowest:P0}; carrying on regardless.");
         return true;
+    }
+
+    /// <summary>Presses "Repair All" in the open repair window.</summary>
+    private static void RepairAll()
+    {
+        if (!AddonReader.TryGet(RepairWindow, out var window))
+            return;
+
+        try
+        {
+            new AddonMaster.Repair((nint)window).RepairAll();
+            Services.Log.Information("Repair: pressed Repair All.");
+        }
+        catch (Exception ex)
+        {
+            Services.Log.Warning(ex, "Repair: Repair All could not be pressed.");
+        }
     }
 
     /// <summary>

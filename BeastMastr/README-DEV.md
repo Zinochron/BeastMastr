@@ -2620,10 +2620,18 @@ changes.
 
 **Auto-repair between boards.** A switch beside "go on after a lost board". At the entrance, before
 Lauda is talked to, the worst piece worn is read (`Data/GearDurability.cs`, `Condition / 30000`). Below
-full, the game's own Repair action (`GeneralAction` 6) opens the repair window and the repair itself is
-handed to the player — that window's buttons have never been recorded, and nothing is guessed. The run
-carries on the moment everything is whole again; if no window appears within six seconds (no dark matter,
-most likely), the board is played anyway.
+full, the game's own Repair action (`GeneralAction` 6) opens the repair window, "Repair All" is pressed,
+the question it asks is answered yes, and the window is closed once everything is whole.
+
+The press is not a guessed callback: `AddonRepair` is a typed addon in ClientStructs with a
+`RepairAllButton`, and ECommons' `AddonMaster.Repair.RepairAll()` works that button the way a click
+works it. What the button then sends is the game's own business. The question afterwards is an ordinary
+`SelectYesno`, answered with the recorded `[0]`.
+
+Nothing here can run away with the run: the press is repeated at most four times, three seconds apart;
+after thirty seconds the step is handed to the player with the likely reason (no dark matter, or a
+crafter level too low for these items); and if no window appears within six seconds the board is played
+as it is.
 
 **The board and the difficulty beside the Run button.** Two selectors:
 - **board** — the rows of `XBMContent`, named through their `ContentFinderCondition` (1088–1092), so the

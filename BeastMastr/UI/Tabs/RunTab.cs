@@ -122,8 +122,10 @@ public sealed class RunTab : ITab
         ImGui.SameLine();
         Toggle("auto-repair", configuration.RepairBetweenBoards,
                value => configuration.RepairBetweenBoards = value);
-        Widgets.HelpMarker("When on, gear below full durability is repaired between boards: the run opens the " +
-                           "repair window at the entrance and hands the repair itself to you, then carries on.");
+        Widgets.HelpMarker("When on, gear below full durability is repaired between boards: at the entrance the " +
+                           "run opens the repair window, presses Repair All, answers the question and closes it " +
+                           "again. Without dark matter — or with a crafter level too low for the items — it says " +
+                           "so and waits for you.");
 
         DrawBoardChoice();
 

@@ -25,8 +25,9 @@ makes you click for it. BeastMastr puts that where you are already looking.
     it leaves the result and starts the next board from the entrance. Which board and which Crucible
     mode are picked beside the Run button, and each board's team can be set to farming (the carries
     alone) or leveling (the carries and the least advanced beasts).
-  - **Auto-repair:** switched on, gear below full durability sends the run to the repair window between
-    boards; pressing the repair is yours, and the run carries on once everything is whole.
+  - **Auto-repair:** switched on, gear below full durability is repaired between boards — the window is
+    opened, Repair All pressed and the question answered. Without dark matter it says so and waits for
+    you.
   - **Carries:** marked with "Add as carry" in the bestiary's right-click menu. They are also called
     into every fight first.
   - **Tracking:** the Run tab counts the boards finished and won, how long they take, and the loot
