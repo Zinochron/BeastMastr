@@ -2659,3 +2659,25 @@ Three changes:
 
 The Beasts table has a **Rank** column (the game's own name for it, "Beast Rank"), an em dash where
 nothing has been seen, and what it knows on hover.
+
+### The first familiar keeps its Release — 0.3.0.1, 2026-09-20
+
+The user: the first horn is often ended by Parting Blow before its familiar ever uses its Tempered
+Release, and that is several hundred potency thrown away. Parting Blow ends the summon, so whatever the
+familiar still had to give goes with it.
+
+The old gate only asked whether Tempered Release was usable **right now** (`!Usable(state,
+TemperedRelease)`). A release that is two Beast Modes away is not usable now, so the familiar went.
+
+`BstState` now carries `FamiliarReleased` and `FamiliarOutFor`, and Parting Blow "to summon the next
+familiar" waits for the release. Unchanged: the blow that **finishes** the target, and
+`KeepLastPartingBlow` at Borgny. A valve keeps the cycle from stalling — past
+`BstOptions.ReleaseWaitSeconds` (45) the release is not coming (no Kinship, no Beast Mode) and the next
+familiar is worth more than the wait.
+
+`CombatDriver` tracks it: every familiar that arrives starts unreleased, and a use of Tempered Release —
+matched through `GetAdjustedActionId`, since each beast has its own — marks it released. A familiar that
+was already out when the driver took over counts as released, because nothing is known about it.
+
+**Versions from here on:** every prompt that changes code raises the last number of `<Version>`, because
+Dalamud only reloads a plugin whose version differs.

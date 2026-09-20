@@ -483,6 +483,15 @@ var partingEarly = BstRotation.Next(Fight(notReady: AllBut(Bst.PartingBlow, Bst.
                                           statuses: [Bst.OneWithNature]), plain);
 Check("not while Tempered Release is still to be used", partingEarly.Ogcd == Bst.TemperedRelease, partingEarly.Why);
 
+// The first horn was ending before its familiar ever released — several hundred potency thrown away.
+var unreleased = Fight(notReady: AllBut(Bst.PartingBlow)) with { FamiliarReleased = false, FamiliarOutFor = 10f };
+Check("a familiar that has not released is not sent off for the next one",
+      BstRotation.Next(unreleased, plain).Ogcd != Bst.PartingBlow, BstRotation.Next(unreleased, plain).Why);
+Check("but it still goes when the blow finishes the target",
+      BstRotation.Next(unreleased with { TargetHpShare = 0.05f }, plain).Ogcd == Bst.PartingBlow);
+Check("and once the release is clearly not coming, it goes anyway",
+      BstRotation.Next(unreleased with { FamiliarOutFor = 60f }, plain).Ogcd == Bst.PartingBlow);
+
 var lowParting = BstRotation.Next(Fight(level: 20, notReady: AllBut(Bst.PartingBlow)), plain);
 Check("not below 30, where a new familiar resets nothing", lowParting.Ogcd == 0, lowParting.Why);
 
