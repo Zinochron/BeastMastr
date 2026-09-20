@@ -2790,3 +2790,22 @@ plain strings, and the callback takes the position in the list. The comparison d
 icon glyphs (the private use area) and all whitespace first, so a quest or content icon in front of an
 entry cannot make it miss. The "Lauda offers …" line in the log is a diagnostic, not an input: it says
 what her menu held when a run went wrong, for a player whose menu reads differently again.
+
+### The chat says what went wrong — 0.3.0.8, 2026-09-20
+
+A player who hits a wall is not reading `dalamud.log`, so the entrance says what is in the way in the
+chat instead of only writing it down. `WhyNothingOpened()` names one reason, the first that fits:
+
+- Lauda is not in the object table at all;
+- she is too far away, with the distance;
+- she cannot be targeted;
+- you are mounted and the run could not get you off;
+- you are in combat;
+- the client is busy with an event, a cutscene or a load;
+- another window is open and in the way, named;
+- or nothing the run can name, in which case another plugin is likely answering her menu first.
+
+It goes out once, as an error line, when the tries are spent — the step still passes to the player — and
+it is repeated in the failure if three minutes go by. `Fail` also carries the windows that were open at
+the time, and the run prints the failure to the chat as it always did, so the whole reason is in front
+of the player.
