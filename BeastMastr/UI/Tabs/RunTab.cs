@@ -29,6 +29,9 @@ public sealed class RunTab : ITab
     private readonly Automation.Run.BoardRunner runner;
     private readonly LootTracker loot;
 
+    /// <summary>What the last "switch on" press answered, when it was not simply done.</summary>
+    private string pluginMessage = string.Empty;
+
     public RunTab(Configuration configuration, BoardModel board, RouteKeeper route, Automation.Run.BoardRunner runner,
                   LootTracker loot)
     {
@@ -44,7 +47,9 @@ public sealed class RunTab : ITab
 
     public void Draw()
     {
-        DrawRun();
+        var canRun = DrawPlugins();
+        ImGuiHelpers.ScaledDummy(2f);
+        DrawRun(canRun);
         ImGuiHelpers.ScaledDummy(4f);
         DrawLoot();
         ImGuiHelpers.ScaledDummy(4f);
@@ -57,34 +62,79 @@ public sealed class RunTab : ITab
         DrawRoute();
     }
 
+    /// <summary>
+    /// What the run needs from other plugins, checked every frame: vnavmesh always, BossMod only while a
+    /// BossMod role is chosen. One that is installed but switched off gets a button that switches it on.
+    /// Returns whether the run can start — only vnavmesh decides that, since without BossMod the run
+    /// falls back to dodging itself.
+    /// </summary>
+    private bool DrawPlugins()
+    {
+        var navmesh = PluginPresence.Check(NavmeshIpc.InternalName, "vnavmesh");
+        DrawPlugin(navmesh, Bad, "needed to walk the board");
+
+        if (navmesh.State == PluginPresence.State.Loaded)
+        {
+            ImGui.SameLine();
+            ImGui.TextColored(Muted, NavmeshIpc.IsReady() ? "mesh ready"
+                                     : NavmeshIpc.BuildProgress() is var progress and >= 0 ? $"building mesh {progress:P0}"
+                                     : "no mesh for this zone yet");
+        }
+
+        if (configuration.BossModRole != BossModRole.Off)
+            DrawPlugin(PluginPresence.Check(BossModIpc.InternalName, "BossMod"), Attention,
+                       "without it BeastMastr dodges itself");
+
+        if (pluginMessage.Length > 0)
+            ImGui.TextColored(Muted, pluginMessage);
+
+        return navmesh.State == PluginPresence.State.Loaded;
+    }
+
+    private void DrawPlugin(PluginPresence.Status plugin, Vector4 problem, string why)
+    {
+        if (plugin.State == PluginPresence.State.Loaded)
+        {
+            ImGui.TextColored(Good, $"{plugin.Name} {plugin.Version}");
+            return;
+        }
+
+        var what = plugin.State switch
+        {
+            PluginPresence.State.Off => "is switched off",
+            PluginPresence.State.Outdated => "needs an update",
+            PluginPresence.State.Unusable => "cannot be loaded",
+            _ => "is not installed",
+        };
+
+        ImGui.TextColored(problem, $"{plugin.Name} {what} — {why}.");
+        ImGui.SameLine();
+
+        if (plugin.State == PluginPresence.State.Off)
+        {
+            if (ImGui.SmallButton($"Switch on###on{plugin.Name}"))
+                pluginMessage = PluginPresence.Enable(plugin.Name) ? string.Empty : "Dalamud did not take /xlenableplugin.";
+        }
+        else if (ImGui.SmallButton($"Plugin installer###find{plugin.Name}"))
+        {
+            PluginPresence.ShowInInstaller(plugin.Name);
+        }
+    }
+
     /// <summary>The whole run: start it, hold it, and see what it is doing or waiting for.</summary>
-    private void DrawRun()
+    private void DrawRun(bool canRun)
     {
         if (!ImGui.CollapsingHeader("Run the board", ImGuiTreeNodeFlags.DefaultOpen))
             return;
 
-        ImGui.TextWrapped("Press Run on a Crucible board's start platform, or anywhere in Central Shroud to walk " +
-                          "to Lauda and start the board last played. BeastMastr walks from room to room, fights, " +
-                          "shops, rests and takes treasure until the boss is done — and with more than one board, " +
-                          "starts the next one from the entrance. Moving, jumping, targeting or pressing an action " +
-                          "yourself pauses it; it carries on once you let go.");
-        ImGuiHelpers.ScaledDummy(2f);
-
-        if (!NavmeshIpc.IsLoaded)
-            ImGui.TextColored(Bad, "vnavmesh is needed to walk the board. Install it from its plugin repository.");
-        else if (!NavmeshIpc.IsReady())
-            ImGui.TextColored(Muted, NavmeshIpc.BuildProgress() is var progress and >= 0
-                                         ? $"vnavmesh is building the mesh: {progress:P0}."
-                                         : "vnavmesh has no mesh for this zone yet.");
-
-        using (ImRaii.Disabled(runner.Running))
+        using (ImRaii.Disabled(runner.Running || !canRun))
         {
             if (ImGui.Button("Run"))
                 runner.Start(configuration.RunCount);
         }
 
-        Widgets.HelpMarker("Same as /beastmastr run. Steps the run cannot do itself are handed to you, and it " +
-                           "carries on once they are done.");
+        Widgets.HelpMarker("On a board's start platform, or anywhere in Central Shroud to start through Lauda. " +
+                           "Your own input pauses it. Same as /beastmastr run.");
 
         ImGui.SameLine();
         using (ImRaii.Disabled(!runner.Running))
@@ -96,8 +146,7 @@ public sealed class RunTab : ITab
             if (ImGui.Button("Continue"))
                 runner.Continue();
 
-            Widgets.HelpMarker("Tells the run the room in hand is finished, for when it waits on something it " +
-                               "does not recognise.");
+            Widgets.HelpMarker("Marks the current room as done, for when the run is stuck on it.");
 
             ImGui.SameLine();
             if (ImGui.Button("Stop"))
@@ -112,20 +161,18 @@ public sealed class RunTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker("How many boards to play in a row. Can be changed while a run is under way.");
+        Widgets.HelpMarker("Boards in a row. Can be changed mid-run.");
 
         ImGui.SameLine();
-        Toggle("go on after a lost board", configuration.ContinueAfterLostBoard,
+        Toggle("go on after a loss", configuration.ContinueAfterLostBoard,
                value => configuration.ContinueAfterLostBoard = value);
-        Widgets.HelpMarker("When on, a board lost to a wipe counts as played and the next one is started.");
+        Widgets.HelpMarker("A wiped board counts as played.");
 
         ImGui.SameLine();
         Toggle("auto-repair", configuration.RepairBetweenBoards,
                value => configuration.RepairBetweenBoards = value);
-        Widgets.HelpMarker("When on, gear below full durability is repaired between boards: at the entrance the " +
-                           "run opens the repair window, presses Repair All, answers the question and closes it " +
-                           "again. Without dark matter — or with a crafter level too low for the items — it says " +
-                           "so and waits for you.");
+        Widgets.HelpMarker("Repairs worn gear at the entrance between boards. Without dark matter or the crafter " +
+                           "level it waits for you.");
 
         DrawBoardChoice();
 
@@ -145,14 +192,13 @@ public sealed class RunTab : ITab
             }
         }
 
-        Widgets.HelpMarker("Set in the board window before every board started from the entrance:\n" +
-                           "Farming: the three carries alone, for the board's bonus.\n" +
-                           "Leveling: the carries, then the least advanced beasts, picked anew each board.\n" +
-                           "Keep: the team as it is.\n" +
-                           "Carries are marked with \"Add as carry\" in the bestiary's right-click menu.");
+        Widgets.HelpMarker("Set before each board:\n" +
+                           "Farming: carries only, for the board's bonus.\n" +
+                           "Leveling: carries, then the least advanced.\n" +
+                           "Keep: as it is.");
 
         if (configuration.RunTeam != RunTeam.Keep && configuration.CarryBeasts.Count == 0)
-            ImGui.TextColored(Attention, "No carries are marked yet; mark them in the bestiary's right-click menu.");
+            ImGui.TextColored(Attention, "No carries marked (bestiary: right-click → Add as carry).");
 
         var failed = runner.State == Automation.Run.BoardRunner.Phase.Failed;
         ImGui.TextColored(failed ? Bad : runner.Running ? Good : Muted,
@@ -209,8 +255,7 @@ public sealed class RunTab : ITab
             }
         }
 
-        Widgets.HelpMarker("The board Lauda is asked for. \"The one last played\" uses whichever board's window " +
-                           "was open last, which is what a run started on a board keeps playing.");
+        Widgets.HelpMarker("The board asked of Lauda. \"The one last played\": whichever board window was open last.");
 
         ImGui.SameLine();
 
@@ -239,9 +284,7 @@ public sealed class RunTab : ITab
             }
         }
 
-        Widgets.HelpMarker("The Crucible mode every board is started on. The game forgets it at every visit, so " +
-                           "BeastMastr sets it in the board window before challenging. The choice only appears " +
-                           "in game once every board has been cleared.");
+        Widgets.HelpMarker("Set before each challenge; the game resets it every visit. Unlocks once every board is cleared.");
     }
 
     /// <summary>Boards finished and the loot rolled for at their end, this session and in all.</summary>
@@ -252,9 +295,7 @@ public sealed class RunTab : ITab
 
         ImGui.TextUnformatted($"Boards finished: {loot.BoardsThisSession} this session ({loot.WonThisSession} won), " +
                               $"{configuration.BoardsFinished} in all ({configuration.BoardsWon} won).");
-        Widgets.HelpMarker("Counted when a board's result window opens, won or lost. The loot is what is rolled " +
-                           "for at the end — the remnants of resilience and the Modern Aesthetics items — not a " +
-                           "room's spoils.");
+        Widgets.HelpMarker("Counted at each result window. Loot is the end-of-board roll, not room spoils.");
 
         // The speed: how long a board takes, entering to result, and how many an hour with the way back in.
         if (loot.BoardStartedAt is { } started)
@@ -308,7 +349,7 @@ public sealed class RunTab : ITab
         if (ImGui.SmallButton("Reset the count") && ImGui.GetIO().KeyCtrl)
             loot.Reset();
 
-        Widgets.HelpMarker("Hold Ctrl while clicking: it forgets the boards and the loot counted, saved totals too.");
+        Widgets.HelpMarker("Ctrl+click. Clears the saved totals too.");
     }
 
     private static string Clock(TimeSpan time) =>
@@ -347,13 +388,12 @@ public sealed class RunTab : ITab
             }
         }
 
-        Widgets.HelpMarker("A treasure coffer offers four items, left to right. The run takes a random piece of " +
-                           "gear, the offer set here (the first one if that slot is empty), or hands the choice to you. " +
-                           "Beast Gear already held is never taken twice. The spoils after a fight are always taken whole.");
+        Widgets.HelpMarker("Four offers, left to right; an empty slot falls back to the first. Held Beast Gear is " +
+                           "skipped. Fight spoils are always taken.");
 
         var healBelow = configuration.TreasureHealBelow * 100f;
         ImGui.SetNextItemWidth(140f * ImGuiHelpers.GlobalScale);
-        if (ImGui.SliderFloat("Coffers: a healing item instead of gear at or below", ref healBelow, 0f, 100f, "%.0f%% HP"))
+        if (ImGui.SliderFloat("Coffer: healing item instead at or below", ref healBelow, 0f, 100f, "%.0f%% HP"))
         {
             configuration.TreasureHealBelow = healBelow / 100f;
             configuration.Save();
@@ -364,13 +404,12 @@ public sealed class RunTab : ITab
         using (ImRaii.Disabled(configuration.ShopByHand))
         {
             Toggle("Buy Beast Gear in shops", configuration.ShopBuysGear, value => configuration.ShopBuysGear = value);
-            Widgets.HelpMarker("The dearest piece the tokens allow first, then the next, never a piece already held. " +
-                               "Each purchase is only confirmed when the game's question names the piece meant.");
-            Toggle("…then healing items with the tokens left", configuration.ShopBuysPotions,
+            Widgets.HelpMarker("Dearest affordable piece first, never one already held.");
+            Toggle("…then healing items with the rest", configuration.ShopBuysPotions,
                    value => configuration.ShopBuysPotions = value);
         }
 
-        Toggle("Rest the most hurt familiars at a campsite (otherwise rest alone)",
+        Toggle("Campsite: rest the most hurt familiars too",
                configuration.CampsiteRestFamiliars, value => configuration.CampsiteRestFamiliars = value);
 
         using (ImRaii.Disabled(!configuration.CampsiteRestFamiliars))
@@ -379,9 +418,8 @@ public sealed class RunTab : ITab
                    value => configuration.CampsiteAvoidOverheal = value);
         }
 
-        Widgets.HelpMarker("A campsite's 90% is shared: alone you get 90%, with one familiar each gets 45%, with two " +
-                           "30%. Whatever heals past full is lost, so familiars are only picked while that adds up " +
-                           "to more HP restored in total.");
+        Widgets.HelpMarker("The 90% is shared: alone 90%, with one familiar 45% each, with two 30%. Familiars are " +
+                           "only added while that heals more in total.");
 
         Toggle("Drink Beast Potions and Crucible Ash", configuration.UsePotions, value => configuration.UsePotions = value);
         if (configuration.UsePotions)
@@ -406,14 +444,11 @@ public sealed class RunTab : ITab
             ImGui.Unindent();
         }
 
-        Toggle("In the final fight, use every useful item once the horns are out", configuration.UseBossItems,
+        Toggle("Boss fight: use every useful item once the horns are out", configuration.UseBossItems,
                value => configuration.UseBossItems = value);
-        Widgets.HelpMarker("Beast Potion Kit first, then reraisers, antipoison serums, the remedy kit, tannin, " +
-                           "stimulant, the tempered potions, vampiric essence, the tomes of reflection and the " +
-                           "impervious, the feather and the weakeners — each once — and an antidote whenever you are " +
-                           "poisoned. Fangs and Celestial Sand go at the boss. Nothing before both horns are out, so " +
-                           "nothing pulls early. Feral potions, smokebombs, the spellforge and steelsting tomes, " +
-                           "temporal sand and the eyes are never used.");
+        Widgets.HelpMarker("Each useful item once, Beast Potion Kit first; antidotes when poisoned; Fangs and " +
+                           "Celestial Sand at the boss. Never: feral potions, smokebombs, spellforge and steelsting " +
+                           "tomes, temporal sand, the eyes.");
 
         Toggle("Throw Fangs and Celestial Sand at adds", configuration.UseAreaItems,
                value => configuration.UseAreaItems = value);
@@ -436,7 +471,7 @@ public sealed class RunTab : ITab
                 configuration.Save();
             }
 
-            Widgets.HelpMarker("The Treant's adds arrive over a second or two; waiting lets one throw catch them all.");
+            Widgets.HelpMarker("Adds arriving together are caught by one throw.");
 
             ImGui.Unindent();
         }
@@ -491,11 +526,9 @@ public sealed class RunTab : ITab
     {
         Toggle("Decide who takes the hits with the duty actions", configuration.UseDutyActions,
                value => configuration.UseDutyActions = value);
-        Widgets.HelpMarker("Duty Action I, Challenge: you draw the enemy, and the familiar's cover ends.\n" +
-                           "Duty Action II, Snarl: the familiar draws the enemy and takes every hit meant for you, " +
-                           "for 45 seconds.\n" +
-                           "Snarl goes out for a hit aimed at you and when your HP runs low. Challenge takes the hits " +
-                           "back when the familiar runs low.");
+        Widgets.HelpMarker("I, Challenge: you take the hits.\n" +
+                           "II, Snarl: the familiar covers you for 45 s.\n" +
+                           "Snarl on hits aimed at you or low HP; Challenge when the familiar runs low.");
 
         if (!configuration.UseDutyActions)
             return;
@@ -613,20 +646,16 @@ public sealed class RunTab : ITab
 
         Toggle("Mark the route on the board window", configuration.ShowRouteOnBoard,
                value => configuration.ShowRouteOnBoard = value);
-        Widgets.HelpMarker("In the game's Board Layout window: an arrow on every room the route takes, a star on " +
-                           "every room you picked, and a + in the corner of every room on a fork — click it to pick " +
-                           "that room.");
+        Widgets.HelpMarker("Arrows on the route, stars on your picks, + on fork rooms (click to pick).");
 
         Toggle("Show the next step on the board", configuration.ShowRouteInWorld,
                value => configuration.ShowRouteInWorld = value);
-        Widgets.HelpMarker("A green ring on the room the route takes next, red rings on the other rooms of that " +
-                           "move, and the way there on the ground.");
+        Widgets.HelpMarker("Green ring: the next room. Red: its alternatives. The way there on the ground.");
 
         if (ImGui.SmallButton("Clear picks"))
             route.ClearChoices();
 
-        Widgets.HelpMarker("Rooms you pick bind their move. Everything else follows the preferences below. " +
-                           "Picking a room again takes the pick back.");
+        Widgets.HelpMarker("A pick fixes its move; the rest follows the preferences. Pick again to undo.");
 
         DrawPreferences();
 

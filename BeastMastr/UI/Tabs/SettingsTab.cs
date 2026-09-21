@@ -42,10 +42,7 @@ public sealed class SettingsTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "Puts a status tag on each tile of the Master's Bestiary and dims the beasts the filter " +
-            "in the Beasts tab excludes. Turning this off hands the window back exactly as the game " +
-            "draws it, the next time it opens.");
+        Widgets.HelpMarker("Status tags on the bestiary's tiles; the Beasts tab's filter dims the rest.");
 
         var briefRoom = configuration.ShowNextRoom;
         if (ImGui.Checkbox("Brief the next room during a run", ref briefRoom))
@@ -54,11 +51,8 @@ public sealed class SettingsTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "A window of the game's own showing what the room you are about to enter holds, and " +
-            "nothing about the other eleven. Drag it where you want it; it stays there. The arrows " +
-            "look further ahead. What it knows about enemies comes from the board — click through " +
-            "the rooms once and it fills in. /beastmastr room opens it at any time.");
+        Widgets.HelpMarker("A game window with the room ahead; drag it anywhere, the arrows look further. " +
+                           "Also /beastmastr room.");
 
         ImGui.TextDisabled(nextRoom.Status);
 
@@ -71,9 +65,7 @@ public sealed class SettingsTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "Tools for testing and for reporting a problem: the run recorder, single steps, the fight " +
-            "driver's decisions, the ground scan and map, and the sheet and window explorers.");
+        Widgets.HelpMarker("Recorder, single steps, fight internals, map and the data explorers.");
 
         if (configuration.ShowDataTab)
         {
@@ -98,11 +90,8 @@ public sealed class SettingsTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "Adds a \"Fill for levelling\" button to the team list whenever a team is being put " +
-            "together, and under the bestiary while that is open too. It empties the team with the " +
-            "game's own \"Remove all\", opens the bestiary if it is not already up, then adds the " +
-            "carries and the least advanced beasts. Only on the press — it never fills a team on its own.");
+        Widgets.HelpMarker("\"Fill for levelling\" on the team list and under the bestiary: empties the team, then " +
+                           "adds the carries and the least advanced. Only when pressed.");
 
         if (teamSelector.Status.Length > 0)
             ImGui.TextDisabled(teamSelector.Status);
@@ -115,18 +104,14 @@ public sealed class SettingsTab : ITab
     private void DrawFightAutomation()
     {
         var onOpen = configuration.CallLastFamiliarsOnOpen;
-        if (ImGui.Checkbox("Call the last fight's familiars when the fight window opens", ref onOpen))
+        if (ImGui.Checkbox("Call the last fight's familiars when a fight asks", ref onOpen))
         {
             configuration.CallLastFamiliarsOnOpen = onOpen;
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "Once per fight, as the window opens, and only if nothing is called yet — in the fight " +
-            "window only, never at shops or campsites. After that it leaves the window alone, so " +
-            "whatever you change stays changed. The \"Call last familiars\" button on the team " +
-            "list does the same again whenever you press it. At shops and campsites the team list " +
-            "gets a \"Pick lowest HP\" button instead.");
+        Widgets.HelpMarker("Once per fight window, only if nothing is called yet. The team list's \"Call last " +
+                           "familiars\" repeats it; shops and campsites get \"Pick lowest HP\".");
 
         var carriesFirst = configuration.CallCarriesFirst;
         if (ImGui.Checkbox("Call the carries first, unless they are down", ref carriesFirst))
@@ -135,11 +120,7 @@ public sealed class SettingsTab : ITab
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "The beasts marked \"Add as carry\" in the bestiary's right-click menu are called into " +
-            "every fight first, as long as they are in the team and not incapacitated. The rest of " +
-            "the call is the last fight's familiars; one that is down is replaced by the healthiest " +
-            "familiar left.");
+        Widgets.HelpMarker("Carries go first unless down; a downed familiar is replaced by the healthiest.");
 
         ImGui.TextDisabled(configuration.CarryBeasts.Count == 0
                                ? "No carries marked."
@@ -159,17 +140,13 @@ public sealed class SettingsTab : ITab
     private void DrawCrucibleMode()
     {
         var remember = configuration.RememberCrucibleMode;
-        if (ImGui.Checkbox("Set the Crucible mode you last used, when the board opens", ref remember))
+        if (ImGui.Checkbox("Restore the last Crucible mode when the board opens", ref remember))
         {
             configuration.RememberCrucibleMode = remember;
             configuration.Save();
         }
 
-        Widgets.HelpMarker(
-            "The game starts every visit at Standard. This puts the mode back to the one you last " +
-            "had set, once, as the board window opens — and then leaves it alone, so anything you " +
-            "change afterwards stays and becomes the one it remembers. The choice only exists once " +
-            "you have cleared every board; until then there is nothing to set.");
+        Widgets.HelpMarker("The game resets it to Standard every visit; this restores yours once per opening.");
 
         if (difficultySelector.Status.Length > 0)
             ImGui.TextDisabled(difficultySelector.Status);

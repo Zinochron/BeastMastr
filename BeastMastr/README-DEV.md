@@ -2908,3 +2908,19 @@ Crucible second, and picking the Crucible opens the recorded `SelectString`.
 - **Only** the entry that is the Crucible by name is ever pressed. If none matches, the run hands the
   menu to the player and says what it offered — a quest line is not something to guess at.
 - `MenuWatch` listens to both menus and says which one it saw.
+
+## The Run tab checks its plugins first
+
+The top of the Run tab now says whether the plugins a run leans on are there: vnavmesh always, and
+BossMod only while a BossMod role is chosen (the default is Off). Only vnavmesh blocks the Run
+button. Without BossMod a BossMod role falls back to BeastMastr dodging by itself, so it is shown as a
+warning, not a stop.
+
+`PluginPresence.Check` tells apart loaded, switched off, outdated, unusable (banned, decommissioned
+or orphaned) and missing. A plugin that is only switched off gets a button that runs Dalamud's own
+`/xlenableplugin` through `ICommandManager.ProcessCommand`. That command takes the display name in
+quotes, not the internal name, and keeps the plugin on across restarts like the installer toggle.
+The rest get a button that opens the plugin installer searched for it.
+
+The intro paragraph at the top of the Run tab is gone, and the help texts across the Run, Settings
+and Beasts tabs were cut down to what a player needs to decide, not how it works inside.
