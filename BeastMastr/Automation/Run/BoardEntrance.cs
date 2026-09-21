@@ -62,6 +62,14 @@ public sealed unsafe class BoardEntrance
     private readonly RunTeam team;
     private readonly bool repair;
 
+    /// <summary>A Crucible mode was picked on the Run tab, so its absence is worth a word.</summary>
+    private readonly bool modeWanted;
+
+    /// <summary>When the board window was first seen up, for the moment the mode block is given.</summary>
+    private DateTime? windowUpAt;
+
+    private bool toldNoMode;
+
     /// <summary>0: the team not asked for yet; 1: being set; 2: set, or left as it is.</summary>
     private int teamStage;
 
@@ -70,12 +78,14 @@ public sealed unsafe class BoardEntrance
     /// <param name="boardRow">The board to play again, as <c>XBMStageList</c> numbers it.</param>
     /// <param name="team">The team to set in the board window before challenging.</param>
     /// <param name="repair">Whether worn gear is repaired before the next board is started.</param>
-    public BoardEntrance(uint boardRow, TeamSelector teamSelector, RunTeam team, bool repair)
+    /// <param name="modeWanted">Whether a Crucible mode was picked for the board.</param>
+    public BoardEntrance(uint boardRow, TeamSelector teamSelector, RunTeam team, bool repair, bool modeWanted)
     {
         this.boardRow = boardRow;
         this.teamSelector = teamSelector;
         this.team = team;
         this.repair = repair;
+        this.modeWanted = modeWanted;
         teamStage = team == RunTeam.Keep ? 2 : 0;
     }
 
@@ -233,9 +243,11 @@ public sealed unsafe class BoardEntrance
                 {
                     menuSeen = true;
 
-                    // Answered as soon as it has its entries rather than after a fixed wait: a window
-                    // left sitting is a window something else can answer first.
-                    var entries = MenuEntries();
+                    // Answered as soon as it is loaded and has its entries rather than after a fixed
+                    // wait: a window left sitting is a window something else can answer first. Before it
+                    // is loaded nothing can be sent to it, and the trail filled up with the same menu
+                    // five times over while it loaded (2026-09-21).
+                    var entries = AddonReader.TryGet(XbmColumns.Entrance.Menu, out _) ? MenuEntries() : [];
                     if (entries.Count == 0)
                     {
                         if (since > WindowTimeout)
@@ -244,8 +256,10 @@ public sealed unsafe class BoardEntrance
                         return;
                     }
 
+                    if (!offers.SequenceEqual(entries))
+                        Note($"her menu offered {string.Join(" | ", entries)}");
+
                     offers = entries;
-                    Note($"her menu offered {string.Join(" | ", entries)}");
 
                     // With the questline unfinished she opens with a menu of her own: the quest first,
                     // the Crucible second. Picking the Crucible opens the menu that was recorded, so
@@ -361,14 +375,23 @@ public sealed unsafe class BoardEntrance
                         Services.Log.Information($"Entrance: team set for {team}: {teamSelector.Status}");
                     }
 
-                    if (CrucibleModeReader.Read() is not { Index: >= 0 } ||
+                    // Up means the board window on screen with the team list beside it in team mode —
+                    // mode 0 is only ever shown together with the board window out here. The Crucible mode
+                    // block was the sign before, and it only exists once every board has been cleared: a
+                    // player still in the questline waited for it forever (2026-09-21).
+                    if (!AddonReader.IsOpen(XbmColumns.StageDetailList.Addon) ||
                         PetPartyReader.Mode() != XbmColumns.PetParty.TeamCompositionMode)
                     {
                         if (since > WindowTimeout)
-                            Fail("The board window did not open.");
+                            Fail(!AddonReader.IsOpen(XbmColumns.StageDetailList.Addon)
+                                     ? "The board window did not open."
+                                     : $"The board window is open, but the team list beside it is not in team mode " +
+                                       $"(mode {PetPartyReader.Mode()}).");
 
                         return;
                     }
+
+                    windowUpAt ??= now;
 
                     if (teamStage == 0)
                     {
@@ -381,6 +404,23 @@ public sealed unsafe class BoardEntrance
 
                     if (since < ModeTime || now - teamSetAt < ModeTime)
                         return;
+
+                    // Without the mode block the board is played on Standard: the choice only appears once
+                    // every board has been cleared. It is given a moment to be drawn first.
+                    if (CrucibleModeReader.Read() is not { Index: >= 0 })
+                    {
+                        if (now - windowUpAt < ModeTime)
+                            return;
+
+                        if (modeWanted && !toldNoMode)
+                        {
+                            toldNoMode = true;
+                            Services.Chat.Print("[BeastMastr] This board offers no Crucible mode yet — the choice " +
+                                                "appears once every board has been cleared. Playing it on Standard.");
+                        }
+
+                        Note("no Crucible mode to set, so Standard");
+                    }
 
                     challenge = new ConfirmedStep(Challenge);
                 }

@@ -993,7 +993,8 @@ public sealed class BoardRunner : IDisposable
             configuration.Save();
         }
 
-        return new BoardEntrance(boardRow, teamSelector, configuration.RunTeam, configuration.RepairBetweenBoards);
+        return new BoardEntrance(boardRow, teamSelector, configuration.RunTeam, configuration.RepairBetweenBoards,
+                                 configuration.RunDifficulty >= 0);
     }
 
     /// <summary>Back in from the entrance, then the next board is played from its start.</summary>

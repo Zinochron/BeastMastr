@@ -2924,3 +2924,28 @@ The rest get a button that opens the plugin installer searched for it.
 
 The intro paragraph at the top of the Run tab is gone, and the help texts across the Run, Settings
 and Beasts tabs were cut down to what a player needs to decide, not how it works inside.
+
+### The board window without a mode — 0.3.0.17, 2026-09-21
+
+With her quest menu handled, the player got all the way through Lauda and on to the board, and then:
+
+> The board window did not open. Open at the time: XBMPetParty, XBMStageDetailList.
+
+It was open. Stage 4 took the Crucible mode block (`CrucibleModeReader.Read()` with an index) as the
+sign that the window was really up, because `XBMStageDetailList` reports itself open long after use.
+But that block only exists once every board has been cleared — a player still in the questline has
+none, so the step waited for something that never comes. On an account with every board cleared it is
+always there, which is why it never showed here.
+
+- **Up** now means `XBMStageDetailList` on screen and the team list beside it in team mode (mode 0),
+  which out here is only ever shown together with the board window.
+- With the mode block, nothing changes: the team, then `ModeTime` for the `DifficultySelector`, then
+  Challenge.
+- Without it, the block is given `ModeTime` to be drawn, and then the board is played on Standard. If a
+  mode was picked on the Run tab, the chat says once that the choice only appears once every board has
+  been cleared.
+- When the window really does not come up, the failure says which half was missing — the window, or the
+  team list's mode.
+
+And the trail no longer repeats her menu while it loads: it is read once `TryGet` has it loaded, and noted
+only when what it offers changes.
